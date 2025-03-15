@@ -1,32 +1,12 @@
 {
-  "name": "solmemebot",
+  "name": "solana-memecoin-bot",
   "version": "1.0.0",
-  "description": "A Solana meme coin paper trading bot",
-  "main": "dist/index.js",
+  "description": "A trading bot for Solana-based meme coins",
+  "main": "src/index.ts",
   "scripts": {
-    "build": "tsc",
-    "start": "node dist/index.js",
-    "paper": "ts-node src/paperTrading.ts",
-    "test": "jest",
-    "dev": "ts-node-dev src/index.ts"
+    "start": "node src/index.ts"
   },
-  "keywords": [],
-  "author": "",
-  "license": "MIT",
   "dependencies": {
-    "axios": "^1.4.0",
-    "chalk": "^4.1.2",
-    "dotenv": "^16.0.3",
-    "ioredis": "^5.5.0",
-    "winston": "^3.8.2"
-  },
-  "devDependencies": {
-    "@types/jest": "^29.0.0",
-    "@types/node": "^18.11.9",
-    "jest": "^29.0.3",
-    "ts-jest": "^29.0.3",
-    "ts-node": "^10.9.1",
-    "ts-node-dev": "^2.0.0",
-    "typescript": "^5.8.2"
+    "ws": "^8.12.0"
   }
 }
