@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SolMemeBot Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f8f9fa;
+        }
+        .card {
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+        .card-header {
+            font-weight: 600;
+            border-radius: 10px 10px 0 0 !important;
+        }
+        .status-indicator {
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 5px;
+        }
+        .status-running { background-color: #28a745; }
+        .status-disabled { background-color: #6c757d; }
+        .status-emergency { background-color: #dc3545; }
+        .metric-value {
+            font-size: 24px;
+            font-weight: 700;
+        }
+        .metric-title {
+            font-size: 14px;
+            color: #6c757d;
+        }
+        .pattern-card {
+            border-left: 4px solid #007bff;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="#">SolMemeBot Dashboard</a>
+            <div class="ms-auto text-light">
+                <span id="update-time">Last Updated: Loading...</span>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        System Status
+                    </div>
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <span>Trading Status:</span>
+                            <div>
+                                <span class="status-indicator" id="status-light"></span>
+                                <span id="status-text">Loading...</span>
+                            </div>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <span>Emergency Stop:</span>
+                            <span id="emergency-stop">Loading...</span>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span>Circuit Breakers:</span>
+                            <span id="circuit-breakers">Loading...</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header bg-success text-white">
+                        Portfolio Metrics
+                    </div>
+                    <div class="card-body">
+                        <div class="row text-center">
+                            <div class="col-6 mb-3">
+                                <div class="metric-value" id="balance">$0.00</div>
+                                <div class="metric-title">Current Balance</div>
+                            </div>
+                            <div class="col-6 mb-3">
+                                <div class="metric-value" id="daily-pnl">$0.00</div>
+                                <div class="metric-title">Daily P&L</div>
+                            </div>
+                            <div class="col-6 mb-3">
+                                <div class="metric-value" id="drawdown">0%</div>
+                                <div class="metric-title">Drawdown</div>
+                            </div>
+                            <div class="col-6 mb-3">
+                                <div class="metric-value" id="win-rate">0%</div>
+                                <div class="metric-title">Win Rate</div>
+                            </div>
+                            <div class="col-6">
+                                <div class="metric-value" id="active-positions">0/0</div>
+                                <div class="metric-title">Active Positions</div>
+                            </div>
+                            <div class="col-6">
+                                <div class="metric-value" id="high-water">$0.00</div>
+                                <div class="metric-title">High Water Mark</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header bg-info text-white">
+                        Performance Chart
+                    </div>
+                    <div class="card-body">
+                        <canvas id="performance-chart" height="250"></canvas>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header bg-warning text-dark">
+                        Top Patterns Performance
+                    </div>
+                    <div class="card-body">
+                        <div id="patterns-container">
+                            <!-- Pattern cards will be added here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row mt-2">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header bg-secondary text-white">
+                        Recent Trades
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Time</th>
+                                        <th>Token</th>
+                                        <th>Pattern</th>
+                                        <th>Side</th>
+                                        <th>Size</th>
+                                        <th>Price</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="trades-table">
+                                    <tr>
+                                        <td colspan="7" class="text-center">No recent trades</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Top performing patterns from historical data
+        const topPatterns = [
+            { name: 'Mega Pump and Dump', performance: 187.5, drawdown: 65.2, emoji: '🔥' },
+            { name: 'Volatility Squeeze', performance: 75.9, drawdown: 43.2, emoji: '⚡️' },
+            { name: 'Smart Money Trap', performance: 66.8, drawdown: 40.0, emoji: '🎯' },
+            { name: 'Algorithmic Stop Hunt', performance: 61.0, drawdown: 37.9, emoji: '🚀' },
+            { name: 'Smart Money Reversal', performance: 55.3, drawdown: 35.6, emoji: '📈' }
+        ];
+        
+        // Performance chart
+        let performanceChart;
+        
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            // Render top patterns
+            renderPatterns();
+            
+            // Initialize chart
+            initChart();
+            
+            // Load initial data
+            loadDashboardData();
+            
+            // Set update interval (every 5 seconds)
+            setInterval(loadDashboardData, 5000);
+        });
+        
+        function renderPatterns() {
+            const container = document.getElementById('patterns-container');
+            
+            topPatterns.forEach(pattern => {
+                const card = document.createElement('div');
+                card.className = 'card pattern-card mb-2';
+                card.innerHTML = `
+                    <div class="card-body py-2">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="mb-0">${pattern.emoji} ${pattern.name}</h6>
+                                <small class="text-muted">Max Drawdown: ${pattern.drawdown}%</small>
+                            </div>
+                            <div class="text-success fw-bold">
+                                +${pattern.performance}%
+                            </div>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+        
+        function initChart() {
+            const ctx = document.getElementById('performance-chart').getContext('2d');
+            
+            performanceChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [], // Will be populated with timestamps
+                    datasets: [{
+                        label: 'Balance ($)',
+                        data: [], // Will be populated with balance history
+                        borderColor: 'rgb(75, 192, 192)',
+                        tension: 0.1,
+                        fill: false
+                    },
+                    {
+                        label: 'High Water Mark ($)',
+                        data: [], // Will be populated with high water mark history
+                        borderColor: 'rgba(255, 99, 132, 1)',
+                        borderDash: [5, 5],
+                        tension: 0.1,
+                        fill: false
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: false
+                        }
+                    }
+                }
+            });
+        }
+        
+        async function loadDashboardData() {
+            try {
+                // Update metrics
+                const metricsResponse = await fetch('/api/metrics');
+                const metrics = await metricsResponse.json();
+                
+                updateMetrics(metrics);
+                
+                // Update status
+                const statusResponse = await fetch('/api/status');
+                const status = await statusResponse.json();
+                
+                updateStatus(status);
+                
+                // Update performance chart
+                const performanceResponse = await fetch('/api/performance');
+                const performance = await performanceResponse.json();
+                
+                updatePerformanceChart(performance);
+                
+                // Update last updated time
+                document.getElementById('update-time').textContent = 
+                    'Last Updated: ' + new Date().toLocaleTimeString();
+                    
+            } catch (error) {
+                console.error('Error loading dashboard data:', error);
+            }
+        }
+        
+        function updateMetrics(metrics) {
+            document.getElementById('balance').textContent = 
+                '$' + metrics.currentBalance.toFixed(2);
+                
+            document.getElementById('daily-pnl').textContent = 
+                (metrics.dailyPnL >= 0 ? '+' : '') + 
+                '$' + metrics.dailyPnL.toFixed(2);
+            
+            document.getElementById('drawdown').textContent = 
+                metrics.drawdown.toFixed(2) + '%';
+                
+            document.getElementById('win-rate').textContent = 
+                (metrics.winRate * 100).toFixed(0) + '%';
+                
+            document.getElementById('active-positions').textContent = 
+                metrics.activePositions + '/' + 
+                (metrics.activePositions + metrics.availablePositions);
+                
+            document.getElementById('high-water').textContent = 
+                '$' + metrics.highWaterMark.toFixed(2);
+        }
+        
+        function updateStatus(status) {
+            const statusLight = document.getElementById('status-light');
+            const statusText = document.getElementById('status-text');
+            
+            // Update status indicator
+            if (status.status === 'RUNNING') {
+                statusLight.className = 'status-indicator status-running';
+                statusText.textContent = 'RUNNING';
+            } else if (status.status === 'EMERGENCY_STOP') {
+                statusLight.className = 'status-indicator status-emergency';
+                statusText.textContent = 'EMERGENCY STOP';
+            } else {
+                statusLight.className = 'status-indicator status-disabled';
+                statusText.textContent = 'DISABLED';
+            }
+            
+            // Update emergency stop
+            document.getElementById('emergency-stop').textContent = 
+                status.emergencyStop ? 'ACTIVE' : 'INACTIVE';
+                
+            // Update circuit breakers
+            const breakers = Object.entries(status.circuitBreakers || {})
+                .filter(([_, active]) => active)
+                .map(([reason, _]) => reason);
+                
+            document.getElementById('circuit-breakers').textContent = 
+                breakers.length > 0 ? breakers.join(', ') : 'None Active';
+        }
+        
+        function updatePerformanceChart(performanceData) {
+            if (!performanceData || performanceData.length === 0) return;
+            
+            // Format data for chart
+            const timestamps = performanceData.map(p => {
+                const date = new Date(p.timestamp);
+                return date.toLocaleTimeString();
+            });
+            
+            const balances = performanceData.map(p => p.currentBalance);
+            const highWaterMarks = performanceData.map(p => p.highWaterMark);
+            
+            // Update chart
+            performanceChart.data.labels = timestamps;
+            performanceChart.data.datasets[0].data = balances;
+            performanceChart.data.datasets[1].data = highWaterMarks;
+            performanceChart.update();
+        }
+    </script>
+
+    <footer class="bg-dark text-light mt-5 py-3">
+        <div class="container text-center">
+            <p class="mb-0">SolMemeBot Dashboard &copy; 2025</p>
+        </div>
+    </footer>
+</body>
+</html>

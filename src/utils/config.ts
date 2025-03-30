@@ -35,24 +35,68 @@ function getRiskLevel(key: string, defaultValue: RiskLevel): RiskLevel {
   return defaultValue;
 }
 
-// Trading system configuration
-export const config = {
+interface Config {
+  trading: {
+    initialBalance: number;
+    maxPositionSize: number;
+    maxRiskLevel: RiskLevel;
+    autoSave: boolean;
+    dataDirectory: string;
+    slippageTolerance: number;
+    simulationMode: boolean;
+    autoTrade: boolean;
+    minLiquidity: number;
+    maxLiquidityPercentage: number;
+  };
+  solana: {
+    rpcEndpoint: string;
+    walletPrivateKey: string;
+    usdcMint: string;
+  };
+  apis: {
+    birdeyeApiKey: string;
+    coingeckoApiKey: string;
+  };
+  tokenMonitor: {
+    wsEndpoint: string;
+    reconnectInterval: number;
+    maxRetries: number;
+  };
+  debug: {
+    verbose: boolean;
+    logLevel: string;
+  };
+}
+
+export const config: Config = {
   trading: {
     initialBalance: getEnvAsNumber('INITIAL_BALANCE', 10000),
     maxPositionSize: getEnvAsNumber('MAX_POSITION_SIZE', 1000),
     maxRiskLevel: getRiskLevel('MAX_RISK_LEVEL', RiskLevel.MEDIUM),
     autoSave: getEnvAsBoolean('AUTO_SAVE', true),
     dataDirectory: getEnv('DATA_DIRECTORY', './data'),
-    slippageTolerance: getEnvAsNumber('SLIPPAGE_TOLERANCE', 1)
+    slippageTolerance: getEnvAsNumber('SLIPPAGE_TOLERANCE', 1),
+    simulationMode: getEnvAsBoolean('SIMULATION_MODE', true),
+    autoTrade: getEnvAsBoolean('AUTO_TRADE', true),
+    minLiquidity: getEnvAsNumber('MIN_LIQUIDITY', 5000),
+    maxLiquidityPercentage: getEnvAsNumber('MAX_LIQUIDITY_PERCENTAGE', 0.05)
   },
-  
+  solana: {
+    rpcEndpoint: getEnv('SOLANA_RPC_URL', 'https://api.mainnet-beta.solana.com'),
+    walletPrivateKey: getEnv('WALLET_PRIVATE_KEY', ''),
+    usdcMint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
+  },
   apis: {
     birdeyeApiKey: getEnv('BIRDEYE_API_KEY', ''),
     coingeckoApiKey: getEnv('COINGECKO_API_KEY', '')
   },
-  
+  tokenMonitor: {
+    wsEndpoint: getEnv('WS_URL', 'wss://public-api.birdeye.so/socket'),
+    reconnectInterval: getEnvAsNumber('WS_RECONNECT_DELAY', 5000),
+    maxRetries: getEnvAsNumber('WS_RECONNECT_ATTEMPTS', 5)
+  },
   debug: {
-    enabled: getEnvAsBoolean('DEBUG', false),
+    verbose: getEnvAsBoolean('DEBUG', false),
     logLevel: getEnv('LOG_LEVEL', 'info')
   }
 };

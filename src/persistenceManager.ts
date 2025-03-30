@@ -1,232 +1,163 @@
-// src/persistenceManager.ts
-
-import fs from 'fs';
-import path from 'path';
-import { Position, Trade, AccountBalance } from './positionManager';
-
-export interface TradeHistoryEntry extends Trade {
-  positionId: string;
-  balanceAfterTrade: number;
-}
-
-export interface TradingState {
-  positions: Position[];
-  accountBalance: AccountBalance;
-  tradeHistory: TradeHistoryEntry[];
-  lastUpdated: number;
-}
+import { Position, RiskMetrics, TradingState, TradeHistoryEntry } from './types';
+import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'fs';
+import { join } from 'path';
+import logger from './utils/logger';
 
 export class PersistenceManager {
-  private dataDir: string;
-  private stateFile: string;
-  private tradeHistoryFile: string;
-  
-  constructor(dataDir: string = './data') {
-    this.dataDir = dataDir;
-    this.stateFile = path.join(dataDir, 'trading_state.json');
-    this.tradeHistoryFile = path.join(dataDir, 'trade_history.json');
-    
-    // Ensure data directory exists
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
+    private dataDir: string;
+    private stateFile: string;
+    private historyFile: string;
+    private backupDir: string;
+
+    constructor() {
+        this.dataDir = join(process.cwd(), 'data');
+        this.stateFile = join(this.dataDir, 'trading_state.json');
+        this.historyFile = join(this.dataDir, 'trade_history.json');
+        this.backupDir = join(this.dataDir, 'backups');
+
+        // Create directories if they don't exist
+        if (!existsSync(this.dataDir)) {
+            mkdirSync(this.dataDir, { recursive: true });
+        }
+        if (!existsSync(this.backupDir)) {
+            mkdirSync(this.backupDir);
+        }
     }
-  }
-  
-  /**
-   * Save the current trading state
-   */
-  public async saveState(tradingState: TradingState): Promise<void> {
-    try {
-      // Add timestamp
-      tradingState.lastUpdated = Date.now();
-      
-      // Convert to JSON string
-      const stateJson = JSON.stringify(tradingState, null, 2);
-      
-      // Write to file
-      await fs.promises.writeFile(this.stateFile, stateJson, 'utf8');
-      
-      // Also update trade history file
-      await this.appendTradeHistory(tradingState.tradeHistory);
-      
-      console.log(`Trading state saved: ${this.stateFile}`);
-    } catch (error) {
-      console.error(`Failed to save trading state: ${error}`);
-      throw error;
+
+    public savePosition(position: Position): void {
+        try {
+            const state = this.loadState();
+            state.positions = state.positions.filter(p => p.tokenAddress !== position.tokenAddress);
+            state.positions.push(position);
+            this.saveState(state);
+        } catch (error) {
+            logger.error('Error saving position:', error);
+        }
     }
-  }
-  
-  /**
-   * Load trading state from file
-   */
-  public async loadState(): Promise<TradingState | null> {
-    try {
-      // Check if file exists
-      if (!fs.existsSync(this.stateFile)) {
-        console.log(`No trading state file found: ${this.stateFile}`);
-        return null;
-      }
-      
-      // Read file content
-      const stateJson = await fs.promises.readFile(this.stateFile, 'utf8');
-      
-      // Parse JSON
-      const tradingState = JSON.parse(stateJson) as TradingState;
-      
-      console.log(`Trading state loaded: ${this.stateFile}`);
-      return tradingState;
-    } catch (error) {
-      console.error(`Failed to load trading state: ${error}`);
-      return null;
+
+    public deletePosition(tokenAddress: string): void {
+        try {
+            const state = this.loadState();
+            state.positions = state.positions.filter(p => p.tokenAddress !== tokenAddress);
+            this.saveState(state);
+        } catch (error) {
+            logger.error('Error deleting position:', error);
+        }
     }
-  }
-  
-  /**
-   * Append new trades to trade history file
-   */
-  private async appendTradeHistory(trades: TradeHistoryEntry[]): Promise<void> {
-    try {
-      // Create or load existing history
-      let history: TradeHistoryEntry[] = [];
-      
-      if (fs.existsSync(this.tradeHistoryFile)) {
-        const existingHistory = await fs.promises.readFile(this.tradeHistoryFile, 'utf8');
-        history = JSON.parse(existingHistory);
-      }
-      
-      // Filter out duplicate trades (by ID)
-      const existingIds = new Set(history.map(trade => trade.id));
-      const newTrades = trades.filter(trade => !existingIds.has(trade.id));
-      
-      // Add new trades
-      history.push(...newTrades);
-      
-      // Sort by timestamp
-      history.sort((a, b) => a.timestamp - b.timestamp);
-      
-      // Write back to file
-      await fs.promises.writeFile(
-        this.tradeHistoryFile, 
-        JSON.stringify(history, null, 2), 
-        'utf8'
-      );
-    } catch (error) {
-      console.error(`Failed to append trade history: ${error}`);
+
+    public saveRiskMetrics(metrics: RiskMetrics): void {
+        try {
+            const state = this.loadState();
+            state.riskMetrics = metrics;
+            this.saveState(state);
+        } catch (error) {
+            logger.error('Error saving risk metrics:', error);
+        }
     }
-  }
-  
-  /**
-   * Create a backup of the current state
-   */
-  public async createBackup(): Promise<string> {
-    try {
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const backupDir = path.join(this.dataDir, 'backups');
-      
-      // Ensure backup directory exists
-      if (!fs.existsSync(backupDir)) {
-        fs.mkdirSync(backupDir, { recursive: true });
-      }
-      
-      // Create backup file paths
-      const stateBackupFile = path.join(backupDir, `trading_state_${timestamp}.json`);
-      const historyBackupFile = path.join(backupDir, `trade_history_${timestamp}.json`);
-      
-      // Copy files if they exist
-      if (fs.existsSync(this.stateFile)) {
-        await fs.promises.copyFile(this.stateFile, stateBackupFile);
-      }
-      
-      if (fs.existsSync(this.tradeHistoryFile)) {
-        await fs.promises.copyFile(this.tradeHistoryFile, historyBackupFile);
-      }
-      
-      return backupDir;
-    } catch (error) {
-      console.error(`Failed to create backup: ${error}`);
-      throw error;
+
+    public addTradeHistory(entry: TradeHistoryEntry): void {
+        try {
+            const history = this.loadTradeHistory();
+            history.push(entry);
+            writeFileSync(this.historyFile, JSON.stringify(history, null, 2));
+        } catch (error) {
+            logger.error('Error adding trade history:', error);
+        }
     }
-  }
-  
-  /**
-   * Export trade history to CSV
-   */
-  public async exportTradeHistoryToCsv(outputFile: string): Promise<string> {
-    try {
-      // Check if trade history exists
-      if (!fs.existsSync(this.tradeHistoryFile)) {
-        throw new Error(`No trade history file found: ${this.tradeHistoryFile}`);
-      }
-      
-      // Read trade history
-      const historyJson = await fs.promises.readFile(this.tradeHistoryFile, 'utf8');
-      const history = JSON.parse(historyJson) as TradeHistoryEntry[];
-      
-      // Create CSV header
-      const headers = [
-        'ID',
-        'Token',
-        'Type',
-        'Price',
-        'Quantity',
-        'Timestamp',
-        'Date',
-        'Fees',
-        'Total Cost',
-        'Balance After'
-      ];
-      
-      // Create CSV rows
-      const rows = history.map(trade => [
-        trade.id,
-        trade.tokenMint,
-        trade.orderType,
-        trade.price,
-        trade.quantity,
-        trade.timestamp,
-        new Date(trade.timestamp).toISOString(),
-        trade.fees,
-        trade.totalCost,
-        trade.balanceAfterTrade
-      ]);
-      
-      // Combine header and rows
-      const csvContent = [
-        headers.join(','),
-        ...rows.map(row => row.join(','))
-      ].join('\n');
-      
-      // Write to output file
-      await fs.promises.writeFile(outputFile, csvContent, 'utf8');
-      
-      return outputFile;
-    } catch (error) {
-      console.error(`Failed to export trade history: ${error}`);
-      throw error;
+
+    public loadState(): TradingState {
+        try {
+            if (!existsSync(this.stateFile)) {
+                return {
+                    positions: [],
+                    riskMetrics: {
+                        currentBalance: 1000,
+                        dailyPnL: 0,
+                        drawdown: 0,
+                        winRate: 0,
+                        activePositions: 0,
+                        availablePositions: 3,
+                        highWaterMark: 1000,
+                        dailyLoss: 0
+                    },
+                    timestamp: Date.now()
+                };
+            }
+
+            const data = readFileSync(this.stateFile, 'utf8');
+            return JSON.parse(data);
+        } catch (error) {
+            logger.error('Error loading state:', error);
+            return {
+                positions: [],
+                riskMetrics: {
+                    currentBalance: 1000,
+                    dailyPnL: 0,
+                    drawdown: 0,
+                    winRate: 0,
+                    activePositions: 0,
+                    availablePositions: 3,
+                    highWaterMark: 1000,
+                    dailyLoss: 0
+                },
+                timestamp: Date.now()
+            };
+        }
     }
-  }
-  
-  /**
-   * Clear all trading data (use with caution!)
-   */
-  public async clearAllData(): Promise<void> {
-    try {
-      // Create backup before clearing
-      await this.createBackup();
-      
-      // Delete state and history files
-      if (fs.existsSync(this.stateFile)) {
-        await fs.promises.unlink(this.stateFile);
-      }
-      
-      if (fs.existsSync(this.tradeHistoryFile)) {
-        await fs.promises.unlink(this.tradeHistoryFile);
-      }
-      
-      console.log('All trading data cleared');
-    } catch (error) {
-      console.error(`Failed to clear trading data: ${error}`);
-      throw error;
+
+    private saveState(state: TradingState): void {
+        try {
+            writeFileSync(this.stateFile, JSON.stringify(state, null, 2));
+        } catch (error) {
+            logger.error('Error saving state:', error);
+        }
     }
-  }
+
+    private loadTradeHistory(): TradeHistoryEntry[] {
+        try {
+            if (!existsSync(this.historyFile)) {
+                return [];
+            }
+
+            const data = readFileSync(this.historyFile, 'utf8');
+            return JSON.parse(data);
+        } catch (error) {
+            logger.error('Error loading trade history:', error);
+            return [];
+        }
+    }
+
+    public exportTradeHistoryToCsv(outputFile: string): void {
+        try {
+            const history = this.loadTradeHistory();
+            const headers = ['timestamp', 'tokenAddress', 'tokenSymbol', 'action', 'price', 'size', 'pnl'];
+            const rows = history.map(entry => {
+                return [
+                    new Date(entry.timestamp).toISOString(),
+                    entry.position.tokenAddress,
+                    entry.position.tokenSymbol,
+                    entry.action,
+                    entry.price,
+                    entry.size,
+                    entry.pnl || 0
+                ].join(',');
+            });
+
+            const csv = [headers.join(','), ...rows].join('\n');
+            writeFileSync(outputFile, csv);
+        } catch (error) {
+            logger.error('Error exporting trade history:', error);
+        }
+    }
+
+    public createBackup(): void {
+        try {
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const backupFile = join(this.backupDir, `backup_${timestamp}.json`);
+            const state = this.loadState();
+            writeFileSync(backupFile, JSON.stringify(state, null, 2));
+        } catch (error) {
+            logger.error('Error creating backup:', error);
+        }
+    }
 }

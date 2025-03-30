@@ -1,67 +1,59 @@
 // src/paperTrading.ts
 
+import { Connection } from '@solana/web3.js';
 import { config } from './utils/config';
 import logger from './utils/logger';
 import { TradingSystem } from './tradingSystem';
+import { RiskLevel } from './contractValidator';
 
 /**
  * Runs the paper trading module.
  */
 export async function runPaperTrading(): Promise<void> {
   try {
-    // Create a new TradingSystem instance using trading-related config.
-    const tradingSystem = new TradingSystem({
-      initialBalance: config.trading.initialBalance,
-      maxPositionSize: config.trading.maxPositionSize,
-      maxRisk: config.trading.maxRiskLevel,
-      autoSave: config.trading.autoSave,
-      dataDirectory: config.trading.dataDirectory,
-      slippageTolerance: config.trading.slippageTolerance
-    });
+    // Create Solana connection
+    const connection = new Connection(config.solana.rpcEndpoint, 'confirmed');
+    logger.info(`Connected to Solana RPC: ${config.solana.rpcEndpoint}`);
 
-    // Initialize the trading system.
-    await tradingSystem.initialize();
+    // Create a new TradingSystem instance with the connection.
+    const tradingSystem = new TradingSystem(connection);
+
     logger.info("Paper trading system initialized.");
 
     // Define a dummy token mint (32-character string).
     const dummyTokenMint = "11111111111111111111111111111111";
 
-    // Validate the token.
-    const tokenRisk = await tradingSystem.validateToken(dummyTokenMint);
-    logger.info(`Token ${dummyTokenMint} risk: ${tokenRisk.risk}`);
+    // --- Validation and Buying Logic Needs Revision ---
+    // The following logic assumes methods (validateToken, buyToken)
+    // that do not exist on the current TradingSystem class.
+    // This section needs to be rewritten to interact with TradingSystem
+    // or its components (like ContractValidator) correctly.
 
-    // If the token's risk is acceptable, attempt to buy.
-    if (tokenRisk.risk !== RiskLevel.CRITICAL) {
-      const position = await tradingSystem.buyToken(dummyTokenMint, "DUMMY", 6, 500);
-      logger.info(`Bought position: ${JSON.stringify(position)}`);
-    } else {
-      logger.warn(`Token ${dummyTokenMint} risk is CRITICAL. Trade aborted.`);
-    }
+    logger.warn('Paper trading validation and buying logic needs implementation based on TradingSystem capabilities.');
 
     // Subscribe to token updates (if your system uses events for price updates).
-    tradingSystem.subscribeToToken(dummyTokenMint);
+    // tradingSystem.tokenMonitor.on('tokenUpdate', (update) => { ... }); // Example
 
     // Wait briefly (simulate time passing).
     await new Promise(resolve => setTimeout(resolve, 2000));
 
     // Get the updated portfolio information.
-    const portfolio = tradingSystem.getPortfolio();
-    logger.info(`Updated portfolio: ${JSON.stringify(portfolio)}`);
+    // const portfolio = tradingSystem.getPortfolio(); // Method doesn't exist
+    logger.info(`Placeholder: Getting portfolio information.`); // Placeholder
 
     // Sell the token completely (100% of the position).
-    const updatedPosition = await tradingSystem.sellToken(dummyTokenMint, 100);
-    if (!updatedPosition) {
-      logger.info(`Position for token ${dummyTokenMint} fully closed.`);
-    } else {
-      logger.info(`Updated position after sell: ${JSON.stringify(updatedPosition)}`);
-    }
+    // const updatedPosition = await tradingSystem.sellToken(dummyTokenMint, 100); // Method doesn't exist
+    logger.info(`Placeholder: Selling token ${dummyTokenMint}`);
+    // Placeholder sell action:
+    logger.info(`Placeholder: Sold position for token ${dummyTokenMint}`);
 
     // Save the trading state.
-    await tradingSystem.saveState();
-    logger.info("Trading state saved.");
+    // await tradingSystem.saveState(); // Method doesn't exist
+    logger.info(`Placeholder: Saving trading state.`); // Placeholder
 
     // Shutdown the trading system gracefully.
-    await tradingSystem.shutdown();
+    // await tradingSystem.shutdown(); // Method doesn't exist
+    logger.info("Placeholder: Shutting down trading system."); // Placeholder
     logger.info("Paper trading system shutdown complete.");
   } catch (error) {
     logger.error("Paper trading encountered an error:", error);
@@ -75,5 +67,3 @@ if (require.main === module) {
     process.exit(1);
   });
 }
-
-export { runPaperTrading };

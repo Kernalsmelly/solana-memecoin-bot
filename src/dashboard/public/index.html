@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solana Token Detector Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.3/font/bootstrap-icons.css">
+    <style>
+        body {
+            background-color: #0f1429;
+            color: #e0e0e0;
+            font-family: 'Inter', sans-serif;
+        }
+        .card {
+            background-color: #1a2035;
+            border: none;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+        .card-header {
+            background-color: #252d47;
+            border-bottom: none;
+            border-radius: 10px 10px 0 0;
+            font-weight: 600;
+        }
+        .table {
+            color: #e0e0e0;
+        }
+        .table thead th {
+            border-bottom: 1px solid #2d3555;
+            color: #8a94b4;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+        }
+        .table td, .table th {
+            border-top: 1px solid #2d3555;
+            padding: 12px 15px;
+        }
+        .bg-success-soft {
+            background-color: rgba(40, 167, 69, 0.2);
+            color: #28a745;
+        }
+        .bg-danger-soft {
+            background-color: rgba(220, 53, 69, 0.2);
+            color: #dc3545;
+        }
+        .bg-warning-soft {
+            background-color: rgba(255, 193, 7, 0.2);
+            color: #ffc107;
+        }
+        .token-price {
+            font-family: 'Courier New', monospace;
+            font-weight: 600;
+        }
+        .badge {
+            padding: 6px 10px;
+            font-weight: 500;
+        }
+        .badge-success {
+            background-color: #28a745;
+        }
+        .badge-warning {
+            background-color: #ffc107;
+            color: #212529;
+        }
+        .badge-danger {
+            background-color: #dc3545;
+        }
+        .badge-info {
+            background-color: #17a2b8;
+        }
+        .notification-area {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 350px;
+            z-index: 1000;
+        }
+        .alert {
+            opacity: 0;
+            transition: opacity 0.5s ease-in-out;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+        }
+        .alert.show {
+            opacity: 1;
+        }
+        .stats-card {
+            border-left: 4px solid;
+            transition: transform 0.2s;
+        }
+        .stats-card:hover {
+            transform: translateY(-5px);
+        }
+        .stats-card-primary {
+            border-left-color: #007bff;
+        }
+        .stats-card-success {
+            border-left-color: #28a745;
+        }
+        .stats-card-warning {
+            border-left-color: #ffc107;
+        }
+        .stats-card-danger {
+            border-left-color: #dc3545;
+        }
+        .token-icon {
+            width: 24px;
+            height: 24px;
+            background-color: #2d3555;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 8px;
+        }
+        .progress {
+            height: 8px;
+            background-color: #2d3555;
+        }
+        .progress-bar-success {
+            background-color: #28a745;
+        }
+        .progress-bar-warning {
+            background-color: #ffc107;
+        }
+        .progress-bar-danger {
+            background-color: #dc3545;
+        }
+        .nav-tabs {
+            border-bottom: 1px solid #2d3555;
+        }
+        .nav-tabs .nav-link {
+            color: #8a94b4;
+            border: none;
+        }
+        .nav-tabs .nav-link:hover {
+            border-color: transparent;
+            color: #e0e0e0;
+        }
+        .nav-tabs .nav-link.active {
+            background-color: transparent;
+            border-bottom: 2px solid #007bff;
+            color: #e0e0e0;
+        }
+        .pattern-card {
+            border-left: 4px solid;
+        }
+        .pattern-mega-pump {
+            border-left-color: #dc3545;
+        }
+        .pattern-volatility {
+            border-left-color: #17a2b8;
+        }
+        .pattern-smart-money {
+            border-left-color: #28a745;
+        }
+        .pattern-stop-hunt {
+            border-left-color: #ffc107;
+        }
+        .pattern-reversal {
+            border-left-color: #6f42c1;
+        }
+        #systemMetrics .list-group-item {
+            background-color: transparent;
+            border-color: #2d3555;
+            color: #e0e0e0;
+        }
+        .profit-up {
+            color: #28a745;
+        }
+        .profit-down {
+            color: #dc3545;
+        }
+        header {
+            background-color: #252d47;
+            border-bottom: 1px solid #2d3555;
+        }
+    </style>
+</head>
+<body>
+    <div class="notification-area" id="notificationArea"></div>
+    
+    <header class="py-3 mb-4">
+        <div class="container">
+            <div class="d-flex flex-wrap align-items-center justify-content-between">
+                <div class="d-flex align-items-center">
+                    <i class="bi bi-bar-chart-fill fs-2 text-primary me-2"></i>
+                    <h5 class="mb-0">Solana Token Detector Dashboard</h5>
+                </div>
+                <div class="text-end">
+                    <span class="badge bg-success me-2" id="connectionStatus">
+                        <i class="bi bi-circle-fill me-1 small"></i> Connected
+                    </span>
+                    <span class="text-muted small" id="lastUpdate">Last update: Just now</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card stats-card stats-card-primary h-100">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="text-muted mb-2">Tokens Tracked</h6>
+                                <h3 id="tokenCount">0</h3>
+                            </div>
+                            <div class="rounded-circle p-3 bg-primary bg-opacity-10">
+                                <i class="bi bi-coin fs-4 text-primary"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stats-card stats-card-success h-100">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="text-muted mb-2">Active Patterns</h6>
+                                <h3 id="patternCount">0</h3>
+                            </div>
+                            <div class="rounded-circle p-3 bg-success bg-opacity-10">
+                                <i class="bi bi-graph-up fs-4 text-success"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stats-card stats-card-warning h-100">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="text-muted mb-2">Trading Signals</h6>
+                                <h3 id="signalCount">0</h3>
+                            </div>
+                            <div class="rounded-circle p-3 bg-warning bg-opacity-10">
+                                <i class="bi bi-lightning-charge fs-4 text-warning"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stats-card stats-card-danger h-100">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="text-muted mb-2">Avg. Token Score</h6>
+                                <h3 id="avgScore">0</h3>
+                            </div>
+                            <div class="rounded-circle p-3 bg-danger bg-opacity-10">
+                                <i class="bi bi-star fs-4 text-danger"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-lg-8">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <div>
+                            <i class="bi bi-trophy me-2"></i>
+                            Top Tokens
+                        </div>
+                        <div>
+                            <button class="btn btn-sm btn-outline-secondary" id="refreshTopTokens">
+                                <i class="bi bi-arrow-clockwise"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-hover" id="topTokensTable">
+                                <thead>
+                                    <tr>
+                                        <th>Token</th>
+                                        <th>Price</th>
+                                        <th>1h Change</th>
+                                        <th>Liquidity</th>
+                                        <th>Vol/Liq</th>
+                                        <th>Buy/Sell</th>
+                                        <th>Score</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="topTokensBody">
+                                    <tr>
+                                        <td colspan="8" class="text-center">Loading tokens...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card mt-4">
+                    <div class="card-header">
+                        <i class="bi bi-lightning-charge me-2"></i>
+                        Trading Signals
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table" id="tradingSignalsTable">
+                                <thead>
+                                    <tr>
+                                        <th>Token</th>
+                                        <th>Type</th>
+                                        <th>Price</th>
+                                        <th>Position</th>
+                                        <th>Stop Loss</th>
+                                        <th>Pattern</th>
+                                        <th>Confidence</th>
+                                        <th>Time</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tradingSignalsBody">
+                                    <tr>
+                                        <td colspan="8" class="text-center">No trading signals yet</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-4">
+                <div class="card">
+                    <div class="card-header">
+                        <i class="bi bi-graph-up me-2"></i>
+                        Pattern Detections
+                    </div>
+                    <div class="card-body">
+                        <div id="patternsContainer">
+                            <div class="text-center py-4">
+                                <i class="bi bi-search fs-2 text-muted"></i>
+                                <p class="mt-2 text-muted">No patterns detected yet</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card mt-4">
+                    <div class="card-header">
+                        <i class="bi bi-speedometer2 me-2"></i>
+                        System Metrics
+                    </div>
+                    <div class="card-body">
+                        <ul class="list-group list-group-flush" id="systemMetrics">
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Avg PnL
+                                <span class="profit-up">38.0% <small>(↑1.1%)</small></span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Avg Max DD
+                                <span class="profit-down">25.5% <small>(↓1.2%)</small></span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Profit Factor
+                                <span class="profit-up">1.38 <small>(↑0.01)</small></span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Win Rate
+                                <span>100%</span>
+                            </li>
+                        </ul>
+
+                        <div class="mt-4">
+                            <h6 class="mb-3">Top Performing Scenarios</h6>
+                            <div class="mb-3">
+                                <div class="d-flex justify-content-between mb-1">
+                                    <span>Mega Pump and Dump</span>
+                                    <span>187.5%</span>
+                                </div>
+                                <div class="progress">
+                                    <div class="progress-bar progress-bar-success" role="progressbar" style="width: 100%"></div>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <div class="d-flex justify-content-between mb-1">
+                                    <span>Volatility Squeeze</span>
+                                    <span>75.9%</span>
+                                </div>
+                                <div class="progress">
+                                    <div class="progress-bar progress-bar-warning" role="progressbar" style="width: 40%"></div>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <div class="d-flex justify-content-between mb-1">
+                                    <span>Smart Money Trap</span>
+                                    <span>66.8%</span>
+                                </div>
+                                <div class="progress">
+                                    <div class="progress-bar progress-bar-warning" role="progressbar" style="width: 35%"></div>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <div class="d-flex justify-content-between mb-1">
+                                    <span>Algorithmic Stop Hunt</span>
+                                    <span>61.0%</span>
+                                </div>
+                                <div class="progress">
+                                    <div class="progress-bar progress-bar-warning" role="progressbar" style="width: 33%"></div>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <div class="d-flex justify-content-between mb-1">
+                                    <span>Smart Money Reversal</span>
+                                    <span>55.3%</span>
+                                </div>
+                                <div class="progress">
+                                    <div class="progress-bar progress-bar-warning" role="progressbar" style="width: 30%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        // Connect to socket.io
+        const socket = io();
+        
+        // Elements
+        const connectionStatus = document.getElementById('connectionStatus');
+        const lastUpdate = document.getElementById('lastUpdate');
+        const tokenCount = document.getElementById('tokenCount');
+        const patternCount = document.getElementById('patternCount');
+        const signalCount = document.getElementById('signalCount');
+        const avgScore = document.getElementById('avgScore');
+        const topTokensBody = document.getElementById('topTokensBody');
+        const tradingSignalsBody = document.getElementById('tradingSignalsBody');
+        const patternsContainer = document.getElementById('patternsContainer');
+        const notificationArea = document.getElementById('notificationArea');
+        const refreshTopTokens = document.getElementById('refreshTopTokens');
+        
+        // Connection status
+        socket.on('connect', () => {
+            connectionStatus.innerHTML = '<i class="bi bi-circle-fill me-1 small"></i> Connected';
+            connectionStatus.classList.remove('bg-danger');
+            connectionStatus.classList.add('bg-success');
+            updateLastUpdate();
+        });
+        
+        socket.on('disconnect', () => {
+            connectionStatus.innerHTML = '<i class="bi bi-circle-fill me-1 small"></i> Disconnected';
+            connectionStatus.classList.remove('bg-success');
+            connectionStatus.classList.add('bg-danger');
+        });
+        
+        // Update last update time
+        function updateLastUpdate() {
+            const now = new Date();
+            const timeString = now.toLocaleTimeString();
+            lastUpdate.textContent = `Last update: ${timeString}`;
+        }
+        
+        // Create a notification
+        function createNotification(title, message, type = 'primary') {
+            const alertId = 'alert-' + Date.now();
+            const alertHtml = `
+                <div id="${alertId}" class="alert alert-${type} alert-dismissible fade" role="alert">
+                    <strong>${title}</strong> ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            `;
+            
+            notificationArea.insertAdjacentHTML('afterbegin', alertHtml);
+            
+            // Show the alert with animation
+            setTimeout(() => {
+                document.getElementById(alertId).classList.add('show');
+            }, 100);
+            
+            // Auto-dismiss after 5 seconds
+            setTimeout(() => {
+                const alertElement = document.getElementById(alertId);
+                if (alertElement) {
+                    alertElement.classList.remove('show');
+                    setTimeout(() => {
+                        alertElement.remove();
+                    }, 500);
+                }
+            }, 5000);
+        }
+        
+        // Update top tokens
+        socket.on('topTokens', (tokens) => {
+            updateTopTokens(tokens);
+            updateLastUpdate();
+        });
+        
+        function updateTopTokens(tokens) {
+            if (!tokens || tokens.length === 0) {
+                topTokensBody.innerHTML = '<tr><td colspan="8" class="text-center">No tokens found</td></tr>';
+                return;
+            }
+            
+            let html = '';
+            let totalScore = 0;
+            
+            tokens.forEach(token => {
+                const priceChangeClass = token.metrics.priceChange1h >= 0 ? 'text-success' : 'text-danger';
+                const priceChangeIcon = token.metrics.priceChange1h >= 0 ? 'bi-arrow-up-right' : 'bi-arrow-down-right';
+                
+                // Determine status badge
+                let statusBadge = '';
+                if (token.score > 75) {
+                    statusBadge = '<span class="badge bg-success">HIGH POTENTIAL</span>';
+                } else if (token.score > 60) {
+                    statusBadge = '<span class="badge bg-warning">PROMISING</span>';
+                } else if (token.score > 45) {
+                    statusBadge = '<span class="badge bg-info">WATCHLIST</span>';
+                } else {
+                    statusBadge = '<span class="badge bg-secondary">MONITOR</span>';
+                }
+                
+                html += `
+                    <tr>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <div class="token-icon">${token.symbol.charAt(0)}</div>
+                                <div>
+                                    <div class="fw-bold">${token.symbol}</div>
+                                    <div class="small text-muted">${token.metrics.name}</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="token-price">$${token.metrics.price.toFixed(8)}</td>
+                        <td class="${priceChangeClass}">
+                            <i class="bi ${priceChangeIcon}"></i> ${token.metrics.priceChange1h.toFixed(2)}%
+                        </td>
+                        <td>$${(token.metrics.liquidity / 1000).toFixed(1)}k</td>
+                        <td>${token.metrics.volumeLiquidityRatio.toFixed(2)}</td>
+                        <td>${token.metrics.buyRatio.toFixed(2)}</td>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <div class="progress flex-grow-1 me-2" style="width: 50px;">
+                                    <div class="progress-bar bg-${getScoreColor(token.score)}" style="width: ${token.score}%"></div>
+                                </div>
+                                <span>${token.score.toFixed(1)}</span>
+                            </div>
+                        </td>
+                        <td>${statusBadge}</td>
+                    </tr>
+                `;
+                
+                totalScore += token.score;
+            });
+            
+            topTokensBody.innerHTML = html;
+            tokenCount.textContent = tokens.length;
+            
+            // Update average score
+            if (tokens.length > 0) {
+                avgScore.textContent = (totalScore / tokens.length).toFixed(1);
+            }
+        }
+        
+        // Update pattern detections
+        socket.on('activePatterns', (patterns) => {
+            updatePatterns(patterns);
+            updateLastUpdate();
+        });
+        
+        function updatePatterns(patterns) {
+            if (!patterns || patterns.length === 0) {
+                patternsContainer.innerHTML = `
+                    <div class="text-center py-4">
+                        <i class="bi bi-search fs-2 text-muted"></i>
+                        <p class="mt-2 text-muted">No patterns detected yet</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            let html = '';
+            
+            patterns.forEach(pattern => {
+                // Determine pattern class based on type
+                let patternClass = 'pattern-smart-money';
+                let patternIcon = 'bi-graph-up';
+                
+                if (pattern.patternType.includes('Mega Pump')) {
+                    patternClass = 'pattern-mega-pump';
+                    patternIcon = 'bi-rocket';
+                } else if (pattern.patternType.includes('Volatility')) {
+                    patternClass = 'pattern-volatility';
+                    patternIcon = 'bi-lightning';
+                } else if (pattern.patternType.includes('Stop Hunt')) {
+                    patternClass = 'pattern-stop-hunt';
+                    patternIcon = 'bi-bullseye';
+                } else if (pattern.patternType.includes('Reversal')) {
+                    patternClass = 'pattern-reversal';
+                    patternIcon = 'bi-arrow-repeat';
+                }
+                
+                const time = new Date(pattern.detectedAt).toLocaleTimeString();
+                
+                html += `
+                    <div class="card mb-3 pattern-card ${patternClass}">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <h6 class="mb-0">
+                                    <i class="bi ${patternIcon} me-2"></i>
+                                    ${pattern.patternType}
+                                </h6>
+                                <span class="badge bg-secondary">${pattern.confidence.toFixed(1)}% confidence</span>
+                            </div>
+                            <p class="text-muted small mb-1">${pattern.description}</p>
+                            <div class="d-flex justify-content-between">
+                                <span class="badge bg-dark">${pattern.tokenSymbol}</span>
+                                <small class="text-muted">${time}</small>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            patternsContainer.innerHTML = html;
+            patternCount.textContent = patterns.length;
+        }
+        
+        // Update trading signals
+        socket.on('tradingSignals', (signals) => {
+            updateTradingSignals(signals);
+            updateLastUpdate();
+        });
+        
+        function updateTradingSignals(signals) {
+            if (!signals || signals.length === 0) {
+                tradingSignalsBody.innerHTML = '<tr><td colspan="8" class="text-center">No trading signals yet</td></tr>';
+                return;
+            }
+            
+            let html = '';
+            
+            signals.forEach(signal => {
+                const signalTypeClass = signal.signalType === 'BUY' ? 'bg-success' : 'bg-danger';
+                const stopLossPercent = ((1 - signal.stopLoss / signal.price) * 100).toFixed(1);
+                const time = new Date(signal.timestamp).toLocaleTimeString();
+                
+                html += `
+                    <tr>
+                        <td>
+                            <div class="fw-bold">${signal.tokenSymbol}</div>
+                            <div class="small text-muted">${signal.tokenName}</div>
+                        </td>
+                        <td><span class="badge ${signalTypeClass}">${signal.signalType}</span></td>
+                        <td class="token-price">$${signal.price.toFixed(8)}</td>
+                        <td>$${signal.positionSize.toFixed(2)}</td>
+                        <td>$${signal.stopLoss.toFixed(8)} <small class="text-danger">(-${stopLossPercent}%)</small></td>
+                        <td>${signal.patternType || 'N/A'}</td>
+                        <td>
+                            <div class="progress" style="width: 60px;">
+                                <div class="progress-bar bg-${getConfidenceColor(signal.confidence)}" style="width: ${signal.confidence}%"></div>
+                            </div>
+                            <small>${signal.confidence.toFixed(1)}%</small>
+                        </td>
+                        <td>${time}</td>
+                    </tr>
+                `;
+            });
+            
+            tradingSignalsBody.innerHTML = html;
+            signalCount.textContent = signals.length;
+        }
+        
+        // Handle new token event
+        socket.on('newToken', (token) => {
+            createNotification('New Token Detected!', `${token.symbol} - Score: ${token.score?.toFixed(1) || 'N/A'}/100`, 'success');
+            updateLastUpdate();
+        });
+        
+        // Handle pattern detected event
+        socket.on('patternDetected', (pattern) => {
+            createNotification('Pattern Detected!', `${pattern.patternType} in ${pattern.tokenSymbol} - ${pattern.confidence.toFixed(1)}% confidence`, 'warning');
+            updateLastUpdate();
+        });
+        
+        // Handle trading signal event
+        socket.on('tradingSignal', (signal) => {
+            createNotification('Trading Signal!', `${signal.signalType} ${signal.tokenSymbol} at $${signal.price.toFixed(8)}`, 'primary');
+            updateLastUpdate();
+        });
+        
+        // Helper functions
+        function getScoreColor(score) {
+            if (score > 75) return 'success';
+            if (score > 60) return 'warning';
+            if (score > 45) return 'info';
+            return 'secondary';
+        }
+        
+        function getConfidenceColor(confidence) {
+            if (confidence > 80) return 'success';
+            if (confidence > 65) return 'warning';
+            return 'info';
+        }
+        
+        // Manual refresh button
+        refreshTopTokens.addEventListener('click', () => {
+            socket.emit('requestTopTokens');
+            refreshTopTokens.disabled = true;
+            refreshTopTokens.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>';
+            
+            setTimeout(() => {
+                refreshTopTokens.disabled = false;
+                refreshTopTokens.innerHTML = '<i class="bi bi-arrow-clockwise"></i>';
+            }, 2000);
+        });
+    </script>
+</body>
+</html>
