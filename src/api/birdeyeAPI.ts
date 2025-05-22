@@ -110,27 +110,45 @@ export class BirdeyeAPI extends EventEmitter {
     this.cleanup();
 
     try {
-      logger.info('Connecting to Birdeye WebSocket...');
-      
-      // Create a new WebSocket connection
-      this.wsClient = new WebSocket(this.wsUrl);
+      logger.info(`Connecting to Birdeye WebSocket at URL: ${this.wsUrl}`); // Log URL
+      try {
+        this.wsClient = new WebSocket(this.wsUrl, {
+          // Explicitly set origin header
+          headers: {
+            'Origin': 'https://birdeye.so' 
+          }
+        });
+        logger.info('WebSocket object created successfully.'); // Log success
+      } catch (instantiationError) {
+        logger.error('Error during WebSocket instantiation:', instantiationError);
+        // Decide how to handle this - maybe re-throw or attempt reconnect?
+        this.wsClient = null; // Ensure wsClient is null if instantiation failed
+        this.attemptReconnect(subscriptions); 
+        return false; // Indicate connection failed
+      }
 
       // Set up WebSocket event listeners
-      this.wsClient.on('open', () => this.handleWsOpen(subscriptions));
-      this.wsClient.on('message', (data) => this.handleWsMessage(data));
-      this.wsClient.on('error', (error) => this.handleWsError(error));
-      this.wsClient.on('close', (code, reason) => this.handleWsClose(code, reason, subscriptions));
+      // Ensure wsClient is not null before attaching listeners
+      if (this.wsClient) {
+        this.wsClient.on('open', () => this.handleWsOpen(subscriptions));
+        this.wsClient.on('message', (data) => this.handleWsMessage(data));
+        this.wsClient.on('error', (error) => this.handleWsError(error));
+        this.wsClient.on('close', (code, reason) => this.handleWsClose(code, reason, subscriptions));
 
-      // Set up ping interval to keep connection alive
-      this.pingInterval = setInterval(() => {
-        if (this.wsClient && this.wsClient.readyState === WebSocket.OPEN) {
-          this.wsClient.ping();
-        }
-      }, 30000); // Send ping every 30 seconds
+        // Set up ping interval to keep connection alive
+        this.pingInterval = setInterval(() => {
+          if (this.wsClient && this.wsClient.readyState === WebSocket.OPEN) {
+            this.wsClient.ping();
+          }
+        }, 30000); // Send ping every 30 seconds
+      } else {
+        logger.error('Cannot set up WebSocket listeners: wsClient is null after instantiation attempt.');
+        return false; // Indicate connection setup failed
+      }
 
-      return true;
+      return true; // Indicate connection process initiated
     } catch (error) {
-      logger.error('Error connecting to WebSocket', {
+      logger.error('Error in outer connectWebSocket try-catch block:', {
         error: error instanceof Error ? error.message : 'Unknown error'
       });
       this.attemptReconnect(subscriptions);
@@ -144,19 +162,31 @@ export class BirdeyeAPI extends EventEmitter {
     this.reconnectAttempts = 0;
     this.isReconnecting = false;
 
+    logger.info('Attempting to send subscriptions...'); // Log before sending
     // Subscribe to each topic
     subscriptions.forEach(topic => {
       if (this.wsClient && this.wsClient.readyState === WebSocket.OPEN) {
-        const subscribeMessage = JSON.stringify({
+        const subscribeMessage = {
           type: 'subscribe',
           topic,
-          apiKey: this.apiKey
-        });
-        this.wsClient.send(subscribeMessage);
-        logger.info(`Subscribed to ${topic}`);
+          apiKey: this.apiKey // Keep API key here for stringify
+        };
+        // Log message but mask API key
+        const messageToSend = JSON.stringify(subscribeMessage);
+        const maskedMessage = messageToSend.replace(/"apiKey":"[^"]+"/, '"apiKey":"***MASKED***"');
+        logger.info(`Sending subscription: ${maskedMessage}`); 
+        try {
+          this.wsClient.send(messageToSend);
+          logger.info(`Successfully sent subscription for ${topic}`);
+        } catch (sendError) {
+          logger.error(`Error sending subscription for ${topic}:`, sendError);
+          // Optionally attempt to handle this specific error, e.g., by retrying or closing
+        }
+      } else {
+        logger.warn(`WebSocket not open when trying to subscribe to ${topic}. State: ${this.wsClient?.readyState}`);
       }
     });
-
+    logger.info('Finished sending subscriptions.'); // Log after sending
     this.emit('connected');
   }
 
@@ -194,22 +224,32 @@ export class BirdeyeAPI extends EventEmitter {
     }
   }
 
-  // Handle WebSocket errors
+  // Handle WebSocket error event
   private handleWsError(error: Error): void {
-    logger.error('WebSocket error', {
-      error: error.message
+    logger.error('Birdeye WebSocket error encountered:', {
+      message: error.message,
+      name: error.name,
+      stack: error.stack,
     });
     this.emit('error', error);
+    // Reconnect logic is handled in 'close' event
   }
 
   // Handle WebSocket close event
-  private handleWsClose(code: number, reason: Buffer | string, subscriptions: string[]): void {
-    const reasonStr = Buffer.isBuffer(reason) ? reason.toString() : String(reason);
-    logger.info(`WebSocket closed: Code ${code}${reasonStr ? `, Reason: ${reasonStr}` : ''}`);
-    this.emit('disconnected', { code, reason: reasonStr });
+  private handleWsClose(code: number, reasonBuffer: Buffer, subscriptions: string[]): void {
+    const reason = reasonBuffer.toString(); // Convert buffer to string
+    logger.warn(`Birdeye WebSocket closed. Code: ${code}, Reason: ${reason}`);
+
+    // Clean up intervals and attempt reconnect if not explicitly stopped
+    if (this.pingInterval) {
+      clearInterval(this.pingInterval);
+      this.pingInterval = null;
+    }
+
+    this.emit('disconnected', { code, reason });
 
     // Attempt to reconnect unless this was a deliberate closure
-    if (code !== 1000 && code !== 1001) {
+    if (code !== 1000 && code !== 1001) { 
       this.attemptReconnect(subscriptions);
     }
   }

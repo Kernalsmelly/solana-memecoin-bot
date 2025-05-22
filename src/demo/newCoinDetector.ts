@@ -46,7 +46,8 @@ export class NewCoinDetector extends EventEmitter {
             {
                 symbol: 'MOCK1',
                 address: '0x1234...abcd',
-                price: 0.00001234,
+                poolAddress: 'Pool1...', // Added placeholder
+                priceUsd: 0.00001234,
                 volume24h: 50000,
                 liquidity: 25000,
                 holders: 150,
@@ -56,7 +57,8 @@ export class NewCoinDetector extends EventEmitter {
             {
                 symbol: 'MOCK2',
                 address: '0x5678...efgh',
-                price: 0.00000789,
+                poolAddress: 'Pool2...', // Added placeholder
+                priceUsd: 0.00000789,
                 volume24h: 75000,
                 liquidity: 35000,
                 holders: 250,
@@ -83,8 +85,8 @@ export class NewCoinDetector extends EventEmitter {
                 // Generate trading signal
                 const signal: TradingSignal = {
                     tokenAddress: token.address,
-                    price: token.price * (1 + Math.random() * 0.05),
-                    stopLoss: token.price * 0.9,
+                    price: token.priceUsd * (1 + Math.random() * 0.05),
+                    stopLoss: token.priceUsd * 0.9,
                     positionSize: Math.min(50, token.liquidity * 0.01),
                     confidence: pattern.confidence,
                     timestamp: Date.now(),

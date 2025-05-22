@@ -1,5 +1,5 @@
 import { Connection, PublicKey } from '@solana/web3.js';
-import * as anchor from "@project-serum/anchor";
+import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import logger from './logger';
 import { sendAlert } from './notifications';
 import { RiskManager, CircuitBreakerReason } from '../live/riskManager';
@@ -109,7 +109,7 @@ export class ContractValidator {
       }
       
       // Check program ownership
-      if (accountInfo.owner.toString() !== anchor.utils.token.TOKEN_PROGRAM_ID.toString()) {
+      if (accountInfo.owner.toString() !== TOKEN_PROGRAM_ID.toString()) {
         result.risks.push({
           level: 'HIGH',
           type: 'CUSTOM_PROGRAM',
@@ -257,7 +257,9 @@ export class ContractValidator {
         return 0;
       }
       
-      return signatures[0].slot;
+      // Ensure the first signature exists before accessing its slot
+      const firstSignature = signatures[0];
+      return firstSignature ? firstSignature.slot : 0; // Return 0 if somehow undefined
     } catch (error) {
       logger.warn('Error getting token creation slot', {
         mint: mint.toString(),

@@ -104,7 +104,8 @@ function createLineChart(data: number[], title: string, width: number = 50, heig
   for (let i = 0; i < data.length; i++) {
     const labelIndex = xLabelPositions.indexOf(i);
     if (labelIndex >= 0) {
-      xAxis += xLabels[labelIndex].padEnd(4);
+      const label = xLabels[labelIndex] as string;
+      xAxis += label.padEnd(4);
     } else {
       xAxis += '  ';
     }

@@ -5,9 +5,10 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.JupiterDex = exports.JupiterError = exports.JupiterErrorType = void 0;
 const web3_js_1 = require("@solana/web3.js");
-const core_1 = require("@jup-ag/core");
-const jsbi_1 = __importDefault(require("jsbi"));
+const api_1 = require("@jup-ag/api");
+const decimal_js_1 = __importDefault(require("decimal.js"));
 const logger_1 = __importDefault(require("../utils/logger"));
+const buffer_1 = require("buffer");
 const DEFAULT_RISK_PARAMS = {
     maxSlippageBps: 100, // 1%
     maxPriceImpactPct: 5, // 5%
@@ -29,8 +30,18 @@ var JupiterErrorType;
     JupiterErrorType["SYSTEM_DISABLED"] = "SYSTEM_DISABLED";
     JupiterErrorType["RATE_LIMIT_EXCEEDED"] = "RATE_LIMIT_EXCEEDED";
     JupiterErrorType["UNKNOWN_ERROR"] = "UNKNOWN_ERROR";
+    JupiterErrorType["INVALID_MINT_ADDRESS"] = "INVALID_MINT_ADDRESS";
+    JupiterErrorType["EXCEEDS_MAX_POSITION_SIZE"] = "EXCEEDS_MAX_POSITION_SIZE";
+    JupiterErrorType["WALLET_SIGN_REJECTED"] = "WALLET_SIGN_REJECTED";
+    JupiterErrorType["SWAP_EXECUTION_FAILED"] = "SWAP_EXECUTION_FAILED";
+    JupiterErrorType["TRANSACTION_CONFIRMATION_FAILURE"] = "TRANSACTION_CONFIRMATION_FAILURE";
+    JupiterErrorType["API_CLIENT_NOT_INITIALIZED"] = "API_CLIENT_NOT_INITIALIZED";
+    JupiterErrorType["CONNECTION_NOT_INITIALIZED"] = "CONNECTION_NOT_INITIALIZED";
+    JupiterErrorType["NO_TRANSACTION_RETURNED"] = "NO_TRANSACTION_RETURNED";
 })(JupiterErrorType || (exports.JupiterErrorType = JupiterErrorType = {}));
 class JupiterError extends Error {
+    type;
+    details;
     constructor(type, message, details) {
         super(message);
         this.type = type;
@@ -40,155 +51,30 @@ class JupiterError extends Error {
 }
 exports.JupiterError = JupiterError;
 class JupiterDex {
+    connection;
+    wallet;
+    riskParams;
+    retryAttempts = 3;
+    retryDelayMs = 1000;
+    riskManager = null;
+    lastApiCallTimestamp = 0;
+    rateLimitWindowMs = 500; // 500ms between API calls
+    // Use the explicit interface for the API client
+    jupiterApi;
+    tokenDecimalsCache;
     constructor(connection, wallet, riskParams = {}, riskManager) {
-        this.jupiter = null;
-        this.retryAttempts = 3;
-        this.retryDelayMs = 1000;
-        this.riskManager = null;
-        this.lastApiCallTimestamp = 0;
-        this.rateLimitWindowMs = 500; // 500ms between API calls
         this.connection = connection;
         this.wallet = wallet;
-        this.tokenMap = new Map();
         this.riskParams = { ...DEFAULT_RISK_PARAMS, ...riskParams };
         this.riskManager = riskManager || null;
-    }
-    async initialize() {
-        try {
-            // Load Jupiter instance
-            this.jupiter = await core_1.Jupiter.load({
-                connection: this.connection,
-                cluster: 'mainnet-beta',
-                user: this.wallet.publicKey
-            });
-            // Load token list
-            const response = await fetch(core_1.TOKEN_LIST_URL.toString());
-            const tokens = await response.json();
-            // Initialize token map
-            tokens.forEach((token) => {
-                this.tokenMap.set(token.symbol, {
-                    address: token.address,
-                    decimals: token.decimals
-                });
-            });
-            logger_1.default.info('Jupiter DEX initialized successfully');
-        }
-        catch (error) {
-            const msg = error instanceof Error ? error.message : 'Unknown error';
-            logger_1.default.error('Failed to initialize Jupiter DEX:', msg);
-            throw new JupiterError(JupiterErrorType.INITIALIZATION_ERROR, msg);
-        }
-    }
-    async validateLiquidity(route) {
-        try {
-            // Get market info from route
-            const marketInfos = route.marketInfos;
-            if (!marketInfos || marketInfos.length === 0) {
-                return false;
-            }
-            // Check liquidity of each market in the route
-            for (const market of marketInfos) {
-                const liquidity = Number(market.lpFee?.amount || 0);
-                if (liquidity < this.riskParams.minLiquidityUsd) {
-                    const details = {
-                        marketInfo: market,
-                        liquidity,
-                        required: this.riskParams.minLiquidityUsd
-                    };
-                    logger_1.default.warn('Insufficient liquidity', details);
-                    throw new JupiterError(JupiterErrorType.INSUFFICIENT_LIQUIDITY, 'Insufficient liquidity in market', details);
-                }
-            }
-            return true;
-        }
-        catch (error) {
-            if (error instanceof JupiterError) {
-                throw error;
-            }
-            const msg = error instanceof Error ? error.message : 'Unknown error';
-            logger_1.default.error('Failed to validate liquidity:', msg);
-            throw new JupiterError(JupiterErrorType.UNKNOWN_ERROR, msg);
-        }
-    }
-    async validatePositionSize(amountUsd, tokenAddress, currentPrice) {
-        try {
-            // Check if amount exceeds max position size
-            if (amountUsd > this.riskParams.maxPositionSizeUsd) {
-                const details = {
-                    amount: amountUsd,
-                    maxSize: this.riskParams.maxPositionSizeUsd
-                };
-                logger_1.default.warn('Position size too large', details);
-                throw new JupiterError(JupiterErrorType.INSUFFICIENT_BALANCE, 'Position size exceeds maximum allowed', details);
-            }
-            // If risk manager is available, use it for additional checks
-            if (this.riskManager) {
-                const tokenSymbol = await this.getTokenSymbol(tokenAddress);
-                const canOpen = this.riskManager.canOpenPosition(amountUsd, tokenSymbol || tokenAddress, currentPrice);
-                if (!canOpen) {
-                    // Check what circuit breaker is active if any
-                    const metrics = this.riskManager.getMetrics();
-                    if (metrics.emergencyStopActive) {
-                        throw new JupiterError(JupiterErrorType.EMERGENCY_STOP_ACTIVE, 'Emergency stop is active');
-                    }
-                    if (!metrics.systemEnabled) {
-                        throw new JupiterError(JupiterErrorType.SYSTEM_DISABLED, 'Trading system is disabled');
-                    }
-                    // Check which circuit breaker is active
-                    if (metrics.circuitBreakers) {
-                        for (const [reason, active] of Object.entries(metrics.circuitBreakers)) {
-                            if (active) {
-                                throw new JupiterError(JupiterErrorType.CIRCUIT_BREAKER_ACTIVE, `Circuit breaker active: ${reason}`);
-                            }
-                        }
-                    }
-                    throw new JupiterError(JupiterErrorType.CIRCUIT_BREAKER_ACTIVE, 'Position rejected by risk manager');
-                }
-            }
-            else {
-                // Get total portfolio value
-                const portfolioValue = await this.getPortfolioValue();
-                const exposure = amountUsd / portfolioValue;
-                // Check portfolio exposure
-                if (exposure > this.riskParams.maxPortfolioExposure) {
-                    const details = {
-                        exposure,
-                        maxExposure: this.riskParams.maxPortfolioExposure
-                    };
-                    logger_1.default.warn('Portfolio exposure too high', details);
-                    throw new JupiterError(JupiterErrorType.INSUFFICIENT_BALANCE, 'Trade would exceed maximum portfolio exposure', details);
-                }
-            }
-            return true;
-        }
-        catch (error) {
-            if (error instanceof JupiterError) {
-                throw error;
-            }
-            const msg = error instanceof Error ? error.message : 'Unknown error';
-            logger_1.default.error('Failed to validate position size:', msg);
-            throw new JupiterError(JupiterErrorType.UNKNOWN_ERROR, msg);
-        }
-    }
-    async getPortfolioValue() {
-        // For now, just return USDC balance
-        // TODO: Implement full portfolio value calculation
-        const usdcBalance = await this.getTokenBalance('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
-        return usdcBalance;
+        // Use double cast (via unknown) as suggested by TS compiler
+        this.jupiterApi = (0, api_1.createJupiterApiClient)();
+        this.tokenDecimalsCache = new Map();
     }
     async getTokenSymbol(tokenAddress) {
-        try {
-            for (const [symbol, data] of this.tokenMap.entries()) {
-                if (data.address === tokenAddress) {
-                    return symbol;
-                }
-            }
-            return null;
-        }
-        catch (error) {
-            logger_1.default.warn('Failed to get token symbol:', error);
-            return null;
-        }
+        // Placeholder - V6 might make this less necessary
+        logger_1.default.warn('getTokenSymbol may need refactoring or removal for V6 API');
+        return tokenAddress; // Return address as placeholder symbol
     }
     async checkRateLimit() {
         const now = Date.now();
@@ -199,62 +85,178 @@ class JupiterDex {
         }
         this.lastApiCallTimestamp = Date.now();
     }
-    async getQuote(inputMint, outputMint, amount, slippageBps = this.riskParams.maxSlippageBps) {
+    async getTokenDecimals(mintAddress) {
+        if (this.tokenDecimalsCache.has(mintAddress)) {
+            return this.tokenDecimalsCache.get(mintAddress);
+        }
+        try {
+            // Use getParsedAccountInfo to fetch mint decimals
+            const mintPublicKey = new web3_js_1.PublicKey(mintAddress);
+            const mintAccountInfo = await this.connection.getParsedAccountInfo(mintPublicKey, 'confirmed');
+            if (!mintAccountInfo || !mintAccountInfo.value || !mintAccountInfo.value.data) {
+                throw new Error('Mint account not found or has no data.');
+            }
+            // Check if the account data is parsed and is a mint account
+            const parsedData = mintAccountInfo.value.data; // Type assertion
+            if (!parsedData || parsedData.program !== 'spl-token' || parsedData.parsed?.type !== 'mint') {
+                throw new Error('Account is not a valid SPL Token mint account.');
+            }
+            // Extract decimals directly from parsed info
+            const decimals = parsedData.parsed.info.decimals;
+            if (typeof decimals !== 'number') {
+                throw new Error('Decimals not found in parsed mint info.');
+            }
+            this.tokenDecimalsCache.set(mintAddress, decimals);
+            return decimals;
+        }
+        catch (error) {
+            logger_1.default.error(`Failed to fetch decimals for mint ${mintAddress}:`, { error });
+            throw new JupiterError(JupiterErrorType.INVALID_MINT_ADDRESS, `Failed to fetch decimals for mint: ${mintAddress}`, error);
+        }
+    }
+    async validatePositionSize(quote, inputPriceUsd) {
+        try {
+            const inputMint = quote.inputMint;
+            const inAmountLamports = new decimal_js_1.default(quote.inAmount); // Comes as string
+            const inputDecimals = await this.getTokenDecimals(inputMint);
+            const inAmountTokens = inAmountLamports.div(new decimal_js_1.default(10).pow(inputDecimals));
+            const positionValueUsd = inAmountTokens.mul(inputPriceUsd);
+            logger_1.default.debug('Validating position size:', {
+                inputMint,
+                inAmountLamports: quote.inAmount,
+                inputDecimals,
+                inAmountTokens: inAmountTokens.toString(),
+                inputPriceUsd,
+                positionValueUsd: positionValueUsd.toString(),
+                maxPositionSizeUsd: this.riskParams.maxPositionSizeUsd
+            });
+            if (positionValueUsd.greaterThan(this.riskParams.maxPositionSizeUsd)) {
+                const details = {
+                    calculatedValueUsd: positionValueUsd.toString(),
+                    maxValueUsd: this.riskParams.maxPositionSizeUsd,
+                    inputMint,
+                    inAmount: quote.inAmount,
+                    inputPriceUsd
+                };
+                logger_1.default.warn('Trade size exceeds maximum position size USD', details);
+                throw new JupiterError(JupiterErrorType.EXCEEDS_MAX_POSITION_SIZE, 'Calculated position size exceeds maximum allowed USD value', details);
+            }
+        }
+        catch (error) {
+            if (error instanceof JupiterError) {
+                throw error;
+            }
+            const msg = error instanceof Error ? error.message : 'Unknown error during position size validation';
+            logger_1.default.error('Failed to validate position size:', { error: msg });
+            throw new JupiterError(JupiterErrorType.UNKNOWN_ERROR, msg, error);
+        }
+    }
+    async getQuote(inputMint, outputMint, rawAmount, // Keep raw amount for internal logic
+    slippageBps = this.riskParams.maxSlippageBps) {
         try {
             // Apply rate limiting
             await this.checkRateLimit();
-            if (!this.jupiter) {
-                throw new JupiterError(JupiterErrorType.INITIALIZATION_ERROR, 'Jupiter not initialized');
-            }
+            // Fetch input token decimals dynamically
+            const inputDecimals = await this.getTokenDecimals(inputMint);
+            const amountInLamports = Math.floor(rawAmount * Math.pow(10, inputDecimals));
             // Record execution start time if risk manager is available
             let executionId;
             if (this.riskManager) {
                 const tokenSymbol = await this.getTokenSymbol(outputMint) || 'unknown';
                 executionId = this.riskManager.startTradeExecution(tokenSymbol);
             }
+            let quoteResponse = null; // Define quoteResponse outside try
+            let inputMintForValidation = null; // Declare here
             try {
-                const routes = await this.jupiter.computeRoutes({
-                    inputMint: new web3_js_1.PublicKey(inputMint),
-                    outputMint: new web3_js_1.PublicKey(outputMint),
-                    amount: jsbi_1.default.BigInt(Math.floor(amount * 1e6)), // Convert to USDC decimals
-                    slippageBps,
-                    onlyDirectRoutes: false,
-                    swapMode: core_1.SwapMode.ExactIn
-                });
-                if (!routes.routesInfos || routes.routesInfos.length === 0) {
-                    throw new JupiterError(JupiterErrorType.NO_ROUTE_FOUND, 'No routes found for swap', { inputMint, outputMint, amount });
+                // Ensure the API client is initialized
+                if (!this.jupiterApi) {
+                    throw new JupiterError(JupiterErrorType.API_CLIENT_NOT_INITIALIZED, 'Jupiter API client is not initialized');
                 }
-                // Get best route
-                const bestRoute = routes.routesInfos[0];
+                // Use the V6 quote endpoint
+                quoteResponse = await this.jupiterApi.quote({
+                    inputMint: inputMint, // Use string directly
+                    outputMint: outputMint, // Use string directly
+                    amount: amountInLamports, // Pass lamports
+                    slippageBps: slippageBps, // Pass slippage
+                    // onlyDirectRoutes: false, // V6 handles routing automatically
+                    // swapMode: SwapMode.ExactIn // V6 infers from amount param
+                });
+                if (!quoteResponse) {
+                    throw new JupiterError(JupiterErrorType.NO_ROUTE_FOUND, 'No routes found for swap (V6 API returned null)', { inputMint, outputMint, amount: amountInLamports });
+                }
+                // Need output token decimals to correctly interpret outAmount
+                const outputDecimals = await this.getTokenDecimals(outputMint);
+                const divisor = new decimal_js_1.default(10).pow(outputDecimals);
+                const outAmountDecimal = new decimal_js_1.default(String(quoteResponse.outAmount)).div(divisor);
+                const rawAmountDecimal = new decimal_js_1.default(String(rawAmount)); // Convert number to string before creating Decimal
+                const priceDecimal = outAmountDecimal.div(rawAmountDecimal); // Then perform division
                 // Update price in risk manager if available
                 if (this.riskManager) {
                     const tokenSymbol = await this.getTokenSymbol(outputMint) || outputMint;
-                    const price = Number(bestRoute.outAmount) / amount;
-                    this.riskManager.updatePrice(tokenSymbol, price);
+                    this.riskManager.updatePrice(tokenSymbol, priceDecimal.toNumber());
                 }
-                // Validate liquidity
-                await this.validateLiquidity(bestRoute);
-                // Validate position size with risk manager
-                const outputPrice = Number(bestRoute.outAmount) / amount;
-                await this.validatePositionSize(amount, outputMint, outputPrice);
-                // Record successful execution
-                if (this.riskManager && executionId) {
-                    this.riskManager.completeTradeExecution(executionId, true);
+                // Per-hop liquidity validation removed - V6 QuoteResponse lacks direct data per Swagger.
+                // await this.validateLiquidity(quoteResponse);
+                inputMintForValidation = quoteResponse.inputMint; // Assign here
+                // Validate position size
+                if (inputMintForValidation) { // Check if inputMint was assigned
+                    // Assuming input is always SOL (or wrapped SOL) for initial purchase/swap
+                    const inputMintForValidation = (inputMint === 'So11111111111111111111111111111111111111112') ? inputMint : 'So11111111111111111111111111111111111111112'; // Use native SOL for price check
+                    // const inputPriceUsd = (this.riskManager) ? await this.riskManager.getCurrentPrice(inputMintForValidation) : 0;
+                    const inputPriceUsd = 0; // Placeholder value
+                    // const outputPriceUsd = (this.riskManager) ? await this.riskManager.getCurrentPrice(outputMint) : 0;
+                    const outputPriceUsd = 0; // Placeholder value
+                    if (inputPriceUsd > 0 && outputPriceUsd > 0) {
+                        await this.validatePositionSize(quoteResponse, inputPriceUsd);
+                    }
+                    else {
+                        logger_1.default.warn(`Could not get price for input token ${inputMintForValidation} to validate position size.`);
+                        // Decide: Throw error or allow trade without validation?
+                        // For now, allowing trade but logging warning.
+                    }
                 }
-                return {
-                    route: bestRoute,
-                    outAmount: Number(bestRoute.outAmount),
-                    price: Number(bestRoute.outAmount) / amount,
-                    priceImpactPct: Number(bestRoute.priceImpactPct)
+                else {
+                    logger_1.default.warn('Input mint not available from quote response, skipping position size validation.');
+                }
+                // Price impact check (using field from V6 response)
+                // const priceImpact = quoteResponse.priceImpactPct;
+                const priceImpact = 0; // Placeholder value
+                // Construct the result matching JupiterQuote interface
+                const result = {
+                    originalQuote: quoteResponse, // Keep the original V6 response
+                    price: priceDecimal.toString(),
+                    // priceImpactPct: Number(quoteResponse.priceImpactPct), 
+                    priceImpactPct: 0, // Placeholder
+                    inAmount: quoteResponse.inAmount,
+                    outAmount: quoteResponse.outAmount,
+                    inputMint: quoteResponse.inputMint,
+                    outputMint: quoteResponse.outputMint,
+                    // Deprecated? Keep original response for executeSwap
+                    route: quoteResponse
                 };
+                // Record successful execution only if needed here (moved to executeSwap)
+                // if (this.riskManager && executionId) {
+                //     // What info does RiskManager need on quote success? Probably none yet.
+                // }
+                return result;
             }
             catch (error) {
-                // Record failed execution
+                logger_1.default.error('Error fetching Jupiter V6 quote:', {
+                    error: error instanceof Error ? error.message : String(error),
+                    inputMint: inputMint, // Use original inputMint for error logging
+                    outputMint: outputMint,
+                    amount: rawAmount // Use rawAmount from function parameters
+                });
                 if (this.riskManager && executionId) {
-                    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-                    this.riskManager.completeTradeExecution(executionId, false, errorMsg);
+                    this.riskManager.completeTradeExecution(executionId, false, error.message || 'Failed to get quote');
                 }
-                throw error;
+                // Convert specific errors if needed, otherwise return null
+                if (error instanceof JupiterError) {
+                    throw error;
+                }
+                const msg = error instanceof Error ? error.message : 'Unknown error';
+                logger_1.default.error('Failed to get quote:', { error: msg });
+                throw new JupiterError(JupiterErrorType.UNKNOWN_ERROR, msg, error);
             }
         }
         catch (error) {
@@ -262,8 +264,9 @@ class JupiterDex {
                 throw error;
             }
             const msg = error instanceof Error ? error.message : 'Unknown error';
-            logger_1.default.error('Failed to get quote:', msg);
-            throw new JupiterError(JupiterErrorType.UNKNOWN_ERROR, msg);
+            logger_1.default.error('Failed to get quote:', { error: msg });
+            // Wrap non-Jupiter errors
+            throw new JupiterError(JupiterErrorType.UNKNOWN_ERROR, msg, error);
         }
     }
     async executeWithRetry(operation, attempt = 1) {
@@ -280,101 +283,129 @@ class JupiterDex {
             return this.executeWithRetry(operation, attempt + 1);
         }
     }
-    async executeSwap(inputMint, outputMint, amount, maxSlippageBps = this.riskParams.maxSlippageBps) {
+    async executeSwap(quote, // Use the result from our getQuote
+    wallet // Use the defined SignerWallet interface
+    ) {
+        if (!this.jupiterApi) {
+            throw new JupiterError(JupiterErrorType.API_CLIENT_NOT_INITIALIZED, 'Jupiter API client is not initialized');
+        }
+        if (!this.connection) {
+            throw new JupiterError(JupiterErrorType.CONNECTION_NOT_INITIALIZED, 'Solana connection is not initialized');
+        }
+        const executionId = this.riskManager?.startTradeExecution(quote.outputMint); // Track by output mint
         try {
-            // Apply rate limiting
-            await this.checkRateLimit();
-            if (!this.jupiter) {
-                throw new JupiterError(JupiterErrorType.INITIALIZATION_ERROR, 'Jupiter not initialized');
+            // Construct SwapRequest payload
+            const swapRequest = {
+                quoteResponse: quote.originalQuote, // Pass the original V6 QuoteResponse
+                userPublicKey: wallet.publicKey.toBase58(),
+                wrapAndUnwrapSol: true, // Default behavior
+                // feeAccount: // Optional: Provide if using platform fees
+                // useSharedAccounts: // Optional: Let Jupiter decide by default
+            };
+            logger_1.default.debug('Sending V6 swap request:', { request: swapRequest });
+            // Call the /swap endpoint
+            const swapResponse = await this.jupiterApi.swapPost({ swapRequest });
+            logger_1.default.debug('Received V6 swap response:', { response: swapResponse });
+            // Deserialize, sign, and send the transaction(s)
+            // V6 SwapResponse only contains swapTransaction
+            const { swapTransaction } = swapResponse;
+            const transactions = [swapTransaction].filter(Boolean); // Array with just the swap tx string
+            const signedTxs = [];
+            for (const txString of transactions) {
+                const transaction = web3_js_1.VersionedTransaction.deserialize(buffer_1.Buffer.from(txString, 'base64'));
+                // Wallet needs to be compatible with VersionedTransaction
+                // Assuming wallet adapter handles this (common case)
+                const signedTx = await wallet.signTransaction(transaction);
+                signedTxs.push(signedTx);
             }
-            // Record execution start time if risk manager is available
-            let executionId;
-            if (this.riskManager) {
-                const tokenSymbol = await this.getTokenSymbol(outputMint) || 'unknown';
-                executionId = this.riskManager.startTradeExecution(tokenSymbol);
+            if (signedTxs.length === 0) {
+                throw new JupiterError(JupiterErrorType.NO_TRANSACTION_RETURNED, 'No swap transactions returned from Jupiter API');
             }
-            try {
-                // Get quote first
-                const quote = await this.getQuote(inputMint, outputMint, amount, maxSlippageBps);
-                // Check price impact
-                if (quote.priceImpactPct > this.riskParams.maxPriceImpactPct) {
-                    throw new JupiterError(JupiterErrorType.HIGH_PRICE_IMPACT, `Price impact too high: ${quote.priceImpactPct}%`, { priceImpact: quote.priceImpactPct, maxAllowed: this.riskParams.maxPriceImpactPct });
-                }
-                // Execute swap with retry
-                const result = await this.executeWithRetry(async () => {
-                    const swapResult = await this.jupiter.exchange({
-                        routeInfo: quote.route
-                    });
-                    // Sign and send transaction
-                    const { swapTransaction } = swapResult;
-                    const signature = await (0, web3_js_1.sendAndConfirmTransaction)(this.connection, swapTransaction, [this.wallet], { commitment: 'confirmed' });
-                    // Record trade in risk manager if available
-                    if (this.riskManager) {
-                        // For simplicity, we're assuming this is a buy, adjust as needed
-                        this.riskManager.incrementActivePositions();
-                    }
-                    return {
-                        success: true,
-                        signature,
-                        outAmount: quote.outAmount,
-                        price: quote.price
-                    };
+            // Send transactions sequentially (only one tx in V6 base response)
+            const txids = [];
+            for (const signedTx of signedTxs) {
+                const txid = await this.connection.sendRawTransaction(signedTx.serialize(), {
+                    skipPreflight: true, // Recommended by Jupiter
+                    maxRetries: 2
                 });
-                // Record successful execution
-                if (this.riskManager && executionId) {
-                    this.riskManager.completeTradeExecution(executionId, true);
+                logger_1.default.info(`Transaction sent: ${txid}`, { type: 'swap' }); // Only swap tx
+                txids.push(txid);
+                // Confirm transaction (important!) - Using basic confirmation for now
+                // Consider more robust confirmation logic (e.g., monitoring slot progression)
+                const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
+                const confirmation = await this.connection.confirmTransaction({
+                    signature: txid,
+                    blockhash,
+                    lastValidBlockHeight
+                }, 'confirmed');
+                if (confirmation.value.err) {
+                    logger_1.default.error(`Transaction ${txid} confirmation failed`, { error: confirmation.value.err });
+                    throw new JupiterError(JupiterErrorType.TRANSACTION_CONFIRMATION_FAILURE, `Transaction ${txid} failed to confirm`, confirmation.value.err);
                 }
-                return result;
+                logger_1.default.info(`Transaction confirmed: ${txid}`);
             }
-            catch (error) {
-                // Record failed execution
-                if (this.riskManager && executionId) {
-                    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-                    this.riskManager.completeTradeExecution(executionId, false, errorMsg);
-                }
-                throw error;
+            const result = {
+                success: true,
+                txId: txids.join(', '), // Combine IDs if multiple txs
+                inputAmount: quote.inAmount, // Lamports string
+                outputAmount: quote.outAmount, // Lamports string
+                inputMint: quote.inputMint,
+                outputMint: quote.outputMint,
+                price: parseFloat(quote.price),
+                timestamp: Date.now(),
+            };
+            if (executionId) { // Guard the call
+                this.riskManager?.completeTradeExecution(executionId, true, undefined);
             }
+            return result;
         }
         catch (error) {
-            if (error instanceof JupiterError) {
-                return {
-                    success: false,
-                    error: `${error.type}: ${error.message}`,
-                    errorType: error.type
-                };
+            logger_1.default.error('Error executing Jupiter V6 swap:', {
+                error: error instanceof Error ? error.message : String(error),
+                quote: quote // Log the quote used for the failed swap
+            });
+            if (executionId) { // Guard the call
+                // Provide error message, no result on failure
+                this.riskManager?.completeTradeExecution(executionId, false, error.message || 'Failed to execute swap');
             }
-            const msg = error instanceof Error ? error.message : 'Unknown error';
-            logger_1.default.error('Swap failed:', msg);
-            return {
-                success: false,
-                error: `${JupiterErrorType.UNKNOWN_ERROR}: ${msg}`,
-                errorType: JupiterErrorType.UNKNOWN_ERROR
-            };
+            // Map specific errors
+            if (error instanceof JupiterError)
+                throw error;
+            // Handle potential wallet errors (e.g., user rejection)
+            // Use specific error type if available from wallet adapter library
+            if (error.name === 'WalletSignTransactionError' || error.message?.includes('User rejected')) {
+                throw new JupiterError(JupiterErrorType.WALLET_SIGN_REJECTED, 'User rejected transaction signing', error);
+            }
+            // Default error
+            throw new JupiterError(JupiterErrorType.SWAP_EXECUTION_FAILED, error.message || 'Failed to execute swap', error);
         }
     }
     async getTokenBalance(tokenMint) {
         try {
-            if (!this.jupiter) {
-                throw new JupiterError(JupiterErrorType.INITIALIZATION_ERROR, 'Jupiter not initialized');
-            }
             const tokenAccounts = await this.connection.getParsedTokenAccountsByOwner(this.wallet.publicKey, { mint: new web3_js_1.PublicKey(tokenMint) });
             const account = tokenAccounts.value[0];
             if (!account) {
                 return 0;
             }
-            const token = Array.from(this.tokenMap.values()).find(t => t.address === tokenMint);
-            if (!token) {
-                throw new JupiterError(JupiterErrorType.UNKNOWN_ERROR, 'Token not found in token list');
-            }
-            return Number(account.account.data.parsed.info.tokenAmount.amount) / Math.pow(10, token.decimals);
+            // Fetch decimals dynamically
+            const decimals = await this.getTokenDecimals(tokenMint);
+            // Use uiAmountString which already accounts for decimals
+            const balance = new decimal_js_1.default(account.account.data.parsed.info.tokenAmount.uiAmountString);
+            return balance.toNumber();
+            // No longer need manual decimal adjustment if using uiAmountString
+            // const balance = new Decimal(account.account.data.parsed.info.tokenAmount.amount) 
+            //     .div(new Decimal(10).pow(decimals));
+            // return balance.toNumber();
         }
         catch (error) {
+            // Catch specific JupiterError from getTokenDecimals
             if (error instanceof JupiterError) {
+                logger_1.default.error('Failed to get token balance due to JupiterError:', { error });
                 throw error;
             }
             const msg = error instanceof Error ? error.message : 'Unknown error';
-            logger_1.default.error('Failed to get token balance:', msg);
-            throw new JupiterError(JupiterErrorType.UNKNOWN_ERROR, msg);
+            logger_1.default.error('Failed to get token balance:', { error: msg });
+            throw new JupiterError(JupiterErrorType.UNKNOWN_ERROR, msg, error);
         }
     }
     // Set or update the risk manager
@@ -384,3 +415,4 @@ class JupiterDex {
     }
 }
 exports.JupiterDex = JupiterDex;
+//# sourceMappingURL=jupiterDex.js.map

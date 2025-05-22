@@ -1,44 +1,11 @@
 "use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ContractValidator = void 0;
 const web3_js_1 = require("@solana/web3.js");
-const anchor = __importStar(require("@project-serum/anchor"));
+const spl_token_1 = require("@solana/spl-token");
 const logger_1 = __importDefault(require("./logger"));
 const notifications_1 = require("./notifications");
 const riskManager_1 = require("../live/riskManager");
@@ -47,9 +14,12 @@ const riskManager_1 = require("../live/riskManager");
  * Analyzes token smart contracts for security risks and red flags
  */
 class ContractValidator {
+    connection;
+    config;
+    riskManager;
+    // Cache of previously validated contracts
+    validationCache = new Map();
     constructor(connection, config) {
-        // Cache of previously validated contracts
-        this.validationCache = new Map();
         this.connection = connection;
         this.riskManager = config?.riskManager || null;
         // Default configuration
@@ -109,7 +79,7 @@ class ContractValidator {
                 result.isValid = false;
             }
             // Check program ownership
-            if (accountInfo.owner.toString() !== anchor.utils.token.TOKEN_PROGRAM_ID.toString()) {
+            if (accountInfo.owner.toString() !== spl_token_1.TOKEN_PROGRAM_ID.toString()) {
                 result.risks.push({
                     level: 'HIGH',
                     type: 'CUSTOM_PROGRAM',
@@ -240,7 +210,9 @@ class ContractValidator {
             if (signatures.length === 0) {
                 return 0;
             }
-            return signatures[0].slot;
+            // Ensure the first signature exists before accessing its slot
+            const firstSignature = signatures[0];
+            return firstSignature ? firstSignature.slot : 0; // Return 0 if somehow undefined
         }
         catch (error) {
             logger_1.default.warn('Error getting token creation slot', {
@@ -352,3 +324,4 @@ class ContractValidator {
 }
 exports.ContractValidator = ContractValidator;
 exports.default = ContractValidator;
+//# sourceMappingURL=contractValidator.js.map

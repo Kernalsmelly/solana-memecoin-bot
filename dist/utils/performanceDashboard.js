@@ -42,9 +42,14 @@ const path = __importStar(require("path"));
 const fs = __importStar(require("fs"));
 const logger_1 = __importDefault(require("./logger"));
 class PerformanceDashboard {
+    app;
+    server = null;
+    riskManager;
+    port;
+    dataDir;
+    refreshInterval;
+    performanceHistory = [];
     constructor(options) {
-        this.server = null;
-        this.performanceHistory = [];
         this.app = (0, express_1.default)();
         this.riskManager = options.riskManager;
         this.port = options.port || 3000;
@@ -147,3 +152,4 @@ class PerformanceDashboard {
 }
 exports.PerformanceDashboard = PerformanceDashboard;
 exports.default = PerformanceDashboard;
+//# sourceMappingURL=performanceDashboard.js.map

@@ -22,29 +22,34 @@ function initializeTokenState(address, symbol) {
         buyRatioHistory: []
     };
 }
-function calculatePriceChange(priceHistory) {
-    if (priceHistory.length < 2)
+function getBuyRatio(buyRatioHistory) {
+    if (!buyRatioHistory || buyRatioHistory.length === 0)
         return 0;
-    const oldPrice = priceHistory[0].price;
-    const newPrice = priceHistory[priceHistory.length - 1].price;
+    const lastBuyRatio = buyRatioHistory[buyRatioHistory.length - 1];
+    return lastBuyRatio ?? 0;
+}
+function calculatePriceChange(priceHistory) {
+    if (!priceHistory || priceHistory.length < 2)
+        return 0;
+    const oldPoint = priceHistory[0];
+    const newPoint = priceHistory[priceHistory.length - 1];
+    if (!oldPoint?.price || !newPoint?.price)
+        return 0;
+    const oldPrice = oldPoint.price;
+    const newPrice = newPoint.price;
     return ((newPrice - oldPrice) / oldPrice) * 100;
 }
 function calculateVolumeSpike(volumeHistory) {
-    if (volumeHistory.length < 2)
+    if (!volumeHistory || volumeHistory.length < 2)
         return 0;
-    const avgVolume = volumeHistory.slice(0, -1).reduce((a, b) => a + b, 0) / (volumeHistory.length - 1);
-    const currentVolume = volumeHistory[volumeHistory.length - 1];
+    const avgVolume = volumeHistory.slice(0, -1).reduce((sum, volume) => sum + (volume || 0), 0) / (volumeHistory.length - 1);
+    const currentVolume = volumeHistory[volumeHistory.length - 1] ?? 0;
     return ((currentVolume - avgVolume) / avgVolume) * 100;
-}
-function calculateBuyRatio(buyRatioHistory) {
-    if (buyRatioHistory.length === 0)
-        return 0;
-    return buyRatioHistory[buyRatioHistory.length - 1];
 }
 function detectPump(state) {
     const priceChange = calculatePriceChange(state.priceHistory);
     const volumeSpike = calculateVolumeSpike(state.volumeHistory);
-    const buyRatio = calculateBuyRatio(state.buyRatioHistory);
+    const buyRatio = getBuyRatio(state.buyRatioHistory);
     const now = Date.now();
     // Check if enough time has passed since last alert
     if (now - state.lastAlert < MIN_TIME_BETWEEN_ALERTS) {
@@ -105,3 +110,4 @@ async function startLiveTest() {
     await Promise.all(TOKENS_TO_MONITOR.map(token => monitorToken(token.address, token.symbol)));
 }
 startLiveTest().catch(console.error);
+//# sourceMappingURL=liveTest.js.map

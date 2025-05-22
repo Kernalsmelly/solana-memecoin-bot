@@ -251,3 +251,4 @@ main().catch(async (err) => {
     await (0, notifications_1.sendAlert)(`Fatal error in production wrapper: ${err instanceof Error ? err.message : String(err)}`, 'CRITICAL');
     process.exit(1);
 });
+//# sourceMappingURL=production-launch.js.map

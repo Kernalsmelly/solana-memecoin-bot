@@ -12,9 +12,10 @@ const logger_1 = __importDefault(require("../utils/logger"));
  * to maximize returns while controlling risk
  */
 class PortfolioOptimizer {
+    config;
+    activePositions = new Map();
+    patternPerformance = {};
     constructor(config) {
-        this.activePositions = new Map();
-        this.patternPerformance = {};
         // Default configuration
         this.config = {
             // Merge dependencies into the config object
@@ -155,7 +156,7 @@ class PortfolioOptimizer {
                 side: 'buy',
                 tokenAddress: patternDetection.tokenAddress,
                 size: positionSizeLamports, // Size is in SOL lamports for buys
-                price: patternDetection.metrics.price, // Current price observed
+                price: patternDetection.metrics.priceUsd, // Use priceUsd (Current price observed)
                 timestamp: Date.now(), // Timestamp of order creation
             };
             // Execute Buy Order
@@ -200,11 +201,11 @@ class PortfolioOptimizer {
                 // Need SOL price from earlier calculation if not stored
                 // Need executed input lamports from result
                 // entryPrice: calculateEntryPrice(executionResult, solPriceUsd), // Placeholder for calculation
-                entryPrice: executionResult.actualExecutionPrice || patternDetection.metrics.price, // Use actual if available
+                entryPrice: executionResult.actualExecutionPrice || patternDetection.metrics.priceUsd, // Use actual if available, fallback to priceUsd
                 entryTimestamp: executionResult.timestamp || Date.now(),
                 initialSolCostLamports: executionResult.inputAmount || positionSizeLamports, // SOL spent
                 quantity: BigInt(executedQuantitySmallestUnit), // Token quantity in smallest unit (BigInt)
-                currentPrice: executionResult.actualExecutionPrice || patternDetection.metrics.price, // Initial current price
+                currentPrice: executionResult.actualExecutionPrice || patternDetection.metrics.priceUsd, // Initial current price, fallback to priceUsd
                 stopLoss: 0, // Placeholder - ExitManager will set this
                 takeProfit: 0, // Placeholder - ExitManager will set this
                 pnl: 0, // Initial PnL
@@ -383,3 +384,4 @@ class PortfolioOptimizer {
     }
 }
 exports.PortfolioOptimizer = PortfolioOptimizer;
+//# sourceMappingURL=portfolioOptimizer.js.map

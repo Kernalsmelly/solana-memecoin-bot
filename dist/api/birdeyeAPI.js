@@ -12,8 +12,10 @@ const cache_1 = require("../utils/cache");
 const memoryManager_1 = require("../utils/memoryManager");
 // Simple rate limiter for testing
 class SimpleRateLimiter {
+    limits = new Map();
+    maxRequests;
+    windowMs;
     constructor(maxRequests = 60, windowMs = 60000) {
-        this.limits = new Map();
         this.maxRequests = maxRequests;
         this.windowMs = windowMs;
     }
@@ -46,26 +48,29 @@ class SimpleRateLimiter {
 exports.globalRateLimiter = new SimpleRateLimiter();
 // BirdeyeAPI class for WebSocket connection and token data
 class BirdeyeAPI extends events_1.EventEmitter {
+    wsUrl;
+    apiKey;
+    wsClient = null;
+    reconnectAttempts = 0;
+    maxReconnectAttempts = 10;
+    reconnectTimeoutMs = 2000;
+    reconnectTimer = null;
+    pingInterval = null;
+    metadataCache = cache_1.globalCacheManager.getCache('tokenMetadata', {
+        maxSize: 10000,
+        ttl: 30 * 60 * 1000, // 30 minutes cache TTL
+        onEvict: (key, value) => {
+            logger_1.default.debug(`Token metadata evicted from cache: ${key}`);
+        }
+    });
+    rateLimiter;
+    isReconnecting = false;
+    lastCleanupTime = Date.now();
+    cleanupIntervalMs = 10 * 60 * 1000; // 10 minutes
+    solPriceCache = null;
+    SOL_PRICE_CACHE_DURATION = 60 * 1000; // Cache SOL price for 60 seconds
     constructor(apiKey, wsUrl = 'wss://public-api.birdeye.so/socket', rateLimiter = exports.globalRateLimiter) {
         super();
-        this.wsClient = null;
-        this.reconnectAttempts = 0;
-        this.maxReconnectAttempts = 10;
-        this.reconnectTimeoutMs = 2000;
-        this.reconnectTimer = null;
-        this.pingInterval = null;
-        this.metadataCache = cache_1.globalCacheManager.getCache('tokenMetadata', {
-            maxSize: 10000,
-            ttl: 30 * 60 * 1000, // 30 minutes cache TTL
-            onEvict: (key, value) => {
-                logger_1.default.debug(`Token metadata evicted from cache: ${key}`);
-            }
-        });
-        this.isReconnecting = false;
-        this.lastCleanupTime = Date.now();
-        this.cleanupIntervalMs = 10 * 60 * 1000; // 10 minutes
-        this.solPriceCache = null;
-        this.SOL_PRICE_CACHE_DURATION = 60 * 1000; // Cache SOL price for 60 seconds
         this.apiKey = apiKey;
         this.wsUrl = wsUrl;
         this.rateLimiter = rateLimiter;
@@ -85,24 +90,45 @@ class BirdeyeAPI extends events_1.EventEmitter {
         // Clean up any existing connection
         this.cleanup();
         try {
-            logger_1.default.info('Connecting to Birdeye WebSocket...');
-            // Create a new WebSocket connection
-            this.wsClient = new ws_1.default(this.wsUrl);
+            logger_1.default.info(`Connecting to Birdeye WebSocket at URL: ${this.wsUrl}`); // Log URL
+            try {
+                this.wsClient = new ws_1.default(this.wsUrl, {
+                    // Explicitly set origin header
+                    headers: {
+                        'Origin': 'https://birdeye.so'
+                    }
+                });
+                logger_1.default.info('WebSocket object created successfully.'); // Log success
+            }
+            catch (instantiationError) {
+                logger_1.default.error('Error during WebSocket instantiation:', instantiationError);
+                // Decide how to handle this - maybe re-throw or attempt reconnect?
+                this.wsClient = null; // Ensure wsClient is null if instantiation failed
+                this.attemptReconnect(subscriptions);
+                return false; // Indicate connection failed
+            }
             // Set up WebSocket event listeners
-            this.wsClient.on('open', () => this.handleWsOpen(subscriptions));
-            this.wsClient.on('message', (data) => this.handleWsMessage(data));
-            this.wsClient.on('error', (error) => this.handleWsError(error));
-            this.wsClient.on('close', (code, reason) => this.handleWsClose(code, reason, subscriptions));
-            // Set up ping interval to keep connection alive
-            this.pingInterval = setInterval(() => {
-                if (this.wsClient && this.wsClient.readyState === ws_1.default.OPEN) {
-                    this.wsClient.ping();
-                }
-            }, 30000); // Send ping every 30 seconds
-            return true;
+            // Ensure wsClient is not null before attaching listeners
+            if (this.wsClient) {
+                this.wsClient.on('open', () => this.handleWsOpen(subscriptions));
+                this.wsClient.on('message', (data) => this.handleWsMessage(data));
+                this.wsClient.on('error', (error) => this.handleWsError(error));
+                this.wsClient.on('close', (code, reason) => this.handleWsClose(code, reason, subscriptions));
+                // Set up ping interval to keep connection alive
+                this.pingInterval = setInterval(() => {
+                    if (this.wsClient && this.wsClient.readyState === ws_1.default.OPEN) {
+                        this.wsClient.ping();
+                    }
+                }, 30000); // Send ping every 30 seconds
+            }
+            else {
+                logger_1.default.error('Cannot set up WebSocket listeners: wsClient is null after instantiation attempt.');
+                return false; // Indicate connection setup failed
+            }
+            return true; // Indicate connection process initiated
         }
         catch (error) {
-            logger_1.default.error('Error connecting to WebSocket', {
+            logger_1.default.error('Error in outer connectWebSocket try-catch block:', {
                 error: error instanceof Error ? error.message : 'Unknown error'
             });
             this.attemptReconnect(subscriptions);
@@ -114,18 +140,33 @@ class BirdeyeAPI extends events_1.EventEmitter {
         logger_1.default.info('Connected to Birdeye WebSocket');
         this.reconnectAttempts = 0;
         this.isReconnecting = false;
+        logger_1.default.info('Attempting to send subscriptions...'); // Log before sending
         // Subscribe to each topic
         subscriptions.forEach(topic => {
             if (this.wsClient && this.wsClient.readyState === ws_1.default.OPEN) {
-                const subscribeMessage = JSON.stringify({
+                const subscribeMessage = {
                     type: 'subscribe',
                     topic,
-                    apiKey: this.apiKey
-                });
-                this.wsClient.send(subscribeMessage);
-                logger_1.default.info(`Subscribed to ${topic}`);
+                    apiKey: this.apiKey // Keep API key here for stringify
+                };
+                // Log message but mask API key
+                const messageToSend = JSON.stringify(subscribeMessage);
+                const maskedMessage = messageToSend.replace(/"apiKey":"[^"]+"/, '"apiKey":"***MASKED***"');
+                logger_1.default.info(`Sending subscription: ${maskedMessage}`);
+                try {
+                    this.wsClient.send(messageToSend);
+                    logger_1.default.info(`Successfully sent subscription for ${topic}`);
+                }
+                catch (sendError) {
+                    logger_1.default.error(`Error sending subscription for ${topic}:`, sendError);
+                    // Optionally attempt to handle this specific error, e.g., by retrying or closing
+                }
+            }
+            else {
+                logger_1.default.warn(`WebSocket not open when trying to subscribe to ${topic}. State: ${this.wsClient?.readyState}`);
             }
         });
+        logger_1.default.info('Finished sending subscriptions.'); // Log after sending
         this.emit('connected');
     }
     // Handle WebSocket messages
@@ -159,18 +200,26 @@ class BirdeyeAPI extends events_1.EventEmitter {
             });
         }
     }
-    // Handle WebSocket errors
+    // Handle WebSocket error event
     handleWsError(error) {
-        logger_1.default.error('WebSocket error', {
-            error: error.message
+        logger_1.default.error('Birdeye WebSocket error encountered:', {
+            message: error.message,
+            name: error.name,
+            stack: error.stack,
         });
         this.emit('error', error);
+        // Reconnect logic is handled in 'close' event
     }
     // Handle WebSocket close event
-    handleWsClose(code, reason, subscriptions) {
-        const reasonStr = Buffer.isBuffer(reason) ? reason.toString() : String(reason);
-        logger_1.default.info(`WebSocket closed: Code ${code}${reasonStr ? `, Reason: ${reasonStr}` : ''}`);
-        this.emit('disconnected', { code, reason: reasonStr });
+    handleWsClose(code, reasonBuffer, subscriptions) {
+        const reason = reasonBuffer.toString(); // Convert buffer to string
+        logger_1.default.warn(`Birdeye WebSocket closed. Code: ${code}, Reason: ${reason}`);
+        // Clean up intervals and attempt reconnect if not explicitly stopped
+        if (this.pingInterval) {
+            clearInterval(this.pingInterval);
+            this.pingInterval = null;
+        }
+        this.emit('disconnected', { code, reason });
         // Attempt to reconnect unless this was a deliberate closure
         if (code !== 1000 && code !== 1001) {
             this.attemptReconnect(subscriptions);
@@ -357,3 +406,4 @@ class BirdeyeAPI extends events_1.EventEmitter {
     }
 }
 exports.BirdeyeAPI = BirdeyeAPI;
+//# sourceMappingURL=birdeyeAPI.js.map

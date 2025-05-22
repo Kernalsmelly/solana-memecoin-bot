@@ -10,11 +10,9 @@ const logger_1 = __importDefault(require("./logger"));
  * and implement exponential backoff on errors
  */
 class RateLimiter {
-    constructor() {
-        this.limiters = new Map();
-        this.options = new Map();
-        this.backoffMultipliers = new Map();
-    }
+    limiters = new Map();
+    options = new Map();
+    backoffMultipliers = new Map();
     /**
      * Register a new rate limit configuration for an API
      */
@@ -143,3 +141,4 @@ exports.globalRateLimiter.registerLimit('solana-rpc', {
     errorThresholdPercent: 15
 });
 exports.default = exports.globalRateLimiter;
+//# sourceMappingURL=rateLimiter.js.map

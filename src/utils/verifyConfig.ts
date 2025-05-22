@@ -4,12 +4,13 @@ import * as fs from 'fs';
 import bs58 from 'bs58';
 import logger from './logger';
 
-dotenv.config();
+// dotenv.config(); // REMOVE THIS - Rely on index.ts loading
 
 // Required environment variables for production
 const REQUIRED_ENV_VARS = [
-  'PRIVATE_KEY',
-  'RPC_ENDPOINT',
+  'SOLANA_PRIVATE_KEY', // Standardized name
+  'QUICKNODE_RPC_URL',
+  'QUICKNODE_WSS_URL',
   'MAX_POSITION_SIZE',
   'MAX_ACTIVE_POSITIONS',
   'MAX_DAILY_LOSS_PERCENT',
@@ -24,7 +25,6 @@ const REQUIRED_ENV_VARS = [
 
 // Recommended environment variables
 const RECOMMENDED_ENV_VARS = [
-  'BIRDEYE_API_KEY',
   'DISCORD_WEBHOOK_URL',
   'TELEGRAM_BOT_TOKEN',
   'TELEGRAM_CHAT_ID'
@@ -79,7 +79,11 @@ async function verifyConfig(): Promise<ConfigValidationResult> {
   // Verify RPC connection
   try {
     const startTime = Date.now();
-    const connection = new Connection(process.env.RPC_ENDPOINT || '', 'confirmed');
+    const rpcUrl = process.env.QUICKNODE_RPC_URL;
+    if (!rpcUrl) {
+      throw new Error('QUICKNODE_RPC_URL is not defined in environment variables.');
+    }
+    const connection = new Connection(rpcUrl, 'confirmed');
     await connection.getVersion(); // Use getVersion() to check connectivity
     const latency = Date.now() - startTime;
     
@@ -92,19 +96,25 @@ async function verifyConfig(): Promise<ConfigValidationResult> {
       logger.warn(`RPC latency is high: ${latency}ms`);
     }
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error connecting to RPC';
+    logger.error(`RPC connection check failed for ${process.env.QUICKNODE_RPC_URL}: ${errorMessage}`, {
+      errorDetails: error instanceof Error ? error : JSON.stringify(error),
+      cause: error instanceof Error && error.cause ? error.cause : 'N/A',
+      stack: error instanceof Error ? error.stack : 'N/A'
+    });
     result.rpcStatus = {
       valid: false,
-      error: error instanceof Error ? error.message : 'Unknown error connecting to RPC'
+      error: errorMessage
     };
     result.isValid = false;
   }
   
   // Verify wallet
   try {
-    if (process.env.PRIVATE_KEY) {
-      const privateKey = bs58.decode(process.env.PRIVATE_KEY);
+    if (process.env.SOLANA_PRIVATE_KEY) {
+      const privateKey = bs58.decode(process.env.SOLANA_PRIVATE_KEY);
       const wallet = Keypair.fromSecretKey(privateKey);
-      const connection = new Connection(process.env.RPC_ENDPOINT || '', 'confirmed');
+      const connection = new Connection(process.env.QUICKNODE_RPC_URL || '', 'confirmed');
       
       // Check SOL balance
       const solBalance = await connection.getBalance(wallet.publicKey);
@@ -163,8 +173,19 @@ async function verifyConfig(): Promise<ConfigValidationResult> {
     result.isValid = false;
   }
   
+  if (!process.env.QUICKNODE_RPC_URL) {
+    logger.warn('QUICKNODE_RPC_URL is not configured. RPC calls will fail.');
+    result.isValid = false; // Make it invalid if missing
+  }
+  if (!process.env.QUICKNODE_WSS_URL) {
+    logger.warn('QUICKNODE_WSS_URL is not configured. WebSocket detection will fail.');
+    result.isValid = false; // Make it invalid if missing
+  }
+  
   return result;
 }
+
+export default verifyConfig;
 
 // Run when invoked directly
 if (require.main === module) {
@@ -217,5 +238,3 @@ if (require.main === module) {
     }
   })();
 }
-
-export default verifyConfig;

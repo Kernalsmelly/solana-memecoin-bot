@@ -116,3 +116,4 @@ main().catch(err => {
     console.error('\x1b[31mError executing emergency stop script:\x1b[0m', err);
     process.exit(1);
 });
+//# sourceMappingURL=emergency-stop.js.map

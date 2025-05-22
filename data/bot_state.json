@@ -1,0 +1,30 @@
+{
+  "currentBalance": 0,
+  "highWaterMark": 0,
+  "drawdown": 0,
+  "dailyPnL": 0,
+  "dailyLoss": 0,
+  "dailyStartBalance": 0,
+  "winRate": 0,
+  "activePositions": 0,
+  "availablePositions": 2,
+  "circuitBreakers": {
+    "HIGH_VOLATILITY": false,
+    "PRICE_DEVIATION": false,
+    "TRADE_RATE_EXCEEDED": false,
+    "HIGH_DRAWDOWN": false,
+    "HIGH_DAILY_LOSS": false,
+    "LOW_SUCCESS_RATE": false,
+    "EMERGENCY_STOP": false,
+    "MANUAL_STOP": false,
+    "CONTRACT_RISK": false
+  },
+  "emergencyStopActive": false,
+  "systemEnabled": true,
+  "successRate": 100,
+  "tradeCount": {
+    "minute": 0,
+    "hour": 0,
+    "day": 0
+  }
+}

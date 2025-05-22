@@ -4,6 +4,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.PositionManager = void 0;
 const priceFeed_1 = require("./utils/priceFeed");
 class PositionManager {
+    accountBalance;
+    positions;
     constructor(initialBalance) {
         this.accountBalance = {
             availableCash: initialBalance,
@@ -129,3 +131,4 @@ class PositionManager {
     }
 }
 exports.PositionManager = PositionManager;
+//# sourceMappingURL=positionManager.js.map

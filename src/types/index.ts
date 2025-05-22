@@ -14,18 +14,25 @@ export type PatternType =
 
 export interface TokenMetrics {
     address: string;
-    // Optional score assigned by the detection system
-    score?: number; 
-    // Optional pump potential score
-    pumpPotential?: number; 
+    poolAddress: string; 
+    name?: string; 
     symbol: string;
-    price: number;
+    priceUsd: number; 
     liquidity: number;
-    volume24h: number;
+    volume24h?: number; 
+    priceChange24h?: number; 
+    marketCap?: number; 
     holders: number;
     buys5min: number;
-    timestamp: number;
     decimals?: number;
+    timestamp: number;
+    ageHours?: number; 
+    source?: string; 
+    signature?: string; 
+    slot?: number; 
+    quoteTokenMint?: string; 
+    score?: number; 
+    pumpPotential?: number; 
 }
 
 export interface PatternDetection {

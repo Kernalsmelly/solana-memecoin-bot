@@ -105,7 +105,8 @@ function createLineChart(data, title, width = 50, height = 10) {
     for (let i = 0; i < data.length; i++) {
         const labelIndex = xLabelPositions.indexOf(i);
         if (labelIndex >= 0) {
-            xAxis += xLabels[labelIndex].padEnd(4);
+            const label = xLabels[labelIndex];
+            xAxis += label.padEnd(4);
         }
         else {
             xAxis += '  ';
@@ -258,3 +259,4 @@ function main() {
 }
 // Run main function
 main();
+//# sourceMappingURL=performance-dashboard.js.map

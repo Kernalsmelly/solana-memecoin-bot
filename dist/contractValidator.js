@@ -22,6 +22,7 @@ var RiskLevel;
  * Class that validates token contracts and assigns risk levels
  */
 class ContractValidator {
+    connection;
     constructor(connection) {
         this.connection = connection;
     }
@@ -149,3 +150,4 @@ const createContractValidator = (connection) => {
     return new ContractValidator(connection);
 };
 exports.createContractValidator = createContractValidator;
+//# sourceMappingURL=contractValidator.js.map

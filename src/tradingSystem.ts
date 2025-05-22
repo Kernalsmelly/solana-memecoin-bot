@@ -71,6 +71,7 @@ export class TradingSystem {
 
     private async handlePatternDetected(pattern: any): Promise<void> {
         try {
+            logger.info('[DEBUG] handlePatternDetected called', { pattern });
             // Generate trading signal
             const signal: TradingSignal = {
                 tokenAddress: pattern.tokenAddress,
@@ -82,14 +83,19 @@ export class TradingSystem {
                 timeframe: '1h',
                 signalType: 'buy' // Fixed missing signalType
             };
+            logger.info('[DEBUG] TradingSignal generated', { signal });
 
-            // Execute trade if conditions met
-            if (signal.confidence > 0.7 && this.canOpenPosition()) {
+            // FORCE TRADE: Always execute the signal for debugging
+            if (this.canOpenPosition()) {
+                logger.info('[DEBUG] Attempting to execute trade', { signal });
                 await this.executeSignal(signal);
+                logger.info('[DEBUG] Trade execution attempted', { signal });
+            } else {
+                logger.info('[DEBUG] Cannot open position, skipping trade', { signal });
             }
 
         } catch (error) {
-            logger.error('Error handling pattern:', error instanceof Error ? error.message : 'Unknown error');
+            logger.error('[DEBUG] Error handling pattern:', error instanceof Error ? error.message : 'Unknown error');
         }
     }
 

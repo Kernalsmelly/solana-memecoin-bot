@@ -63,77 +63,110 @@ const MIN_PRICE_CHANGE = 5; // 5% minimum price change
 const MIN_VOLUME_SPIKE = 200; // 200% volume increase
 const BUY_RATIO_THRESHOLD = 1.5; // 50% more buys than sells
 
-function detectPump(
-  priceChange: number,
-  volumeSpike: number,
-  buyRatio: number
-): boolean {
-  return (
-    priceChange > MIN_PRICE_CHANGE &&
-    volumeSpike > MIN_VOLUME_SPIKE &&
-    buyRatio > BUY_RATIO_THRESHOLD
-  );
-}
+class PumpDetector {
+  private totalPriceChange = 0;
+  private totalVolumeSpike = 0;
+  private totalBuyRatio = 0;
+  private updateCount = 0;
+  private maxPriceChange = 0;
+  private maxVolumeSpike = 0;
+  private maxBuyRatio = 0;
+  private avgPriceChange = 0;
+  private avgVolumeSpike = 0;
+  private avgBuyRatio = 0;
 
-function runScenarioTest(scenario: TestScenario): TestResult {
-  let detectedPumps = 0;
-  let falsePositives = 0;
-  let firstPumpTime = -1;
-  let totalPriceChange = 0;
-  let totalVolumeSpike = 0;
-  let totalBuyRatio = 0;
-  let samples = 0;
-
-  // Base values for calculating changes
-  let basePrice = 100;
-  let baseVolume = 1000;
-
-  for (let i = 0; i < scenario.priceChanges.length; i++) {
-    const priceChange = scenario.priceChanges[i];
-    const volumeSpike = scenario.volumeChanges[i];
-    const buyRatio = scenario.buyRatios[i];
-
-    totalPriceChange += priceChange;
-    totalVolumeSpike += volumeSpike;
-    totalBuyRatio += buyRatio;
-    samples++;
-
-    const isPump = detectPump(priceChange, volumeSpike, buyRatio);
-    
-    if (isPump) {
-      if (firstPumpTime === -1) {
-        firstPumpTime = i;
-      }
-      
-      // Check if this pump was expected
-      if (scenario.expectedPumps > 0 && detectedPumps < scenario.expectedPumps) {
-        detectedPumps++;
-      } else {
-        falsePositives++;
-      }
-
-      console.log(`\n🚨 Pump detected in scenario "${scenario.name}" at step ${i + 1}:`);
-      console.log(`- Price Change: ${priceChange.toFixed(2)}%`);
-      console.log(`- Volume Spike: ${volumeSpike.toFixed(2)}%`);
-      console.log(`- Buy/Sell Ratio: ${buyRatio.toFixed(2)}`);
+  private updateMetrics(priceChange?: number, volumeSpike?: number, buyRatio?: number): void {
+    if (typeof priceChange === 'number') {
+      this.totalPriceChange += priceChange;
+      this.maxPriceChange = Math.max(this.maxPriceChange, priceChange);
     }
 
-    // Update base values
-    basePrice *= (1 + priceChange / 100);
-    baseVolume *= (1 + volumeSpike / 100);
+    if (typeof volumeSpike === 'number') {
+      this.totalVolumeSpike += volumeSpike;
+      this.maxVolumeSpike = Math.max(this.maxVolumeSpike, volumeSpike);
+    }
+
+    if (typeof buyRatio === 'number') {
+      this.totalBuyRatio += buyRatio;
+      this.maxBuyRatio = Math.max(this.maxBuyRatio, buyRatio);
+    }
+
+    this.updateCount++;
   }
 
-  return {
-    scenario: scenario.name,
-    detectedPumps,
-    expectedPumps: scenario.expectedPumps,
-    accuracy: scenario.expectedPumps > 0 ? detectedPumps / scenario.expectedPumps : 1,
-    avgPriceChange: totalPriceChange / samples,
-    avgVolumeSpike: totalVolumeSpike / samples,
-    avgBuyRatio: totalBuyRatio / samples,
-    falsePositives,
-    timeToDetection: firstPumpTime === -1 ? -1 : firstPumpTime + 1
-  };
+  private calculateAverages(): void {
+    if (this.updateCount === 0) return;
+
+    this.avgPriceChange = this.totalPriceChange / this.updateCount;
+    this.avgVolumeSpike = this.totalVolumeSpike / this.updateCount;
+    this.avgBuyRatio = this.totalBuyRatio / this.updateCount;
+  }
+
+  private isPumpDetected(priceChange: number, volumeSpike: number, buyRatio: number): boolean {
+    return (
+      priceChange >= MIN_PRICE_CHANGE &&
+      volumeSpike >= MIN_VOLUME_SPIKE &&
+      buyRatio >= BUY_RATIO_THRESHOLD
+    );
+  }
+
+  public runScenarioTest(scenario: TestScenario): TestResult {
+    let detectedPumps = 0;
+    let falsePositives = 0;
+    let firstPumpTime = -1;
+    let samples = 0;
+
+    // Base values for calculating changes
+    let basePrice = 100;
+    let baseVolume = 1000;
+
+    for (let i = 0; i < scenario.priceChanges.length; i++) {
+      const priceChange = scenario.priceChanges[i] ?? 0;
+      const volumeSpike = scenario.volumeChanges[i] ?? 0;
+      const buyRatio = scenario.buyRatios[i] ?? 0;
+
+      this.updateMetrics(priceChange, volumeSpike, buyRatio);
+      samples++;
+
+      const isPump = this.isPumpDetected(priceChange, volumeSpike, buyRatio);
+      
+      if (isPump) {
+        if (firstPumpTime === -1) {
+          firstPumpTime = i;
+        }
+        
+        // Check if this pump was expected
+        if (scenario.expectedPumps > 0 && detectedPumps < scenario.expectedPumps) {
+          detectedPumps++;
+        } else {
+          falsePositives++;
+        }
+
+        console.log(`\n🚨 Pump detected in scenario "${scenario.name}" at step ${i + 1}:`);
+        console.log(`- Price Change: ${priceChange.toFixed(2)}%`);
+        console.log(`- Volume Spike: ${volumeSpike.toFixed(2)}%`);
+        console.log(`- Buy/Sell Ratio: ${buyRatio.toFixed(2)}`);
+      }
+
+      // Update base values
+      basePrice *= (1 + priceChange / 100);
+      baseVolume *= (1 + volumeSpike / 100);
+    }
+
+    this.calculateAverages();
+
+    return {
+      scenario: scenario.name,
+      detectedPumps,
+      expectedPumps: scenario.expectedPumps,
+      accuracy: scenario.expectedPumps > 0 ? detectedPumps / scenario.expectedPumps : 1,
+      avgPriceChange: this.avgPriceChange,
+      avgVolumeSpike: this.avgVolumeSpike,
+      avgBuyRatio: this.avgBuyRatio,
+      falsePositives,
+      timeToDetection: firstPumpTime === -1 ? -1 : firstPumpTime + 1
+    };
+  }
 }
 
 function printTestResults(results: TestResult[]) {
@@ -167,9 +200,10 @@ function printTestResults(results: TestResult[]) {
 function runTests() {
   console.log('🧪 Starting pump detection tests...\n');
   
+  const pumpDetector = new PumpDetector();
   const results = TEST_SCENARIOS.map(scenario => {
     console.log(`Testing scenario: ${scenario.name}...`);
-    return runScenarioTest(scenario);
+    return pumpDetector.runScenarioTest(scenario);
   });
 
   printTestResults(results);

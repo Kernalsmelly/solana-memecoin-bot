@@ -1,0 +1,5 @@
+{
+  "minLiquidity": 20000,
+  "minVolume": 5000,
+  "minVLratio": 0.01
+}

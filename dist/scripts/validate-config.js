@@ -48,6 +48,7 @@ const dotenv = __importStar(require("dotenv"));
 const fs = __importStar(require("fs"));
 const web3_js_1 = require("@solana/web3.js");
 const bs58_1 = __importDefault(require("bs58"));
+const path_1 = __importDefault(require("path")); // Import path module
 // Load environment variables
 dotenv.config();
 const results = [];
@@ -72,8 +73,8 @@ async function main() {
     await validateSolanaConnection();
     // 3. Validate wallet
     await validateWallet();
-    // 4. Validate Birdeye API
-    await validateBirdeyeAPI();
+    // 4. Validate Birdeye API (Skipped - Not currently used)
+    // await validateBirdeyeAPI();
     // 5. Validate data directory
     validateDataDirectory();
     // 6. Validate numeric configurations
@@ -91,6 +92,23 @@ async function main() {
                 colors.red;
         console.log(`${statusColor}[${result.status.toUpperCase()}]${colors.reset} ${result.name}: ${result.message}`);
     });
+    // --- Write results to a log file ---
+    const logFilePath = path_1.default.join(process.cwd(), 'validation_results.log');
+    let logContent = 'Configuration Validation Results:\n';
+    logContent += '=====================================\n';
+    results.forEach(result => {
+        logContent += `[${result.status.toUpperCase()}] ${result.name}: ${result.message}\n`;
+    });
+    logContent += '=====================================\n';
+    logContent += `Summary: ${results.length} checks | ${successCount} passed | ${warningCount} warnings | ${errorCount} errors\n`;
+    try {
+        fs.writeFileSync(logFilePath, logContent);
+        console.log(`\n${colors.blue}ℹ Validation results also written to: ${logFilePath}${colors.reset}`);
+    }
+    catch (writeError) {
+        console.error(`${colors.red}✘ Error writing validation results to file: ${writeError instanceof Error ? writeError.message : String(writeError)}${colors.reset}`);
+    }
+    // --- End writing results to log file ---
     console.log(`\n${colors.cyan}=============================================${colors.reset}`);
     console.log(`Total: ${results.length} checks | ${colors.green}${successCount} passed${colors.reset} | ${colors.yellow}${warningCount} warnings${colors.reset} | ${colors.red}${errorCount} errors${colors.reset}`);
     console.log(`${colors.cyan}=============================================${colors.reset}\n`);
@@ -113,8 +131,8 @@ async function main() {
 function validateRequiredEnvVars() {
     const requiredVars = [
         { name: 'SOLANA_RPC_URL', description: 'Solana RPC endpoint' },
-        { name: 'WALLET_PRIVATE_KEY', description: 'Private key for the trading wallet' },
-        { name: 'BIRDEYE_API_KEY', description: 'API key for Birdeye' },
+        { name: 'SOLANA_PRIVATE_KEY', description: 'Private key for the trading wallet' },
+        // { name: 'BIRDEYE_API_KEY', description: 'API key for Birdeye' }, // Removed requirement as Birdeye is not used
     ];
     const optionalVars = [
         { name: 'DATA_DIRECTORY', description: 'Directory for saving state files', defaultValue: './data' },
@@ -181,7 +199,7 @@ async function validateSolanaConnection() {
     }
 }
 async function validateWallet() {
-    const privateKeyString = process.env.WALLET_PRIVATE_KEY;
+    const privateKeyString = process.env.SOLANA_PRIVATE_KEY;
     if (!privateKeyString)
         return; // Already reported as error
     try {
@@ -348,3 +366,4 @@ main().catch(err => {
     console.error(`${colors.red}Error executing validation script:${colors.reset}`, err);
     process.exit(1);
 });
+//# sourceMappingURL=validate-config.js.map

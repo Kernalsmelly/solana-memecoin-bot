@@ -36,17 +36,17 @@ function applyPriceVolatility(price) {
  * Mock price feed service class
  */
 class MockPriceFeed extends events_1.EventEmitter {
+    prices = new Map();
+    volumeProfiles = new Map();
+    VOLUME_WINDOW = 10; // Number of price points to consider for volume analysis
     constructor() {
         super();
-        this.prices = new Map();
-        this.volumeProfiles = new Map();
-        this.VOLUME_WINDOW = 10; // Number of price points to consider for volume analysis
     }
     getPrice(tokenAddress) {
         const priceHistory = this.prices.get(tokenAddress);
         if (!priceHistory || priceHistory.length === 0)
             return 0;
-        return priceHistory[priceHistory.length - 1].price;
+        return priceHistory[priceHistory.length - 1]?.price ?? 0;
     }
     updatePrice(tokenAddress, price, volume, volumeProfile) {
         const pricePoint = {
@@ -65,7 +65,7 @@ class MockPriceFeed extends events_1.EventEmitter {
             priceHistory.shift();
         }
         // Calculate volume profile
-        const previousPrice = priceHistory.length > 1 ? priceHistory[priceHistory.length - 2].price : price;
+        const previousPrice = priceHistory.length > 1 ? priceHistory[priceHistory.length - 2]?.price ?? price : price;
         const averageVolume = this.calculateAverageVolume(priceHistory);
         const volumeTrend = this.calculateVolumeTrend(priceHistory);
         const volumeSpikes = this.calculateVolumeSpikes(priceHistory, averageVolume);
@@ -117,3 +117,4 @@ class MockPriceFeed extends events_1.EventEmitter {
 exports.MockPriceFeed = MockPriceFeed;
 // Export a singleton instance
 exports.mockPriceFeed = new MockPriceFeed();
+//# sourceMappingURL=mockPriceFeed.js.map

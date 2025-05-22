@@ -1,0 +1,16 @@
+Configuration Validation Results:
+=====================================
+[SUCCESS] SOLANA_RPC_URL: Present
+[SUCCESS] SOLANA_PRIVATE_KEY: Present
+[WARNING] DATA_DIRECTORY: Missing optional variable, will use default: ./data (Directory for saving state files)
+[WARNING] SAVE_INTERVAL_MINUTES: Missing optional variable, will use default: 5 (Interval for saving state)
+[SUCCESS] LOG_LEVEL: Present
+[WARNING] MIN_LIQUIDITY: Missing optional variable, will use default: 5000 (Minimum liquidity for tokens)
+[SUCCESS] MAX_POSITION_SIZE: Present
+[WARNING] MAX_LIQUIDITY_PERCENTAGE: Missing optional variable, will use default: 5 (Maximum percentage of token liquidity to use)
+[SUCCESS] Solana RPC Connection: Connected successfully ({"feature-set":3271415109,"solana-core":"2.1.16"})
+[WARNING] Wallet Balance: Wallet has zero SOL balance
+[SUCCESS] Data Directory: Directory exists and is writeable: ./data
+[SUCCESS] MAX_POSITION_SIZE: Valid value: 100
+=====================================
+Summary: 12 checks | 7 passed | 5 warnings | 0 errors

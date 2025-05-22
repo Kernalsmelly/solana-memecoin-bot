@@ -7,11 +7,12 @@ exports.LivePriceFeed = void 0;
 const axios_1 = __importDefault(require("axios"));
 const events_1 = require("events");
 class LivePriceFeed extends events_1.EventEmitter {
+    lastVolume = 0;
+    lastPrice = 0;
+    tokenAddress;
+    timer = null;
     constructor(tokenAddress) {
         super();
-        this.lastVolume = 0;
-        this.lastPrice = 0;
-        this.timer = null;
         this.tokenAddress = tokenAddress;
     }
     async start() {
@@ -153,3 +154,4 @@ class LivePriceFeed extends events_1.EventEmitter {
     }
 }
 exports.LivePriceFeed = LivePriceFeed;
+//# sourceMappingURL=livePriceFeed.js.map

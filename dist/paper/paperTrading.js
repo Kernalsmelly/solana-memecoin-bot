@@ -8,6 +8,16 @@ const logger_1 = __importDefault(require("../utils/logger"));
 const events_1 = require("events");
 const web3_js_1 = require("@solana/web3.js");
 class PaperTradingEngine extends events_1.EventEmitter {
+    positions;
+    maxPositions;
+    maxPositionSize;
+    maxDrawdown;
+    notificationManager;
+    initialBalance;
+    currentBalance;
+    highWaterMark;
+    dailyPnL;
+    dailyLoss;
     constructor(config) {
         super();
         this.positions = new Map();
@@ -133,3 +143,4 @@ class PaperTradingEngine extends events_1.EventEmitter {
     }
 }
 exports.PaperTradingEngine = PaperTradingEngine;
+//# sourceMappingURL=paperTrading.js.map

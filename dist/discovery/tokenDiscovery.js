@@ -10,14 +10,23 @@ const logger_1 = __importDefault(require("../utils/logger")); // Correct default
 const memoryManager_1 = require("../utils/memoryManager"); // Correct class import
 // Token discovery class for processing token events
 class TokenDiscovery extends events_1.EventEmitter {
+    birdeyeAPI;
+    tokenAnalyzer;
+    riskManager;
+    tokensDiscovered = new Map();
+    tokenProcessQueue = new Map();
+    tokenExpiryTimes = new Map();
+    cleanupInterval = null;
+    processingQueue = false;
+    lastAnalysisTime = 0;
+    // Configuration
+    MIN_LIQUIDITY;
+    MIN_VOLUME;
+    CLEANUP_INTERVAL_MS;
+    TOKEN_MAX_AGE_MS;
+    ANALYSIS_THROTTLE_MS;
     constructor(birdeyeAPI, options = {}, riskManager) {
         super();
-        this.tokensDiscovered = new Map();
-        this.tokenProcessQueue = new Map();
-        this.tokenExpiryTimes = new Map();
-        this.cleanupInterval = null;
-        this.processingQueue = false;
-        this.lastAnalysisTime = 0;
         this.birdeyeAPI = birdeyeAPI;
         this.riskManager = riskManager;
         // Initialize token analyzer
@@ -288,3 +297,4 @@ class TokenDiscovery extends events_1.EventEmitter {
     }
 }
 exports.TokenDiscovery = TokenDiscovery;
+//# sourceMappingURL=tokenDiscovery.js.map

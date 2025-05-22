@@ -8,6 +8,10 @@ const fs_1 = require("fs");
 const path_1 = require("path");
 const logger_1 = __importDefault(require("./utils/logger"));
 class PersistenceManager {
+    dataDir;
+    stateFile;
+    historyFile;
+    backupDir;
     constructor() {
         this.dataDir = (0, path_1.join)(process.cwd(), 'data');
         this.stateFile = (0, path_1.join)(this.dataDir, 'trading_state.json');
@@ -157,3 +161,4 @@ class PersistenceManager {
     }
 }
 exports.PersistenceManager = PersistenceManager;
+//# sourceMappingURL=persistenceManager.js.map

@@ -292,7 +292,8 @@ export class RiskManager extends EventEmitter {
         history.push({ price, timestamp: Date.now() });
         
         const cutoff = Date.now() - this.config.volWindow!;
-        while (history.length > 0 && history[0].timestamp < cutoff) {
+        // Explicitly check history[0] exists before accessing timestamp
+        while (history.length > 0 && history[0] && history[0].timestamp < cutoff) {
             history.shift();
         }
     }
@@ -309,9 +310,26 @@ export class RiskManager extends EventEmitter {
     
     public completeTradeExecution(id: string, success: boolean, errorMessage?: string) {
         const parts = id.split('-');
-        const timestamp = parseInt(parts[parts.length - 1]);
+        // Safely extract and parse the timestamp
+        const timestampStr = parts.pop(); // Get the last part (removes it from parts)
+        if (!timestampStr) {
+            logger.error(`Invalid trade execution ID format: ${id} - Missing timestamp part.`);
+            return;
+        }
         
-        const execution = this.tradeExecutions.find(e => e.startTime === timestamp && e.tokenSymbol === parts[0]);
+        const timestamp = parseInt(timestampStr);
+        if (isNaN(timestamp)) {
+            logger.error(`Invalid trade execution ID format: ${id} - Timestamp part is not a number: ${timestampStr}`);
+            return;
+        }
+        
+        const tokenSymbol = parts.join('-'); // Re-join remaining parts in case symbol had hyphens
+        if (!tokenSymbol) {
+            logger.error(`Invalid trade execution ID format: ${id} - Missing token symbol part.`);
+            return;
+        }
+        
+        const execution = this.tradeExecutions.find(e => e.startTime === timestamp && e.tokenSymbol === tokenSymbol);
         if (execution) {
             execution.endTime = Date.now();
             execution.success = success;

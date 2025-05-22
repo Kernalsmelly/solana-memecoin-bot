@@ -70,7 +70,7 @@ export class MockPriceFeed extends EventEmitter {
   public getPrice(tokenAddress: string): number {
     const priceHistory = this.prices.get(tokenAddress);
     if (!priceHistory || priceHistory.length === 0) return 0;
-    return priceHistory[priceHistory.length - 1].price;
+    return priceHistory[priceHistory.length - 1]?.price ?? 0;
   }
 
   public updatePrice(tokenAddress: string, price: number, volume: number, volumeProfile?: Partial<VolumeProfile>): void {
@@ -93,7 +93,7 @@ export class MockPriceFeed extends EventEmitter {
     }
 
     // Calculate volume profile
-    const previousPrice = priceHistory.length > 1 ? priceHistory[priceHistory.length - 2].price : price;
+    const previousPrice = priceHistory.length > 1 ? priceHistory[priceHistory.length - 2]?.price ?? price : price;
     const averageVolume = this.calculateAverageVolume(priceHistory);
     const volumeTrend = this.calculateVolumeTrend(priceHistory);
     const volumeSpikes = this.calculateVolumeSpikes(priceHistory, averageVolume);

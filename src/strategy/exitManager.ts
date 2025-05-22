@@ -4,8 +4,7 @@ import { LiveOrderExecution, OrderExecution } from '../orderExecution';
 import { Position, TradeOrder } from '../types'; // Import global Position type and TradeOrder
 import { RiskManager } from '../live/riskManager';
 import { BirdeyeAPI } from '../api/birdeyeAPI'; // Import BirdeyeAPI
-import { sendAlert } from '../utils/notifications';
-import { AlertLevel } from '../utils/notifications'; // Import AlertLevel type
+import { sendAlert, AlertLevel } from '../utils/notifications'; // Keep AlertLevel import for type annotation
 import { PublicKey } from '@solana/web3.js';
 import { PatternType } from '../types'; // Import PatternType
 
@@ -117,7 +116,7 @@ export class ExitManager extends EventEmitter {
   private analysisInterval: NodeJS.Timeout | null = null;
 
   // Quick cache for last N prices for volatility calculation
-  private priceHistory: Map<string, number[]> = new Map<string, number[]>(); // Explicit typing
+  private priceHistory: Map<string, number[]> = new Map<string, number[]>(); // Explicit typing. Key should be tokenAddress
 
   constructor(
     orderExecution: OrderExecution,
@@ -210,7 +209,7 @@ export class ExitManager extends EventEmitter {
     this.positions.set(position.id, position); // Use id from ManagedPosition
 
     // Initialize price history for this token
-    this.priceHistory.set(position.tokenAddress, [position.entryPrice]); // Use tokenAddress from base Position
+    this.priceHistory.set(position.tokenAddress, [position.entryPrice]); // Use tokenAddress as key
 
     // Set initial stop loss and take profit based on rules
     const updatedPosition = this.applyExitRules(position); // applyExitRules now uses/returns ManagedPosition
@@ -232,9 +231,10 @@ export class ExitManager extends EventEmitter {
    * Remove a tracked position
    */
   public removePosition(positionId: string): void {
-    if (this.positions.has(positionId)) { // Check existence before deleting
+    const position = this.positions.get(positionId);
+    if (position) { // Check existence before deleting
       this.positions.delete(positionId);
-      this.priceHistory.delete(positionId); // Also remove from price history if using id as key, might need tokenAddress
+      this.priceHistory.delete(position.tokenAddress); // Use tokenAddress as key
       logger.info('Position removed from Exit Manager', { id: positionId });
       this.emit('positionRemoved', positionId);
     }
@@ -317,14 +317,14 @@ export class ExitManager extends EventEmitter {
           this._fetchPrice(position.tokenAddress)
             .then(price => {
               if (price !== null) {
-                // Update price history for volatility calculation
-                let history = this.priceHistory.get(position.id) || [];
+                // Update price history for this token
+                let history = this.priceHistory.get(position.tokenAddress) || []; // Use tokenAddress as key
                 history.push(price);
                 // Keep only the last N prices (N = lookbackPeriods)
                 if (history.length > this.config.volatilityExits.lookbackPeriods) {
                   history = history.slice(-this.config.volatilityExits.lookbackPeriods);
                 }
-                this.priceHistory.set(position.id, history);
+                this.priceHistory.set(position.tokenAddress, history); // Use tokenAddress as key
 
                 // Update position object directly in the map
                 const currentPosition = this.positions.get(position.id);
@@ -416,21 +416,26 @@ export class ExitManager extends EventEmitter {
    * @returns Exit reason string if triggered, null otherwise
    */
   private checkProfitLossRules(position: ManagedPosition): string | null { // Use ManagedPosition
-    const currentProfitPercent = ((position.currentPrice - position.entryPrice) / position.entryPrice) * 100;
+    // Ensure currentPrice is available
+    if (typeof position.currentPrice !== 'number') {
+        logger.warn('Skipping P/L check due to missing currentPrice', { id: position.id });
+        return null;
+    }
 
     // Use specific rules if defined for the pattern
     const patternRules = this.config.patternSpecificRules[position.pattern] || []; // Use pattern from ManagedPosition
-    const profitTargetRule = patternRules.find(r => r.type === 'profit');
-    const lossTargetRule = patternRules.find(r => r.type === 'loss');
+    // TODO: Consider if pattern rules should define price levels or percentages
+    // const profitTargetRule = patternRules.find(r => r.type === 'profit');
+    // const lossTargetRule = patternRules.find(r => r.type === 'loss');
 
-    // Check take profit
-    if (position.takeProfit && currentProfitPercent >= position.takeProfit) {
-      return `Take Profit (${position.takeProfit}%)`;
+    // Check take profit (comparing current price to target price level)
+    if (position.takeProfit && position.currentPrice >= position.takeProfit) {
+      return `Take Profit hit at price ${position.takeProfit.toFixed(6)}`; // Reference the price level
     }
 
-    // Check stop loss
-    if (position.stopLoss && currentProfitPercent <= position.stopLoss) {
-      return `Stop Loss (${position.stopLoss}%)`;
+    // Check stop loss (comparing current price to target price level)
+    if (position.stopLoss && position.currentPrice <= position.stopLoss) {
+      return `Stop Loss hit at price ${position.stopLoss.toFixed(6)}`; // Reference the price level
     }
 
     return null;
@@ -507,17 +512,38 @@ export class ExitManager extends EventEmitter {
     const stdDevMult = volatilityRule ? (volatilityRule as any).multiplier || this.config.volatilityExits.stdDevMultiplier : this.config.volatilityExits.stdDevMultiplier;
 
     // Get price history for the token
-    const prices = this.priceHistory.get(position.id); // Use id from ManagedPosition
-    if (!prices || prices.length < lookback) {
+    const prices = this.priceHistory.get(position.tokenAddress); // Use tokenAddress as key
+    // Need at least 2 prices for return calculation and enough for lookback
+    if (!prices || prices.length < 2 || prices.length < lookback) { 
       return null; // Not enough data
+    }
+
+    // Ensure current price is valid before proceeding
+    if (typeof position.currentPrice !== 'number') {
+      logger.warn('Skipping volatility check due to missing current price', { id: position.id });
+      return null;
     }
 
     // Calculate historical volatility
     const returns: number[] = []; // Explicitly type as number[]
-    for (let i = 1; i < prices.length; i++) {
-      const returnPct = (prices[i] - prices[i-1]) / prices[i-1];
-      returns.push(returnPct);
+    // Ensure we only iterate over valid indices
+    for (let i = Math.max(1, prices.length - lookback + 1); i < prices.length; i++) {
+      // Explicitly check previous price existence and type before calculation
+      const prevPrice = prices[i-1];
+      const currentPriceAtIndex = prices[i]; // Check current price at index i too
+      if (typeof prevPrice === 'number') {
+        if (typeof currentPriceAtIndex === 'number') {
+          const returnPct = (currentPriceAtIndex - prevPrice) / prevPrice;
+          returns.push(returnPct);
+        } else {
+          logger.warn(`Skipping return calculation due to invalid current price at index ${i}`, { id: position.id });
+        }
+      } else {
+          logger.warn(`Skipping return calculation due to invalid previous price at index ${i-1}`, { id: position.id });
+      }
     }
+    
+    if (returns.length === 0) return null; // No returns calculated
 
     // Calculate standard deviation of returns
     const mean = returns.reduce((sum, val) => sum + val, 0) / returns.length;
@@ -525,7 +551,15 @@ export class ExitManager extends EventEmitter {
     const stdDev = Math.sqrt(variance);
 
     // Check if current return exceeds volatility threshold
-    const currentReturn = (position.currentPrice - prices[prices.length - 2]) / prices[prices.length - 2];
+    // Safely access the second to last price
+    const previousPrice = prices[prices.length - 2]; 
+    // Added check for currentPrice validity above
+    // Explicitly check previousPrice before using it
+    if (typeof previousPrice !== 'number') {
+        logger.warn('Skipping volatility return check due to missing previous price', { id: position.id });
+        return null;
+    }
+    const currentReturn = (position.currentPrice - previousPrice) / previousPrice; 
 
     const volatilityThreshold = stdDev * stdDevMult;
 
@@ -613,7 +647,7 @@ export class ExitManager extends EventEmitter {
       const sellOrder: TradeOrder = {
         tokenAddress: position.tokenAddress, // Use tokenAddress from base Position
         side: 'sell', // Use side instead of direction
-        size: position.quantity, // Quantity is already in smallest token units
+        size: position.quantity, // Reverted: Use bigint quantity as required by TradeOrder type
         price: position.currentPrice, // Use the current fetched price
         timestamp: Date.now(), // Timestamp of sell decision
       };
@@ -631,12 +665,12 @@ export class ExitManager extends EventEmitter {
         return true;
       } else {
         logger.error('Failed to execute exit order', { id: position.id, error: result.error }); // Use id from ManagedPosition
-        await sendAlert(`🚨 Failed to exit position ${position.tokenSymbol || position.tokenAddress}! Reason: ${result.error}`, 'CRITICAL'); // Use base Position fields & correct AlertLevel
+        await sendAlert(`🚨 Failed to exit position ${position.tokenSymbol || position.tokenAddress}! Reason: ${result.error}`, 'CRITICAL'); // Use string literal
         return false;
       }
     } catch (error) {
       logger.error('Exception during exit execution', { id: position.id, error }); // Use id from ManagedPosition
-      await sendAlert(`🚨 CRITICAL ERROR exiting position ${position.tokenSymbol || position.tokenAddress}! Error: ${error}`, 'CRITICAL'); // Use base Position fields & correct AlertLevel
+      await sendAlert(`🚨 CRITICAL ERROR exiting position ${position.tokenSymbol || position.tokenAddress}! Error: ${error}`, 'CRITICAL'); // Use string literal
       return false;
     }
   }
@@ -677,7 +711,9 @@ export class ExitManager extends EventEmitter {
                       `Duration: ${durationMinutes} mins\n` +
                       `Exit Price (Est): ${estimatedExitPrice.toFixed(6)}`;
 
-    await sendAlert(message, 'INFO'); // Correct AlertLevel
+    // Determine appropriate alert level based on PNL
+    const alertLevel: AlertLevel = (pnlPercentString.startsWith('-') ? 'WARN' : 'INFO') as AlertLevel; 
+    await sendAlert(message, alertLevel); // Pass the variable typed as AlertLevel
   }
 
   /**
@@ -692,9 +728,14 @@ export class ExitManager extends EventEmitter {
     // Merge top-level objects
     for (const [key, value] of Object.entries(userConfig)) {
       if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
-        mergedConfig[key] = { ...mergedConfig[key], ...value };
-      } else {
-        mergedConfig[key] = value;
+        // Ensure type safety when merging nested objects
+        if (key in mergedConfig && typeof (mergedConfig as any)[key] === 'object' && (mergedConfig as any)[key] !== null) {
+           (mergedConfig as any)[key] = { ...(mergedConfig as any)[key], ...value };
+        } else {
+           (mergedConfig as any)[key] = value;
+        }
+      } else if (value !== undefined) { // Avoid overwriting with undefined from partial config
+         (mergedConfig as any)[key] = value;
       }
     }
 

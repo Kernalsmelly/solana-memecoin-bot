@@ -95,10 +95,11 @@ global.fetch = vitest_1.vi.fn().mockImplementation((url) => {
     });
 });
 // Clean up after each test
-afterEach(() => {
-    vitest_1.vi.clearAllMocks();
-    // Force cleanup of memory usage - safely check if method exists
-    if (typeof mockLogger_1.default.clear === 'function') {
-        mockLogger_1.default.clear();
-    }
-});
+// afterEach(() => {
+//   vi.clearAllMocks();
+//   // Force cleanup of memory usage - safely check if method exists
+//   if (typeof mockLogger.clear === 'function') {
+//     mockLogger.clear();
+//   }
+// });
+//# sourceMappingURL=setup.js.map

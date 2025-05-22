@@ -1,111 +1,164 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+const dotenv = __importStar(require("dotenv"));
+const path_1 = __importDefault(require("path")); // Import path module
+// Load .env file from project root first thing
+dotenv.config({ path: path_1.default.resolve(process.cwd(), '.env') });
 const newCoinDetector_1 = require("./services/newCoinDetector");
 const notificationManager_1 = require("./live/notificationManager");
 const web3_js_1 = require("@solana/web3.js");
+const anchor_1 = require("@coral-xyz/anchor"); // Correct import for Wallet
 const bs58_1 = __importDefault(require("bs58"));
-const birdeyeAPI_1 = require("./api/birdeyeAPI");
 const orderExecution_1 = require("./orderExecution");
 const riskManager_1 = require("./live/riskManager");
 const exitManager_1 = require("./strategy/exitManager");
 const portfolioOptimizer_1 = require("./strategy/portfolioOptimizer");
 const logger_1 = __importDefault(require("./utils/logger"));
-const dotenv_1 = __importDefault(require("dotenv"));
-dotenv_1.default.config();
+const config_1 = require("./utils/config"); // USE NAMED IMPORT
+const verifyConfig_1 = __importDefault(require("./utils/verifyConfig")); // Import default verifyConfig function
 // --- Environment Variable Validation ---
-const SOLANA_RPC_URL = process.env.SOLANA_RPC_URL;
-const SOLANA_PRIVATE_KEY = process.env.SOLANA_PRIVATE_KEY;
-const BIRDEYE_API_KEY = process.env.BIRDEYE_API_KEY;
-if (!SOLANA_RPC_URL || !SOLANA_PRIVATE_KEY || !BIRDEYE_API_KEY) {
-    logger_1.default.error('Missing required environment variables: SOLANA_RPC_URL, SOLANA_PRIVATE_KEY, BIRDEYE_API_KEY');
-    process.exit(1);
-}
-let wallet;
-try {
-    wallet = web3_js_1.Keypair.fromSecretKey(bs58_1.default.decode(SOLANA_PRIVATE_KEY));
-    logger_1.default.info(`Wallet loaded: ${wallet.publicKey.toBase58()}`);
-}
-catch (error) {
-    logger_1.default.error('Failed to decode SOLANA_PRIVATE_KEY. Ensure it is a base58 encoded secret key.', error);
+if (!process.env.SOLANA_RPC_URL || !process.env.SOLANA_PRIVATE_KEY) {
+    logger_1.default.error('Missing required environment variables: SOLANA_RPC_URL, SOLANA_PRIVATE_KEY');
     process.exit(1);
 }
 // --- Main Application Setup ---
 async function main() {
-    // Re-check critical keys just before use to satisfy TypeScript
-    if (!SOLANA_PRIVATE_KEY) {
-        throw new Error('SOLANA_PRIVATE_KEY is unexpectedly undefined');
+    // Load and verify configuration first
+    const validationResult = await (0, verifyConfig_1.default)(); // Remove 'config' argument
+    if (!validationResult.isValid) {
+        logger_1.default.error('Configuration validation failed. Please check .env file and logs.');
+        // Log specific issues
+        if (validationResult.missingRequired.length > 0) {
+            logger_1.default.error(`Missing required env vars: ${validationResult.missingRequired.join(', ')}`);
+        }
+        if (validationResult.riskParameters && validationResult.riskParameters.issues.length > 0) {
+            logger_1.default.error(`Risk parameter issues: ${validationResult.riskParameters.issues.join(', ')}`);
+        }
+        if (!validationResult.walletStatus.valid) {
+            logger_1.default.error(`Wallet validation error: ${validationResult.walletStatus.error}`);
+        }
+        if (!validationResult.rpcStatus.valid) {
+            logger_1.default.error(`RPC validation error: ${validationResult.rpcStatus.error}`);
+        }
+        process.exit(1);
+    }
+    logger_1.default.info('Configuration verified successfully.');
+    if (validationResult.missingRecommended.length > 0) {
+        logger_1.default.warn(`Missing recommended env vars: ${validationResult.missingRecommended.join(', ')}`);
     }
     // Declare NotificationManager outside try block to use in catch
     let notificationManager = null;
+    let wallet;
+    let keypair;
     try {
-        // Initialize notification manager
+        // Decode Private Key and create Wallet
+        const privateKeyString = config_1.config.solana.walletPrivateKey.trim(); // Correct property name
+        if (!privateKeyString) {
+            throw new Error('SOLANA_PRIVATE_KEY is missing or empty in config.');
+        }
+        const privateKeyBytes = bs58_1.default.decode(privateKeyString);
+        keypair = web3_js_1.Keypair.fromSecretKey(privateKeyBytes);
+        wallet = new anchor_1.Wallet(keypair);
+        logger_1.default.info(`Wallet loaded: ${wallet.publicKey.toBase58()}`);
+        // Initialize notification manager using config
         notificationManager = new notificationManager_1.NotificationManager({
-            discord: process.env.DISCORD_WEBHOOK ? {
-                webhookUrl: process.env.DISCORD_WEBHOOK
+            discord: config_1.config.notifications.discordWebhookUrl ? {
+                webhookUrl: config_1.config.notifications.discordWebhookUrl
             } : undefined,
-            telegram: process.env.TELEGRAM_API_ID && process.env.TELEGRAM_API_HASH && process.env.TELEGRAM_SESSION && process.env.TELEGRAM_CHAT_ID ? {
-                apiId: parseInt(process.env.TELEGRAM_API_ID),
-                apiHash: process.env.TELEGRAM_API_HASH || '', // Add default
-                sessionString: process.env.TELEGRAM_SESSION || '', // Add default
-                chatId: process.env.TELEGRAM_CHAT_ID || '' // Add default
+            telegram: config_1.config.notifications.telegramApiId && config_1.config.notifications.telegramApiHash && config_1.config.notifications.telegramSessionString && config_1.config.notifications.telegramChatId ? {
+                apiId: config_1.config.notifications.telegramApiId,
+                apiHash: config_1.config.notifications.telegramApiHash,
+                sessionString: config_1.config.notifications.telegramSessionString, // Corrected property name usage
+                chatId: config_1.config.notifications.telegramChatId
             } : undefined,
-            notifyLevel: process.env.NOTIFY_LEVEL || 'all' // Cast to any to allow string values
+            notifyLevel: config_1.config.notifications.notifyLevel || 'all' // Corrected property name usage
         });
-        // 1. Initialize Core Services
+        // 1. Initialize Core Services using config
         logger_1.default.info(`Initializing core services...`);
         logger_1.default.info(`Using wallet: ${wallet.publicKey.toBase58()}`);
-        logger_1.default.info(`Connecting to Solana RPC: ${SOLANA_RPC_URL}`);
-        const connection = new web3_js_1.Connection(SOLANA_RPC_URL, 'confirmed');
-        const birdeyeApi = new birdeyeAPI_1.BirdeyeAPI(BIRDEYE_API_KEY); // Use non-null assertion
-        const orderExecution = new orderExecution_1.LiveOrderExecution(connection, wallet, {
-            slippageBps: parseInt(process.env.JUPITER_SLIPPAGE_BPS || '100') // Default 1%
+        const connection = new web3_js_1.Connection(config_1.config.solana.rpcEndpoint, 'confirmed');
+        logger_1.default.info(`Connected to Solana RPC: ${config_1.config.solana.rpcEndpoint}`);
+        // Correctly pass only slippageBps to LiveOrderExecution options
+        const orderExecution = new orderExecution_1.LiveOrderExecution(connection, keypair, {
+            slippageBps: config_1.config.trading.jupiterSlippageBps // Use config
         });
-        // Provide RiskManager configuration from env vars or defaults
+        // Provide RiskManager configuration from config
         const riskManager = new riskManager_1.RiskManager({
-            maxDrawdown: parseFloat(process.env.RISK_MAX_DRAWDOWN || '20'), // 20% default
-            maxDailyLoss: parseFloat(process.env.RISK_MAX_DAILY_LOSS || '10'), // 10% default
-            maxPositions: parseInt(process.env.MAX_POSITIONS || '5'),
-            maxPositionSize: parseFloat(process.env.MAX_POSITION_SIZE_SOL || '1'), // Max 1 SOL per position default
-            // Optional config can be added here from env vars
-            maxPositionValueUsd: parseFloat(process.env.TARGET_POSITION_VALUE_USD || '50'),
-            maxLiquidityPercent: parseFloat(process.env.MAX_LIQUIDITY_PERCENTAGE || '0.05'), // 5% default
-            minPositionValueUsd: parseFloat(process.env.MIN_POSITION_VALUE_USD || '10')
+            maxDrawdown: config_1.config.risk.maxDrawdownPercent,
+            maxDailyLoss: config_1.config.risk.maxDailyLossPercent,
+            maxPositions: config_1.config.risk.maxActivePositions, // Corrected property name
+            maxPositionSize: config_1.config.trading.maxPositionSize, // Use trading.maxPositionSize (needs clarification SOL vs USD)
+            maxPositionValueUsd: config_1.config.trading.targetPositionValueUsd, // Map from trading config
+            maxLiquidityPercent: config_1.config.trading.maxLiquidityPercentage, // Corrected property name
+            minPositionValueUsd: config_1.config.trading.minPositionValueUsd // Map from trading config
         });
-        // TODO: Define ExitManager config - potentially load from a file or env vars
+        // TODO: Refine ExitManager config loading
         const exitManagerConfig = {
-            // Example overrides
-            lossExits: { stopLoss: -15 }, // 15% stop loss default
-            trailingStops: { enabled: true, activationThreshold: 20, trailPercent: 10 },
+            // Example overrides - consider moving to config file/structure
+            lossExits: { stopLoss: config_1.config.risk.defaultStopLossPercent * -1 }, // Use default SL from config
+            trailingStops: {
+                // Provide defaults for optional trailing stop config
+                enabled: config_1.config.risk.trailingStopEnabled ?? false,
+                activationThreshold: config_1.config.risk.trailingStopActivationPercent ?? 5,
+                trailPercent: config_1.config.risk.trailingStopTrailPercent ?? 2
+            },
+            // Add other exit reasons from config if available
         };
-        const exitManager = new exitManager_1.ExitManager(orderExecution, riskManager, birdeyeApi, exitManagerConfig);
+        // TODO: Update ExitManager to accept a generic API client interface if needed for price data
+        const exitManager = new exitManager_1.ExitManager(orderExecution, riskManager, undefined, exitManagerConfig); // Pass undefined for API client
         // 2. Initialize Portfolio Optimizer
         const portfolioOptimizer = new portfolioOptimizer_1.PortfolioOptimizer({
             orderExecution: orderExecution,
             riskManager: riskManager,
-            birdeyeApi: birdeyeApi,
+            // TODO: Update PortfolioOptimizer to accept a generic client interface
+            birdeyeApi: undefined, // Pass undefined for API client
             exitManager: exitManager, // PortfolioOptimizer needs ExitManager ref
-            maxPortfolioAllocationPercent: parseFloat(process.env.MAX_PORTFOLIO_ALLOCATION || '50'), // 50% of capital
-            targetPositionValueUsd: parseFloat(process.env.TARGET_POSITION_VALUE_USD || '50'), // Target $50 per position
-            minPositionValueUsd: parseFloat(process.env.MIN_POSITION_VALUE_USD || '10'), // Min $10 per position
-            maxPositions: parseInt(process.env.MAX_POSITIONS || '5') // Max 5 positions
+            maxPortfolioAllocationPercent: config_1.config.risk.maxPortfolioAllocationPercent, // Corrected property name usage
+            targetPositionValueUsd: config_1.config.trading.targetPositionValueUsd, // Use config
+            minPositionValueUsd: config_1.config.trading.minPositionValueUsd, // Use config
+            maxPositions: config_1.config.risk.maxActivePositions // Corrected property name
         });
-        // 3. Initialize Token Detection (Replace Demo Detector)
-        // Example: Using Birdeye WebSocket Integration (assuming class exists)
-        // const tokenDetector = new BirdeyeTokenDetector(BIRDEYE_API_KEY, { /* config */ });
-        // For now, keep the demo detector to avoid breaking execution, but mark as TODO
-        logger_1.default.info('Initializing Real New Coin Detector...');
-        const detectorConfig = {
-            minLiquidity: parseFloat(process.env.MIN_LIQUIDITY || '5000'), // Default $5000
-            maxAgeHours: parseFloat(process.env.MAX_TOKEN_AGE_HOURS || '24'), // Default 24 hours
-            scanIntervalSec: parseInt(process.env.DETECTOR_SCAN_INTERVAL_SEC || '60'), // Default 60 seconds
-            birdeyeApiKey: BIRDEYE_API_KEY, // Required - Use non-null assertion
-            defaultStopLossPercent: parseFloat(process.env.DEFAULT_STOP_LOSS_PERCENT || '10'), // Default 10%
-            defaultTimeframe: process.env.DEFAULT_TIMEFRAME || '15m', // Default 15 minutes
-        };
-        const newCoinDetector = new newCoinDetector_1.NewCoinDetector(detectorConfig);
+        logger_1.default.info('Portfolio Optimizer initialized.');
+        // 3. Initialize Token Detection 
+        logger_1.default.info('Initializing New Coin Detector...');
+        // SWAP ARGUMENTS: Pass connection first, then config
+        const newCoinDetector = new newCoinDetector_1.NewCoinDetector(connection, config_1.config);
         logger_1.default.info('New Coin Detector initialized.');
         // --- Event Wiring ---
         logger_1.default.info('Wiring up event listeners...');
@@ -225,3 +278,4 @@ main().catch(error => {
     logger_1.default.error('Error in main:', error);
     process.exit(1);
 });
+//# sourceMappingURL=index.js.map

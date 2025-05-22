@@ -152,23 +152,25 @@ export class PatternDetector extends EventEmitter {
    * Analyze token for trading patterns
    */
   public analyzeTokenForPattern(token: any): PatternMatch | null {
+    logger.info('[DEBUG] analyzeTokenForPattern called', { token });
     // Skip if token is too old or doesn't meet liquidity requirements
-    if ((token.age && token.age > this.maxTokenAge) || 
-        (token.liquidity && token.liquidity < this.minLiquidity)) {
+    if ((token.age && token.age > this.maxTokenAge)) {
+      logger.info('[DEBUG] Token skipped due to age', { token, maxTokenAge: this.maxTokenAge });
       return null;
     }
-    
+    if ((token.liquidity && token.liquidity < this.minLiquidity)) {
+      logger.info('[DEBUG] Token skipped due to liquidity', { token, minLiquidity: this.minLiquidity });
+      return null;
+    }
     // Analyze for patterns
     const patternMatch = this.analyzePatternMatch(token);
-    
     if (patternMatch) {
       const { pattern, confidence, signalType } = patternMatch;
-      
       // Calculate position size based on risk parameters
       const positionSize = this.calculatePositionSize(token.price);
-      
       // Check if we can open a position
       if (this.riskManager.canOpenPosition(positionSize, token.symbol, token.price)) {
+        logger.info('[DEBUG] Pattern matched and can open position', { token, pattern, confidence, positionSize });
         // Emit pattern detected event
         this.emit('patternDetected', {
           tokenAddress: token.address,
@@ -180,18 +182,14 @@ export class PatternDetector extends EventEmitter {
           positionSize,
           timestamp: Date.now()
         });
-        
-        logger.info('Pattern detected', {
-          symbol: token.symbol,
-          pattern,
-          confidence,
-          price: token.price
-        });
-        
+        logger.info('[DEBUG] patternDetected event emitted', { token, pattern, confidence, positionSize });
         return patternMatch;
+      } else {
+        logger.info('[DEBUG] Pattern matched but cannot open position', { token, pattern, confidence, positionSize });
       }
+    } else {
+      logger.info('[DEBUG] No pattern matched for token', { token });
     }
-    
     return null;
   }
   

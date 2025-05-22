@@ -660,8 +660,22 @@ async function runRobustTest() {
     let realizedPnl = 0;
 
     // Initialize with base volume profile
-    const baseVolume = 100000;
-    priceFeed.updatePrice('TEST_TOKEN', scenario.patterns[0].price, baseVolume);
+    if (scenario.patterns.length > 0) {
+      const firstPattern = scenario.patterns[0];
+      // Double-check the first pattern exists to satisfy stricter TS checks
+      if (firstPattern) {
+        const baseVolume = 100000;
+        priceFeed.updatePrice('TEST_TOKEN', firstPattern.price, baseVolume);
+      } else {
+        // This case should theoretically not happen due to the outer check,
+        // but adding it handles edge cases and satisfies the compiler.
+        console.error(`Scenario "${scenario.name}" has patterns array but first element is undefined.`);
+        continue;
+      }
+    } else {
+      console.warn(`Scenario "${scenario.name}" has no patterns, skipping initialization.`);
+      continue; // Skip to the next scenario if no patterns exist
+    }
 
     // Wait for initial setup
     await new Promise(resolve => setTimeout(resolve, 100));
@@ -683,15 +697,12 @@ async function runRobustTest() {
       // Store position value before update
       const prevPositionValue = simulator.getPositionValue('TEST_TOKEN');
 
-      const result = simulator.updatePrice(pattern.price, volumeProfile);
-      if (result) {
-        console.log(`\n🚨 Pattern Detected at $${pattern.price.toFixed(4)}!`);
-        console.log(`Type: ${result.type}`);
-        console.log(`Confidence: ${result.confidence}%`);
-        console.log(`Action: ${result.action}`);
-        console.log('\nPattern Details:');
-        console.log(result.patterns);
-      }
+      // Update the price feed. The simulator should ideally react internally.
+      priceFeed.updatePrice('TEST_TOKEN', pattern.price, pattern.volume, volumeProfile);
+
+      // TODO: If the simulator needs to explicitly check patterns after a price update,
+      // a method like simulator.checkForPatterns() could be called here.
+      // For now, we remove the old logic relying on a return value from updatePrice.
 
       // Calculate current position value and any realized gains
       const currentPositionValue = simulator.getPositionValue('TEST_TOKEN');
@@ -746,7 +757,12 @@ async function runRobustTest() {
 
   console.log('\n📊 Scenario Breakdown:');
   scenarios.forEach((scenario, i) => {
-    console.log(`${scenario.name}: ${results[i].pnl.toFixed(1)}% (DD: ${results[i].maxDrawdown.toFixed(1)}%)`);
+    const result = results[i];
+    if (result) {
+      console.log(`${scenario.name}: ${result.pnl.toFixed(1)}% (DD: ${result.maxDrawdown.toFixed(1)}%)`);
+    } else {
+      console.warn(`No result found for scenario: ${scenario.name}`);
+    }
   });
 }
 

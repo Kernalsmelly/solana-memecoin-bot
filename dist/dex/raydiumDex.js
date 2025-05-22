@@ -17,6 +17,8 @@ async function mockRaydiumSwap(params) {
     return txSignature;
 }
 class RaydiumDEX {
+    rpcEndpoint;
+    slippageTolerance;
     constructor() {
         this.rpcEndpoint = config_1.config.solana.rpcEndpoint;
         this.slippageTolerance = config_1.config.trading.slippageTolerance / 100; // Convert from percentage to decimal
@@ -66,3 +68,4 @@ class RaydiumDEX {
 exports.RaydiumDEX = RaydiumDEX;
 // Export singleton instance
 exports.raydiumDex = new RaydiumDEX();
+//# sourceMappingURL=raydiumDex.js.map

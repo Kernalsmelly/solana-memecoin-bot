@@ -13,7 +13,7 @@ declare module '@jup-ag/core' {
 
     export interface Route {
         inAmount: number;
-        outAmount: number;
+        outAmount: string;
         priceImpactPct: number;
         marketInfos: any[];
         amount: number;
@@ -65,4 +65,29 @@ declare module '@jup-ag/core' {
     }
 
     export function load(params: JupiterOptions): Promise<Jupiter>;
+}
+
+declare module '@jup-ag/api' {
+    export interface QuoteResponse {
+        inputMint: string;
+        inAmount: string;
+        outputMint: string;
+        outAmount: string; 
+        otherAmountThreshold: string;
+        swapMode: string;
+        slippageBps: number;
+        priceImpactPct: number;
+        routePlan: any[];
+        contextSlot: number;
+        timeTaken: number;
+    }
+
+    export interface QuoteGetRequest {
+        inputMint: string;
+        outputMint: string;
+        amount: string; 
+        slippageBps?: number;
+        swapMode?: string;
+        onlyDirectRoutes?: boolean;
+    }
 }

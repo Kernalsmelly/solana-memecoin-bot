@@ -15,18 +15,18 @@ interface TelegramConfig {
 interface NotificationConfig {
     discord?: DiscordConfig;
     telegram?: TelegramConfig;
-    notifyLevel: 'all' | 'important' | 'critical';
+    notifyLevel?: 'all' | 'trades' | 'errors' | 'patterns' | 'none';
 }
 
 export class NotificationManager {
     private discord?: DiscordConfig;
     private telegram?: TelegramConfig;
-    private notifyLevel: string;
+    private notifyLevel: 'all' | 'trades' | 'errors' | 'patterns' | 'none';
 
     constructor(config: NotificationConfig) {
         this.discord = config.discord;
         this.telegram = config.telegram;
-        this.notifyLevel = config.notifyLevel;
+        this.notifyLevel = config.notifyLevel ?? 'all';
     }
 
     public async notifyPattern(pattern: PatternDetection): Promise<void> {
@@ -35,7 +35,7 @@ export class NotificationManager {
             `Confidence: ${pattern.confidence.toFixed(1)}%\n` +
             `Timestamp: ${new Date(pattern.timestamp).toLocaleString()}`;
 
-        await this.notify(message, 'important');
+        await this.notify(message, 'patterns');
     }
 
     public async notifyTrade(type: 'open' | 'close', position: Position): Promise<void> {
@@ -49,7 +49,7 @@ export class NotificationManager {
             (position.pnl ? `PnL: ${position.pnl > 0 ? '+' : ''}${position.pnl.toFixed(2)}%\n` : '') +
             `Stop Loss: $${position.stopLoss.toFixed(8)}`;
 
-        await this.notify(message, 'important');
+        await this.notify(message, 'trades');
     }
 
     public async notifyRisk(metrics: RiskMetrics): Promise<void> {
@@ -65,31 +65,35 @@ export class NotificationManager {
 
     public async notifyError(error: string | Error): Promise<void> {
         const message = `⚠️ Error: ${error instanceof Error ? error.message : error}`;
-        await this.notify(message, 'critical');
+        await this.notify(message, 'errors');
     }
 
     public async notifyInfo(message: string): Promise<void> {
-        const level = 'all'; // Or adjust based on info importance
+        const level = 'all';
         await this.notify(message, level);
     }
 
-    private async notify(message: string, level: 'all' | 'important' | 'critical'): Promise<void> {
-        // Check notification level
-        if (level === 'important' && this.notifyLevel === 'critical') return;
-        if (level === 'all' && this.notifyLevel !== 'all') return;
+    private async notify(message: string, level: 'all' | 'trades' | 'errors' | 'patterns'): Promise<void> {
+        const shouldNotify = (
+            this.notifyLevel === 'all' ||
+            (this.notifyLevel === 'patterns' && (level === 'patterns' || level === 'errors')) ||
+            (this.notifyLevel === 'trades' && (level === 'trades' || level === 'errors')) ||
+            (this.notifyLevel === 'errors' && level === 'errors')
+        );
+
+        if (!shouldNotify || this.notifyLevel === 'none') {
+            return;
+        }
 
         try {
-            // Send to Discord
             if (this.discord) {
                 await this.sendDiscordMessage(message);
             }
 
-            // Send to Telegram
             if (this.telegram) {
                 await this.sendTelegramMessage(message);
             }
 
-            // Log message
             logger.info(`Notification sent: ${message}`);
         } catch (error) {
             logger.error('Error sending notification:', error);
@@ -115,12 +119,10 @@ export class NotificationManager {
     }
 
     private async sendTelegramMessage(message: string): Promise<void> {
-        // TODO: Implement Telegram message sending
         logger.info('Telegram notification not implemented yet');
     }
 
     public async cleanup(): Promise<void> {
-        // Cleanup any resources (e.g., Telegram client)
         logger.info('Notification manager cleaned up');
     }
 }

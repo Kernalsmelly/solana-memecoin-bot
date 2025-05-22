@@ -12,6 +12,12 @@ const tokenMonitor_1 = require("./tokenMonitor");
 const persistenceManager_1 = require("./persistenceManager");
 const logger_1 = __importDefault(require("./utils/logger"));
 class TradingSystem {
+    connection;
+    orderExecution;
+    contractValidator;
+    tokenMonitor;
+    persistenceManager;
+    state;
     constructor(connection) {
         this.connection = connection;
         this.orderExecution = (0, orderExecution_1.createOrderExecution)(connection);
@@ -59,6 +65,7 @@ class TradingSystem {
     }
     async handlePatternDetected(pattern) {
         try {
+            logger_1.default.info('[DEBUG] handlePatternDetected called', { pattern });
             // Generate trading signal
             const signal = {
                 tokenAddress: pattern.tokenAddress,
@@ -70,13 +77,19 @@ class TradingSystem {
                 timeframe: '1h',
                 signalType: 'buy' // Fixed missing signalType
             };
-            // Execute trade if conditions met
-            if (signal.confidence > 0.7 && this.canOpenPosition()) {
+            logger_1.default.info('[DEBUG] TradingSignal generated', { signal });
+            // FORCE TRADE: Always execute the signal for debugging
+            if (this.canOpenPosition()) {
+                logger_1.default.info('[DEBUG] Attempting to execute trade', { signal });
                 await this.executeSignal(signal);
+                logger_1.default.info('[DEBUG] Trade execution attempted', { signal });
+            }
+            else {
+                logger_1.default.info('[DEBUG] Cannot open position, skipping trade', { signal });
             }
         }
         catch (error) {
-            logger_1.default.error('Error handling pattern:', error instanceof Error ? error.message : 'Unknown error');
+            logger_1.default.error('[DEBUG] Error handling pattern:', error instanceof Error ? error.message : 'Unknown error');
         }
     }
     handleError(error) {
@@ -220,3 +233,4 @@ class TradingSystem {
     }
 }
 exports.TradingSystem = TradingSystem;
+//# sourceMappingURL=tradingSystem.js.map

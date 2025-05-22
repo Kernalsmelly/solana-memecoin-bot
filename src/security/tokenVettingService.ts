@@ -301,8 +301,10 @@ export class TokenVettingService extends EventEmitter {
       const signatures = await this.config.connection.getSignaturesForAddress(new PublicKey(tokenAddress), { limit: 1 });
       
       if (signatures.length > 0) {
-        const blockTime = signatures[0].blockTime;
-        if (blockTime) {
+        // Ensure the first signature exists and has a blockTime
+        const firstSignature = signatures[0];
+        if (firstSignature && firstSignature.blockTime) {
+          const blockTime = firstSignature.blockTime;
           return (Date.now() / 1000 - blockTime) / 3600; // Convert to hours
         }
       }

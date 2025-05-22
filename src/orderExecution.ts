@@ -32,6 +32,15 @@ export interface OrderExecution {
   getTokenDecimals(tokenAddress: string): Promise<number>;
 }
 
+/**
+ * Utility function to pause execution for a specified duration.
+ * @param ms - The number of milliseconds to sleep.
+ * @returns A promise that resolves after the specified duration.
+ */
+const sleep = (ms: number): Promise<void> => {
+  return new Promise(resolve => setTimeout(resolve, ms));
+};
+
 export class LiveOrderExecution implements OrderExecution {
   private connection: Connection;
   private wallet: Keypair;
@@ -132,13 +141,19 @@ export class LiveOrderExecution implements OrderExecution {
   private async executeSwapTransaction(quoteResponse: QuoteResponse): Promise<string | null> {
     try {
       // Get the serialized transaction from Jupiter API
-      // Pass parameters directly to swapPost based on potential type issues
       const { swapTransaction } = await this.jupiterApi.swapPost({
-        quoteResponse,
-        userPublicKey: this.wallet.publicKey.toBase58(),
-        wrapAndUnwrapSol: true, // Automatically wrap/unwrap SOL if needed
-        dynamicComputeUnitLimit: true, // Let Jupiter estimate compute units
-        prioritizationFeeLamports: 'auto' // Use priority fees
+        swapRequest: {
+          quoteResponse,
+          userPublicKey: this.wallet.publicKey.toBase58(),
+          wrapAndUnwrapSol: true, // Automatically wrap/unwrap SOL if needed
+          dynamicComputeUnitLimit: true, // Let Jupiter estimate compute units
+          prioritizationFeeLamports: { 
+            priorityLevelWithMaxLamports: { 
+              maxLamports: 1000000, // e.g., 0.001 SOL
+              priorityLevel: "high" 
+            }
+          } 
+        }
       });
 
       // Deserialize the transaction
@@ -155,27 +170,47 @@ export class LiveOrderExecution implements OrderExecution {
         maxRetries: 5,
       });
 
-      // Confirm the transaction
-      logger.info(`Swap transaction sent: ${txid}. Confirming...`);
-      const confirmation = await this.connection.confirmTransaction(
-        {
-            signature: txid,
-            blockhash: transaction.message.recentBlockhash,
-            lastValidBlockHeight: (await this.connection.getLatestBlockhash()).lastValidBlockHeight
-        },
-        'confirmed'
-      );
+      // Confirm the transaction with retries
+      logger.info(`Swap transaction sent: ${txid}. Confirming with retries...`);
+      const maxConfirmationRetries = 5;
+      const retryDelayMs = 3000; // 3 seconds delay between retries
 
-      if (confirmation.value.err) {
-        logger.error(`Swap transaction failed confirmation: ${txid}`, confirmation.value.err);
-        // Consider attempting to fetch transaction details for more info
-        // const txDetails = await this.connection.getTransaction(txid, {maxSupportedTransactionVersion: 0});
-        // logger.error('Failed Transaction Details:', txDetails?.meta?.logMessages);
-        return null;
+      for (let attempt = 1; attempt <= maxConfirmationRetries; attempt++) {
+        logger.debug(`Confirmation attempt ${attempt}/${maxConfirmationRetries} for tx ${txid}`);
+        try {
+          const confirmation = await this.connection.confirmTransaction(
+            {
+              signature: txid,
+              blockhash: transaction.message.recentBlockhash,
+              lastValidBlockHeight: (await this.connection.getLatestBlockhash()).lastValidBlockHeight
+            },
+            'confirmed' // Use 'confirmed' commitment level
+          );
+
+          if (!confirmation.value.err) {
+            logger.info(`Swap transaction confirmed successfully on attempt ${attempt}: ${txid}`);
+            return txid;
+          } else {
+            logger.warn(`Confirmation attempt ${attempt} failed for tx ${txid}: ${confirmation.value.err}`);
+            // Optional: Log transaction details on final failure if needed
+            // if (attempt === maxConfirmationRetries) {
+            //   const txDetails = await this.connection.getTransaction(txid, {maxSupportedTransactionVersion: 0});
+            //   logger.error('Failed Transaction Details after final retry:', txDetails?.meta?.logMessages);
+            // }
+          }
+        } catch (error: any) {
+          logger.warn(`Error during confirmation attempt ${attempt} for tx ${txid}: ${error.message}`);
+        }
+
+        // Wait before retrying, unless it's the last attempt
+        if (attempt < maxConfirmationRetries) {
+          await sleep(retryDelayMs);
+        }
       }
 
-      logger.info(`Swap transaction confirmed: ${txid}`);
-      return txid;
+      logger.error(`Swap transaction ${txid} failed to confirm after ${maxConfirmationRetries} attempts.`);
+      return null; // Failed to confirm after retries
+
     } catch (error: any) {
       logger.error('Error executing Jupiter swap transaction:', error?.message || error);
       if (error?.logs) {
@@ -336,7 +371,12 @@ export function createOrderExecution(
   config?: OrderExecutionConfig
 ): OrderExecution {
   if (!wallet) {
-    // Return mock implementation for testing
+    // Define cache outside the returned object, accessible via closure
+    const mockDecimalsCache = new Map<string, number>([
+      [SOL_MINT_ADDRESS, 9],
+      [USDC_MINT_ADDRESS, 6],
+    ]);
+
     return {
       async executeOrder(order: TradeOrder): Promise<OrderExecutionResult> {
         try {
@@ -359,13 +399,14 @@ export function createOrderExecution(
       },
       async getTokenDecimals(tokenAddress: string): Promise<number> {
         // Mock implementation
-        if (this.tokenDecimalsCache.has(tokenAddress)) {
-          return this.tokenDecimalsCache.get(tokenAddress)!;
+        // Use the mock's own cache
+        if (mockDecimalsCache.has(tokenAddress)) {
+          return mockDecimalsCache.get(tokenAddress)!;
         }
         // Simulate fetching for unknown tokens in mock
         logger.info(`Mock fetching decimals for ${tokenAddress}`);
         const mockDecimals = 6; // Default mock
-        this.tokenDecimalsCache.set(tokenAddress, mockDecimals);
+        mockDecimalsCache.set(tokenAddress, mockDecimals);
         return mockDecimals;
       }
     };

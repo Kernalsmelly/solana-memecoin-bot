@@ -15,14 +15,16 @@ const logger_1 = __importDefault(require("./logger"));
  * Memory manager class for tracking and optimizing memory usage
  */
 class MemoryManager {
+    memoryThreshold;
+    memoryWarningInterval = null;
+    memoryHistory = [];
+    MAX_HISTORY_SIZE = 100;
+    MEMORY_LEAK_THRESHOLD = 10; // 10% threshold
     /**
      * Create a new memory manager
      * @param memoryThresholdMB Threshold in MB for memory warnings
      */
     constructor(memoryThresholdMB = 1000) {
-        this.memoryWarningInterval = null;
-        this.memoryHistory = [];
-        this.MAX_HISTORY_SIZE = 100;
         this.memoryThreshold = memoryThresholdMB * 1024 * 1024; // Convert to bytes
         // Log initial memory state
         this.logMemoryUsage();
@@ -54,7 +56,7 @@ class MemoryManager {
      * Check current memory usage and issue warnings if needed
      */
     checkMemoryUsage() {
-        const usage = this.getMemoryUsage();
+        const usage = process.memoryUsage();
         // Store in history
         this.memoryHistory.push({ timestamp: Date.now(), usage });
         if (this.memoryHistory.length > this.MAX_HISTORY_SIZE) {
@@ -62,8 +64,8 @@ class MemoryManager {
         }
         // Check against threshold
         if (usage.heapUsed > this.memoryThreshold) {
-            logger_1.default.warn(`High memory usage detected: ${usage.formatted.heapUsed} heap used`, {
-                memoryUsage: usage.formatted
+            logger_1.default.warn(`High memory usage detected: ${this.formatBytes(usage.heapUsed)} heap used`, {
+                memoryUsage: this.formatMemoryUsage(usage)
             });
             // Suggest forced garbage collection if available
             if (global.gc) {
@@ -74,28 +76,17 @@ class MemoryManager {
                 logger_1.default.info('Consider running with --expose-gc flag to enable garbage collection');
             }
         }
+        this.findMemoryLeaks();
     }
     /**
      * Get current memory usage
      * @returns Memory usage information
      */
     getMemoryUsage() {
-        // Get memory usage from Node.js
+        // Get memory usage directly from Node.js
         const memoryUsage = process.memoryUsage();
-        // Create formatted version for logging
-        const formatted = {
-            rss: this.formatBytes(memoryUsage.rss),
-            heapTotal: this.formatBytes(memoryUsage.heapTotal),
-            heapUsed: this.formatBytes(memoryUsage.heapUsed),
-            external: this.formatBytes(memoryUsage.external)
-        };
-        return {
-            rss: memoryUsage.rss,
-            heapTotal: memoryUsage.heapTotal,
-            heapUsed: memoryUsage.heapUsed,
-            external: memoryUsage.external,
-            formatted
-        };
+        // Return the standard NodeJS.MemoryUsage object, cast to our (now identical) MemoryUsage type
+        return memoryUsage;
     }
     /**
      * Log current memory usage
@@ -103,10 +94,10 @@ class MemoryManager {
     logMemoryUsage() {
         const usage = this.getMemoryUsage();
         logger_1.default.info('Memory usage', {
-            rss: usage.formatted.rss,
-            heapTotal: usage.formatted.heapTotal,
-            heapUsed: usage.formatted.heapUsed,
-            external: usage.formatted.external
+            rss: this.formatBytes(usage.rss),
+            heapTotal: this.formatBytes(usage.heapTotal),
+            heapUsed: this.formatBytes(usage.heapUsed),
+            external: this.formatBytes(usage.external)
         });
     }
     /**
@@ -122,8 +113,8 @@ class MemoryManager {
             const afterUsage = this.getMemoryUsage();
             const savedBytes = beforeUsage.heapUsed - afterUsage.heapUsed;
             logger_1.default.info(`Garbage collection completed: ${this.formatBytes(savedBytes)} freed`, {
-                before: beforeUsage.formatted.heapUsed,
-                after: afterUsage.formatted.heapUsed
+                before: this.formatBytes(beforeUsage.heapUsed),
+                after: this.formatBytes(afterUsage.heapUsed)
             });
         }
         else {
@@ -188,6 +179,16 @@ class MemoryManager {
         // Calculate memory growth rate
         const first = this.memoryHistory[0];
         const last = this.memoryHistory[this.memoryHistory.length - 1];
+        // Ensure first and last elements exist before accessing properties
+        if (!first || !last) {
+            return {
+                increasing: false,
+                rate: 'Error',
+                averageIncrease: 0,
+                potentialLeak: false,
+                recommendation: 'Error retrieving memory history data'
+            };
+        }
         const timeDiffMs = last.timestamp - first.timestamp;
         const memoryDiffBytes = last.usage.heapUsed - first.usage.heapUsed;
         // Convert to KB per minute for readability
@@ -195,7 +196,10 @@ class MemoryManager {
         // Determine if memory is consistently increasing
         let increasingCount = 0;
         for (let i = 1; i < this.memoryHistory.length; i++) {
-            if (this.memoryHistory[i].usage.heapUsed > this.memoryHistory[i - 1].usage.heapUsed) {
+            // Ensure both current and previous heapUsed values are numbers before comparing
+            const currentHeapUsed = this.memoryHistory[i]?.usage?.heapUsed;
+            const previousHeapUsed = this.memoryHistory[i - 1]?.usage?.heapUsed;
+            if (typeof currentHeapUsed === 'number' && typeof previousHeapUsed === 'number' && currentHeapUsed > previousHeapUsed) {
                 increasingCount++;
             }
         }
@@ -220,6 +224,55 @@ class MemoryManager {
             recommendation
         };
     }
+    /**
+     * Format memory usage to human readable string
+     * @param usage Memory usage information
+     * @returns Human readable string
+     */
+    formatMemoryUsage(usage) {
+        return {
+            rss: this.formatBytes(usage.rss),
+            heapTotal: this.formatBytes(usage.heapTotal),
+            heapUsed: this.formatBytes(usage.heapUsed),
+            external: this.formatBytes(usage.external)
+        };
+    }
+    calculateMemoryDiff() {
+        if (!this.memoryHistory || this.memoryHistory.length < 2) {
+            return { memoryDiffBytes: 0, timeDiffMs: 0 };
+        }
+        const last = this.memoryHistory[this.memoryHistory.length - 1];
+        const first = this.memoryHistory[0];
+        if (!last || !first) {
+            logger_1.default.warn('Insufficient memory history for diff calculation.'); // Added log
+            return { memoryDiffBytes: 0, timeDiffMs: 0 };
+        }
+        const timeDiffMs = last.timestamp - first.timestamp;
+        const memoryDiffBytes = last.usage.heapUsed - first.usage.heapUsed;
+        return { memoryDiffBytes, timeDiffMs };
+    }
+    findMemoryLeaks() {
+        const leaks = [];
+        if (!this.memoryHistory || this.memoryHistory.length < 2) {
+            return leaks;
+        }
+        for (let i = 1; i < this.memoryHistory.length; i++) {
+            const current = this.memoryHistory[i];
+            const previous = this.memoryHistory[i - 1];
+            if (!current?.usage || !previous?.usage)
+                continue;
+            if (current.usage.heapUsed > previous.usage.heapUsed) {
+                const leak = {
+                    timestamp: current.timestamp,
+                    bytesLeaked: current.usage.heapUsed - previous.usage.heapUsed,
+                    heapUsed: current.usage.heapUsed,
+                    heapTotal: current.usage.heapTotal
+                };
+                leaks.push(leak);
+            }
+        }
+        return leaks;
+    }
 }
 exports.MemoryManager = MemoryManager;
 // Export singleton instance
@@ -228,8 +281,8 @@ exports.memoryManager = new MemoryManager();
 function diagnoseMemory() {
     const usage = exports.memoryManager.getMemoryUsage(); // Use getMemoryUsage() to get the data
     logger_1.default.info('=== MEMORY DIAGNOSTIC REPORT ===');
-    logger_1.default.info(`Total process memory: ${usage.formatted.rss}`);
-    logger_1.default.info(`Heap usage: ${usage.formatted.heapUsed} / ${usage.formatted.heapTotal}`);
+    logger_1.default.info(`Total process memory: ${exports.memoryManager.formatBytes(usage.rss)}`);
+    logger_1.default.info(`Heap usage: ${exports.memoryManager.formatBytes(usage.heapUsed)} / ${exports.memoryManager.formatBytes(usage.heapTotal)}`);
     // Try to run garbage collection
     if (global.gc) {
         logger_1.default.info('Running garbage collection...');
@@ -239,10 +292,4 @@ function diagnoseMemory() {
     const trend = exports.memoryManager.analyzeMemoryTrend();
     logger_1.default.info('Memory trend analysis:', trend);
 }
-// Remove conflicting global declaration block
-/*
-// Add global type definition for gc when running with --expose-gc
-declare global {
-  var gc: (() => void) | undefined;
-}
-*/
+//# sourceMappingURL=memoryManager.js.map

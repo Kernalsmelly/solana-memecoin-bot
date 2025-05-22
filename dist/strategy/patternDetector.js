@@ -13,6 +13,13 @@ const logger_1 = __importDefault(require("../utils/logger"));
  * Analyzes tokens for known trading patterns and generates signals
  */
 class PatternDetector extends events_1.EventEmitter {
+    tokenDiscovery;
+    riskManager;
+    patternCriteria;
+    maxTokenAge;
+    minLiquidity;
+    maxPositionValue;
+    enabledPatterns;
     constructor(config) {
         super();
         this.tokenDiscovery = config.tokenDiscovery;
@@ -114,9 +121,14 @@ class PatternDetector extends events_1.EventEmitter {
      * Analyze token for trading patterns
      */
     analyzeTokenForPattern(token) {
+        logger_1.default.info('[DEBUG] analyzeTokenForPattern called', { token });
         // Skip if token is too old or doesn't meet liquidity requirements
-        if ((token.age && token.age > this.maxTokenAge) ||
-            (token.liquidity && token.liquidity < this.minLiquidity)) {
+        if ((token.age && token.age > this.maxTokenAge)) {
+            logger_1.default.info('[DEBUG] Token skipped due to age', { token, maxTokenAge: this.maxTokenAge });
+            return null;
+        }
+        if ((token.liquidity && token.liquidity < this.minLiquidity)) {
+            logger_1.default.info('[DEBUG] Token skipped due to liquidity', { token, minLiquidity: this.minLiquidity });
             return null;
         }
         // Analyze for patterns
@@ -127,6 +139,7 @@ class PatternDetector extends events_1.EventEmitter {
             const positionSize = this.calculatePositionSize(token.price);
             // Check if we can open a position
             if (this.riskManager.canOpenPosition(positionSize, token.symbol, token.price)) {
+                logger_1.default.info('[DEBUG] Pattern matched and can open position', { token, pattern, confidence, positionSize });
                 // Emit pattern detected event
                 this.emit('patternDetected', {
                     tokenAddress: token.address,
@@ -138,14 +151,15 @@ class PatternDetector extends events_1.EventEmitter {
                     positionSize,
                     timestamp: Date.now()
                 });
-                logger_1.default.info('Pattern detected', {
-                    symbol: token.symbol,
-                    pattern,
-                    confidence,
-                    price: token.price
-                });
+                logger_1.default.info('[DEBUG] patternDetected event emitted', { token, pattern, confidence, positionSize });
                 return patternMatch;
             }
+            else {
+                logger_1.default.info('[DEBUG] Pattern matched but cannot open position', { token, pattern, confidence, positionSize });
+            }
+        }
+        else {
+            logger_1.default.info('[DEBUG] No pattern matched for token', { token });
         }
         return null;
     }
@@ -221,3 +235,4 @@ class PatternDetector extends events_1.EventEmitter {
     }
 }
 exports.PatternDetector = PatternDetector;
+//# sourceMappingURL=patternDetector.js.map

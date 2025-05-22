@@ -147,3 +147,4 @@ if (require.main === module) {
     })();
 }
 exports.default = triggerEmergencyStop;
+//# sourceMappingURL=emergencyStop.js.map

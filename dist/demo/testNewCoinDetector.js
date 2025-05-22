@@ -239,3 +239,4 @@ if (process.argv.includes('--demo')) {
 else {
     runRealDetector();
 }
+//# sourceMappingURL=testNewCoinDetector.js.map

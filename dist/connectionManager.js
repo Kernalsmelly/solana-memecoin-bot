@@ -3,6 +3,8 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const web3_js_1 = require("@solana/web3.js");
 class ConnectionManager {
+    static instance;
+    connection;
     constructor() {
         // Connect to the mainnet-beta cluster (adjust as needed)
         this.connection = new web3_js_1.Connection((0, web3_js_1.clusterApiUrl)('mainnet-beta'));
@@ -21,3 +23,4 @@ class ConnectionManager {
     }
 }
 exports.default = ConnectionManager;
+//# sourceMappingURL=connectionManager.js.map

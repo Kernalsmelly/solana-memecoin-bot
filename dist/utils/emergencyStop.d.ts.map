@@ -1,0 +1,1 @@
+{"version":3,"file":"emergencyStop.d.ts","sourceRoot":"","sources":["../../src/utils/emergencyStop.ts"],"names":[],"mappings":"AAYA,UAAU,oBAAoB;IAC5B,MAAM,EAAE,MAAM,CAAC;IACf,eAAe,CAAC,EAAE,OAAO,CAAC;IAC1B,SAAS,CAAC,EAAE,OAAO,CAAC;IACpB,cAAc,CAAC,EAAE,OAAO,CAAC;CAC1B;AAED;;;GAGG;AACH,wBAAsB,oBAAoB,CAAC,OAAO,EAAE,oBAAoB,GAAG,OAAO,CAAC,OAAO,CAAC,CAmF1F;AAgCD,eAAe,oBAAoB,CAAC"}

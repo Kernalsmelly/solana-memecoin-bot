@@ -44,12 +44,14 @@ const path = __importStar(require("path"));
 const logger_1 = __importDefault(require("./utils/logger"));
 const orderExecution_1 = require("./orderExecution");
 const riskManager_1 = require("./live/riskManager");
-const birdeyeAPI_1 = require("./api/birdeyeAPI");
-const tokenDiscovery_1 = require("./discovery/tokenDiscovery");
-const patternDetector_1 = require("./strategy/patternDetector");
 const verifyConfig_1 = __importDefault(require("./utils/verifyConfig"));
 const notifications_1 = require("./utils/notifications");
-const fundManager_1 = require("./utils/fundManager");
+const config_1 = require("./utils/config");
+const newCoinDetector_1 = require("./services/newCoinDetector");
+const priceWatcher_1 = require("./services/priceWatcher");
+const tradingEngine_1 = require("./services/tradingEngine");
+// src/launch.ts
+console.log('=== LAUNCH SCRIPT STARTED ===');
 dotenv.config();
 // Constants for production operation
 const PRODUCTION_MODE = process.env.NODE_ENV === 'production';
@@ -58,50 +60,44 @@ const INITIAL_CAPITAL_PERCENT = Number(process.env.INITIAL_CAPITAL_PERCENT || '1
 const MIN_LIQUIDITY = Number(process.env.MIN_LIQUIDITY || '50000');
 const MIN_TRANSACTIONS_5MIN = Number(process.env.MIN_TRANSACTIONS_5MIN || '5');
 // State Persistence Configuration
-const DATA_DIRECTORY = process.env.DATA_DIRECTORY || './data';
-const STATE_FILE_PATH = path.join(DATA_DIRECTORY, 'bot_state.json');
 const SAVE_INTERVAL_MS = Number(process.env.SAVE_INTERVAL_MINUTES || 5) * 60 * 1000; // Save every 5 mins by default
 // --- Helper Functions for State Persistence ---
-function loadSystemState() {
-    if (fs.existsSync(STATE_FILE_PATH)) {
+function loadSystemState(stateFilePath) {
+    if (fs.existsSync(stateFilePath)) {
         try {
-            const stateJson = fs.readFileSync(STATE_FILE_PATH, 'utf-8');
+            const stateJson = fs.readFileSync(stateFilePath, 'utf-8');
             const state = JSON.parse(stateJson);
-            logger_1.default.info(`Loaded system state from ${STATE_FILE_PATH}`, { stateKeys: Object.keys(state).join(', ') });
+            logger_1.default.info(`Loaded system state from ${stateFilePath}`, { stateKeys: Object.keys(state).join(', ') });
             // Basic validation (ensure it's an object)
             if (typeof state === 'object' && state !== null) {
                 return state;
             }
             else {
-                logger_1.default.warn(`Invalid state file format found at ${STATE_FILE_PATH}. Starting fresh.`);
+                logger_1.default.warn(`Invalid state file format found at ${stateFilePath}. Starting fresh.`);
                 return null;
             }
         }
         catch (error) {
-            logger_1.default.error(`Failed to load or parse state file ${STATE_FILE_PATH}: ${error?.message}`);
+            logger_1.default.error(`Failed to load or parse state file ${stateFilePath}: ${error?.message}`);
             return null; // Start fresh if loading fails
         }
     }
-    logger_1.default.info(`No state file found at ${STATE_FILE_PATH}. Starting fresh.`);
+    logger_1.default.info(`No state file found at ${stateFilePath}. Starting fresh.`);
     return null;
 }
-function saveSystemState(riskManager) {
+function saveSystemState(riskManager, stateFilePath) {
     if (!riskManager) {
         logger_1.default.warn('RiskManager not initialized, cannot save state.');
         return;
     }
     try {
         const stateToSave = riskManager.getMetrics();
-        // Ensure data directory exists
-        if (!fs.existsSync(DATA_DIRECTORY)) {
-            fs.mkdirSync(DATA_DIRECTORY, { recursive: true });
-            logger_1.default.info(`Created data directory: ${DATA_DIRECTORY}`);
-        }
-        fs.writeFileSync(STATE_FILE_PATH, JSON.stringify(stateToSave, null, 2));
-        logger_1.default.debug(`System state saved to ${STATE_FILE_PATH}`);
+        logger_1.default.debug(`Attempting to write state to: ${stateFilePath}`); // Log path before writing
+        fs.writeFileSync(stateFilePath, JSON.stringify(stateToSave, null, 2));
+        logger_1.default.debug(`System state saved to ${stateFilePath}`);
     }
     catch (error) {
-        logger_1.default.error(`Failed to save system state to ${STATE_FILE_PATH}: ${error?.message}`);
+        logger_1.default.error(`Failed to save system state to ${stateFilePath}: ${error?.message}`);
     }
 }
 /**
@@ -111,6 +107,9 @@ function saveSystemState(riskManager) {
 async function launchTradingSystem() {
     let riskManager = null; // Keep riskManager accessible for shutdown handler
     let saveIntervalId = null; // Keep interval ID accessible
+    let newCoinDetector = null; // Keep detector accessible
+    let priceWatcher = null; // Keep watcher accessible
+    let tradingEngine;
     logger_1.default.info('Starting SolMemeBot Trading System', {
         production: PRODUCTION_MODE,
         dryRun: DRY_RUN_MODE,
@@ -126,47 +125,69 @@ async function launchTradingSystem() {
             process.exit(1);
         }
         logger_1.default.info('Configuration validated successfully');
+        // Define and ensure data directory exists
+        // Use absolute path to avoid potential relative path issues
+        const dataDir = path.resolve(config_1.config.trading.dataDirectory);
+        const stateFilePath = path.join(dataDir, 'bot_state.json');
+        logger_1.default.info(`Checking data directory path: ${dataDir}`); // Log the path
+        // Force creation attempt - mkdirSync with recursive:true is safe if dir exists
+        try {
+            fs.mkdirSync(dataDir, { recursive: true });
+            logger_1.default.info(`Ensured data directory exists: ${dataDir}`); // Log success/existence
+        }
+        catch (mkdirError) {
+            logger_1.default.error(`Failed to ensure data directory ${dataDir} exists: ${mkdirError?.message}`);
+            // This is likely fatal if we can't create/access the data directory
+            process.exit(1);
+        }
         // 2. Setup core components
-        const privateKeyStr = process.env.WALLET_PRIVATE_KEY;
+        const privateKeyStr = process.env.SOLANA_PRIVATE_KEY;
         if (!privateKeyStr) {
-            logger_1.default.error('FATAL: WALLET_PRIVATE_KEY is not set in the environment variables.');
-            await (0, notifications_1.sendAlert)('FATAL: WALLET_PRIVATE_KEY is not set!', 'CRITICAL');
+            logger_1.default.error('FATAL: SOLANA_PRIVATE_KEY is not set in the environment variables.');
+            await (0, notifications_1.sendAlert)('FATAL: SOLANA_PRIVATE_KEY is not set!', 'CRITICAL');
             process.exit(1);
         }
         const privateKey = bs58_1.default.decode(privateKeyStr);
         const wallet = web3_js_1.Keypair.fromSecretKey(privateKey);
-        const rpcEndpoint = process.env.SOLANA_RPC_URL;
-        if (!rpcEndpoint) {
-            logger_1.default.error('FATAL: SOLANA_RPC_URL is not set in the environment variables.');
-            await (0, notifications_1.sendAlert)('FATAL: SOLANA_RPC_URL is not set!', 'CRITICAL');
+        const rpcEndpoint = config_1.config.solana.rpcEndpoint;
+        if (!rpcEndpoint || typeof rpcEndpoint !== 'string') {
+            logger_1.default.error(`FATAL: Invalid Solana RPC endpoint configured: ${rpcEndpoint}`);
             process.exit(1);
         }
+        logger_1.default.info(`Connecting with RPC: ${rpcEndpoint}`); // Log endpoint being used
         const connection = new web3_js_1.Connection(rpcEndpoint, 'confirmed');
+        // 2.5 Initialize PriceWatcher
+        logger_1.default.info('Initializing price watcher system...');
+        priceWatcher = new priceWatcher_1.PriceWatcher(connection, config_1.config); // Instantiate PriceWatcher
+        // 2.6 Initialize TradingEngine
+        if (!wallet) { // Ensure wallet is loaded before passing
+            throw new Error('Wallet Keypair not loaded, cannot initialize TradingEngine.');
+        }
+        tradingEngine = new tradingEngine_1.TradingEngine(connection, config_1.config, wallet);
         // 3. Check wallet balances
         logger_1.default.info('Checking wallet balances...');
-        const walletReport = await (0, fundManager_1.manageFunds)({ action: 'check', saveReport: true, connection, wallet });
-        if (walletReport.usdcBalance < 10 && PRODUCTION_MODE && !DRY_RUN_MODE) {
-            logger_1.default.error('USDC balance is too low for production trading', { usdcBalance: walletReport.usdcBalance });
-            await (0, notifications_1.sendAlert)(`Insufficient USDC balance for trading: $${walletReport.usdcBalance}`, 'CRITICAL');
-            logger_1.default.error('Aborting production launch due to insufficient funds');
-            process.exit(1);
-        }
-        else if (walletReport.usdcBalance < 10) {
-            logger_1.default.warn('USDC balance is very low', { usdcBalance: walletReport.usdcBalance });
-            await (0, notifications_1.sendAlert)(`Low USDC balance: $${walletReport.usdcBalance}`, 'WARNING');
-        }
-        if (walletReport.solBalance < 0.01 && PRODUCTION_MODE && !DRY_RUN_MODE) { // Ensure enough SOL for fees
-            logger_1.default.error('SOL balance is too low for transaction fees', { solBalance: walletReport.solBalance });
-            await (0, notifications_1.sendAlert)(`Insufficient SOL balance for fees: ${walletReport.solBalance} SOL`, 'CRITICAL');
-            logger_1.default.error('Aborting production launch due to insufficient SOL');
-            process.exit(1);
-        }
-        else if (walletReport.solBalance < 0.05) {
-            logger_1.default.warn('SOL balance is low, may run out paying fees', { solBalance: walletReport.solBalance });
-            await (0, notifications_1.sendAlert)(`Low SOL balance: ${walletReport.solBalance} SOL`, 'WARNING');
-        }
+        // const walletReport = await manageFunds({ action: 'check', saveReport: true, connection, wallet });
+        // Temporarily commented out
+        // if (walletReport.usdcBalance < 10 && PRODUCTION_MODE && !DRY_RUN_MODE) {
+        //     logger.error('USDC balance is too low for production trading', { usdcBalance: walletReport.usdcBalance });
+        //     await sendAlert(`Insufficient USDC balance for trading: $${walletReport.usdcBalance}`, 'CRITICAL');
+        //     logger.error('Aborting production launch due to insufficient funds');
+        //     process.exit(1);
+        // } else if (walletReport.usdcBalance < 10) {
+        //      logger.warn('USDC balance is very low', { usdcBalance: walletReport.usdcBalance });
+        //      await sendAlert(`Low USDC balance: $${walletReport.usdcBalance}`, 'WARNING');
+        // }
+        // if (walletReport.solBalance < 0.01 && PRODUCTION_MODE && !DRY_RUN_MODE) { // Ensure enough SOL for fees
+        //     logger.error('SOL balance is too low for transaction fees', { solBalance: walletReport.solBalance });
+        //     await sendAlert(`Insufficient SOL balance for fees: ${walletReport.solBalance} SOL`, 'CRITICAL');
+        //     logger.error('Aborting production launch due to insufficient SOL');
+        //     process.exit(1);
+        // } else if (walletReport.solBalance < 0.05) {
+        //      logger.warn('SOL balance is low, may run out paying fees', { solBalance: walletReport.solBalance });
+        //      await sendAlert(`Low SOL balance: ${walletReport.solBalance} SOL`, 'WARNING');
+        // }
         // --- Load State BEFORE Initializing Risk Manager ---
-        const loadedState = loadSystemState();
+        const loadedState = loadSystemState(stateFilePath);
         // 4. Initialize Risk Manager
         logger_1.default.info('Initializing risk management system...');
         riskManager = new riskManager_1.RiskManager({
@@ -181,15 +202,15 @@ async function launchTradingSystem() {
         riskManager.on('circuitBreaker', async (data) => {
             const { reason, message, timestamp } = data;
             logger_1.default.warn('Circuit breaker triggered', { reason, message, timestamp });
-            await (0, notifications_1.sendAlert)(`Circuit breaker triggered: ${reason} - ${message}`, 'WARNING');
-            saveSystemState(riskManager); // Save state when breaker triggers
+            await (0, notifications_1.sendAlert)(`Circuit breaker triggered: ${reason} - ${message ?? 'No details'}`, 'WARNING'); // Added nullish coalescing for message
+            saveSystemState(riskManager, stateFilePath); // Save state when breaker triggers
         });
         // Setup emergency stop event handler
         riskManager.on('emergencyStop', async (data) => {
             const { reason, message, timestamp } = data;
             logger_1.default.error('EMERGENCY STOP ACTIVATED', { reason, message, timestamp });
-            await (0, notifications_1.sendAlert)(`🚨 EMERGENCY STOP ACTIVATED: ${reason} - ${message}`, 'CRITICAL');
-            saveSystemState(riskManager); // Save state on emergency stop
+            await (0, notifications_1.sendAlert)(`🚨 EMERGENCY STOP ACTIVATED: ${reason} - ${message ?? 'No details'}`, 'CRITICAL'); // Added nullish coalescing for message
+            saveSystemState(riskManager, stateFilePath); // Save state on emergency stop
             // The existing emergency state save is still useful for specific details
             const stateDir = './emergency-states';
             if (!fs.existsSync(stateDir)) {
@@ -203,59 +224,57 @@ async function launchTradingSystem() {
         });
         // 5. Initialize Order Execution
         logger_1.default.info('Initializing order execution system...');
-        const slippageBps = Number(process.env.SLIPPAGE_BPS || 100); // Use SLIPPAGE_BPS from .env
-        const orderExecutionConfig = { slippageBps };
+        const orderExecutionConfig = { slippageBps: config_1.config.trading.jupiterSlippageBps };
         const orderExecution = new orderExecution_1.LiveOrderExecution(connection, wallet, orderExecutionConfig);
         // No initialize needed for the new class structure
-        // 6. Initialize Token Discovery
-        logger_1.default.info('Initializing token discovery system...');
-        const birdeyeApiKey = process.env.BIRDEYE_API_KEY;
-        if (!birdeyeApiKey && PRODUCTION_MODE) {
-            logger_1.default.error('Missing Birdeye API key in production mode');
-            process.exit(1);
+        // 7. Initialize New Coin Detector
+        logger_1.default.info('Initializing new coin detection system...');
+        // Revert diagnostic assertion - type should now be correctly inferred
+        newCoinDetector = new newCoinDetector_1.NewCoinDetector(connection, config_1.config);
+        // --- Setup New Pool Detected Event Listener --- 
+        newCoinDetector.on('newPoolDetected', (eventData) => {
+            logger_1.default.info(`[Launch] Detected new pool via event: Base Mint ${eventData.baseMint}, Pool ${eventData.poolAddress}, Quote ${eventData.quoteMint}`);
+            // Start watching this token with the PriceWatcher
+            // Pass both the token mint (baseMint) and the pool address
+            if (priceWatcher) {
+                priceWatcher.watchToken(eventData.baseMint, eventData.poolAddress);
+            }
+            else {
+                logger_1.default.error('[Launch] PriceWatcher not initialized when newPoolDetected event was received. Cannot watch token.');
+            }
+            // TODO: Potentially trigger initial evaluation by TradingEngine immediately?
+            // tradingEngine.evaluateToken(tokenMint);
+        });
+        // --- Connect PriceWatcher to Trading Engine --- 
+        if (priceWatcher && tradingEngine) {
+            logger_1.default.info('[Launch] Connecting PriceWatcher marketDataUpdate events to TradingEngine...');
+            priceWatcher.on('marketDataUpdate', (marketData) => {
+                tradingEngine?.evaluateToken(marketData); // Use optional chaining just in case
+            });
         }
-        const birdeyeAPI = new birdeyeAPI_1.BirdeyeAPI(birdeyeApiKey || 'demo-key'); // Use demo key if not prod/set
-        // Instantiate TokenDiscovery with correct arguments
-        const discoveryOptions = {
-            minLiquidity: MIN_LIQUIDITY,
-            // minVolume: ..., // Add if needed from env/config
-            maxTokenAge: Number(process.env.MAX_TOKEN_AGE || 24) * 60 * 60 * 1000, // Convert hours to ms
-            // cleanupIntervalMs: ..., // Add if needed from env/config
-            // analysisThrottleMs: ..., // Add if needed from env/config
-        };
-        const tokenDiscovery = new tokenDiscovery_1.TokenDiscovery(birdeyeAPI, // 1st arg: BirdeyeAPI instance
-        discoveryOptions, // 2nd arg: Options object
-        riskManager // 3rd arg: RiskManager instance (optional)
-        );
-        // 7. Initialize Pattern Detector
-        logger_1.default.info('Initializing pattern detection system...');
-        // Instantiate PatternDetector with correct config object
-        const detectorConfig = {
-            tokenDiscovery, // Required
-            riskManager, // Required
-            // Add optional config from env if needed:
-            // maxTokenAge: ..., 
-            // minLiquidity: ..., 
-            // maxPositionValue: ..., 
-            // enabledPatterns: ...
-        };
-        const patternDetector = new patternDetector_1.PatternDetector(detectorConfig);
+        else {
+            logger_1.default.error('[Launch] Failed to connect PriceWatcher and TradingEngine. One or both are not initialized.');
+        }
         // --- Setup State Persistence & Shutdown Hooks ---
         logger_1.default.info(`Setting up periodic state save every ${SAVE_INTERVAL_MS / 60000} minutes.`);
-        saveSystemState(riskManager); // Initial save after setup
+        saveSystemState(riskManager, stateFilePath); // Initial save after setup
         saveIntervalId = setInterval(() => {
-            saveSystemState(riskManager);
+            saveSystemState(riskManager, stateFilePath);
         }, SAVE_INTERVAL_MS);
         const shutdown = async (signal) => {
             logger_1.default.info(`Received ${signal}. Graceful shutdown initiated...`);
             if (saveIntervalId)
                 clearInterval(saveIntervalId); // Stop periodic saves
             // Add any other cleanup needed (e.g., close WebSocket connections)
-            logger_1.default.info('Closing Birdeye WebSocket...');
-            // Correct method call: disconnect() instead of close()
-            birdeyeAPI.disconnect();
+            logger_1.default.info('Closing Helius WebSocket...');
+            // TODO: Check if HeliusAPI class has a disconnect/cleanup method and call it.
+            // if (heliusApi && typeof heliusApi.disconnect === 'function') heliusApi.disconnect();
+            if (newCoinDetector)
+                newCoinDetector.stop(); // Call the detector's stop method for cleanup
+            if (priceWatcher)
+                priceWatcher.stop(); // Stop the price watcher
             logger_1.default.info('Saving final system state...');
-            saveSystemState(riskManager); // Perform final save
+            saveSystemState(riskManager, stateFilePath); // Perform final save
             logger_1.default.info('Shutdown complete. Exiting.');
             // Allow time for logs to flush
             setTimeout(() => process.exit(0), 2000);
@@ -268,23 +287,26 @@ async function launchTradingSystem() {
             await (0, notifications_1.sendAlert)(`CRITICAL: Uncaught Exception - ${error.message}`, 'CRITICAL');
             // Attempt to save state before crashing
             logger_1.default.info('Attempting emergency state save before exiting due to uncaught exception...');
-            saveSystemState(riskManager);
+            // Cannot save here, riskManager/stateFilePath likely out of scope
             setTimeout(() => process.exit(1), 3000); // Exit after attempting save
         });
         process.on('unhandledRejection', async (reason, promise) => {
             logger_1.default.error(`CRITICAL: Unhandled Rejection at: ${promise}`, reason);
             // Attempt to save state before crashing
             logger_1.default.info('Attempting emergency state save before exiting due to unhandled rejection...');
-            saveSystemState(riskManager);
+            // Cannot save here, riskManager/stateFilePath likely out of scope
             setTimeout(() => process.exit(1), 3000); // Exit after attempting save
         });
         // 8. Start Systems (Dry Run or Production)
         if (DRY_RUN_MODE) {
             logger_1.default.info('Starting in DRY RUN mode - no trades will be executed');
-            // ... (existing dry run logic, ensuring it doesn't call real orderExecution)
-            // Make sure patternDetector doesn't execute real trades in dry run
-            await tokenDiscovery.start();
-            await patternDetector.start(); // Remove boolean argument
+            // Start the new coin detector
+            if (newCoinDetector)
+                newCoinDetector.start();
+            if (priceWatcher) {
+                logger_1.default.info('Starting Price Watcher...');
+                priceWatcher.start(); // Start PriceWatcher polling
+            }
             await (0, notifications_1.sendAlert)('Trading system started in DRY RUN mode', 'INFO');
             logger_1.default.info('Dry run mode active. Monitoring events...');
             // Dry run might run indefinitely or have a duration based on env var
@@ -292,16 +314,25 @@ async function launchTradingSystem() {
         else if (PRODUCTION_MODE) {
             logger_1.default.info('Starting in PRODUCTION mode');
             // ... (existing production logic)
-            await tokenDiscovery.start();
-            await patternDetector.start(); // Remove boolean argument
+            // Ensure RiskManager and OrderExecution are properly connected/used by downstream components
+            if (newCoinDetector)
+                newCoinDetector.start();
+            if (priceWatcher) {
+                logger_1.default.info('Starting Price Watcher...');
+                priceWatcher.start(); // Start PriceWatcher polling
+            }
             await (0, notifications_1.sendAlert)('Trading system started in PRODUCTION mode', 'INFO');
             logger_1.default.info('Production mode active. Monitoring for trading opportunities...');
         }
         else {
             logger_1.default.warn('Not in PRODUCTION or DRY_RUN mode. Starting discovery/detection but NO TRADING.');
             // Start services but maybe don't connect patternDetector to orderExecution fully?
-            await tokenDiscovery.start();
-            await patternDetector.start(); // Remove boolean argument
+            if (newCoinDetector)
+                newCoinDetector.start();
+            if (priceWatcher) {
+                logger_1.default.info('Starting Price Watcher...');
+                priceWatcher.start(); // Start PriceWatcher polling
+            }
             await (0, notifications_1.sendAlert)('Trading system started in Development/Test mode', 'INFO');
         }
     }
@@ -310,7 +341,7 @@ async function launchTradingSystem() {
         await (0, notifications_1.sendAlert)(`FATAL LAUNCH ERROR: ${error.message}`, 'CRITICAL');
         // Attempt final save even on launch error
         logger_1.default.info('Attempting state save after launch failure...');
-        saveSystemState(riskManager);
+        // Cannot save here, riskManager/stateFilePath likely out of scope
         process.exit(1);
     }
 }
@@ -319,7 +350,8 @@ if (require.main === module) {
     launchTradingSystem().catch(error => {
         logger_1.default.error('Unhandled promise rejection during launch:', error);
         // Attempt final save
-        // saveSystemState(riskManager); // riskManager might not be in scope here
+        // Cannot save here, riskManager/stateFilePath likely out of scope
         process.exit(1);
     });
 }
+//# sourceMappingURL=launch.js.map

@@ -1,50 +1,17 @@
 "use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-const dotenv = __importStar(require("dotenv"));
 const web3_js_1 = require("@solana/web3.js");
 const bs58_1 = __importDefault(require("bs58"));
 const logger_1 = __importDefault(require("./logger"));
-dotenv.config();
+// dotenv.config(); // REMOVE THIS - Rely on index.ts loading
 // Required environment variables for production
 const REQUIRED_ENV_VARS = [
-    'PRIVATE_KEY',
-    'RPC_ENDPOINT',
+    'SOLANA_PRIVATE_KEY', // Standardized name
+    'QUICKNODE_RPC_URL',
+    'QUICKNODE_WSS_URL',
     'MAX_POSITION_SIZE',
     'MAX_ACTIVE_POSITIONS',
     'MAX_DAILY_LOSS_PERCENT',
@@ -58,7 +25,6 @@ const REQUIRED_ENV_VARS = [
 ];
 // Recommended environment variables
 const RECOMMENDED_ENV_VARS = [
-    'BIRDEYE_API_KEY',
     'DISCORD_WEBHOOK_URL',
     'TELEGRAM_BOT_TOKEN',
     'TELEGRAM_CHAT_ID'
@@ -88,7 +54,11 @@ async function verifyConfig() {
     // Verify RPC connection
     try {
         const startTime = Date.now();
-        const connection = new web3_js_1.Connection(process.env.RPC_ENDPOINT || '', 'confirmed');
+        const rpcUrl = process.env.QUICKNODE_RPC_URL;
+        if (!rpcUrl) {
+            throw new Error('QUICKNODE_RPC_URL is not defined in environment variables.');
+        }
+        const connection = new web3_js_1.Connection(rpcUrl, 'confirmed');
         await connection.getVersion(); // Use getVersion() to check connectivity
         const latency = Date.now() - startTime;
         result.rpcStatus = {
@@ -100,18 +70,24 @@ async function verifyConfig() {
         }
     }
     catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error connecting to RPC';
+        logger_1.default.error(`RPC connection check failed for ${process.env.QUICKNODE_RPC_URL}: ${errorMessage}`, {
+            errorDetails: error instanceof Error ? error : JSON.stringify(error),
+            cause: error instanceof Error && error.cause ? error.cause : 'N/A',
+            stack: error instanceof Error ? error.stack : 'N/A'
+        });
         result.rpcStatus = {
             valid: false,
-            error: error instanceof Error ? error.message : 'Unknown error connecting to RPC'
+            error: errorMessage
         };
         result.isValid = false;
     }
     // Verify wallet
     try {
-        if (process.env.PRIVATE_KEY) {
-            const privateKey = bs58_1.default.decode(process.env.PRIVATE_KEY);
+        if (process.env.SOLANA_PRIVATE_KEY) {
+            const privateKey = bs58_1.default.decode(process.env.SOLANA_PRIVATE_KEY);
             const wallet = web3_js_1.Keypair.fromSecretKey(privateKey);
-            const connection = new web3_js_1.Connection(process.env.RPC_ENDPOINT || '', 'confirmed');
+            const connection = new web3_js_1.Connection(process.env.QUICKNODE_RPC_URL || '', 'confirmed');
             // Check SOL balance
             const solBalance = await connection.getBalance(wallet.publicKey);
             result.walletStatus = {
@@ -162,8 +138,17 @@ async function verifyConfig() {
         result.riskParameters.issues.push(error instanceof Error ? error.message : 'Unknown error validating risk parameters');
         result.isValid = false;
     }
+    if (!process.env.QUICKNODE_RPC_URL) {
+        logger_1.default.warn('QUICKNODE_RPC_URL is not configured. RPC calls will fail.');
+        result.isValid = false; // Make it invalid if missing
+    }
+    if (!process.env.QUICKNODE_WSS_URL) {
+        logger_1.default.warn('QUICKNODE_WSS_URL is not configured. WebSocket detection will fail.');
+        result.isValid = false; // Make it invalid if missing
+    }
     return result;
 }
+exports.default = verifyConfig;
 // Run when invoked directly
 if (require.main === module) {
     (async () => {
@@ -212,4 +197,4 @@ if (require.main === module) {
         }
     })();
 }
-exports.default = verifyConfig;
+//# sourceMappingURL=verifyConfig.js.map

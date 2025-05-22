@@ -6,6 +6,10 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.globalCacheManager = exports.CacheManager = exports.LRUCache = void 0;
 const logger_1 = __importDefault(require("./logger"));
 class LRUCache {
+    cache;
+    maxSize;
+    ttl;
+    onEvict;
     constructor(options = {}) {
         this.cache = new Map();
         // Validate and set maxSize
@@ -129,9 +133,9 @@ class LRUCache {
 exports.LRUCache = LRUCache;
 // CacheManager to handle multiple caches
 class CacheManager {
+    caches = new Map();
+    cleanupInterval = null;
     constructor(cleanupIntervalMs = 60000) {
-        this.caches = new Map();
-        this.cleanupInterval = null;
         // Validate cleanup interval
         const validInterval = (cleanupIntervalMs > 0) ? cleanupIntervalMs : 60000;
         // Set up automatic cleanup
@@ -187,3 +191,4 @@ class CacheManager {
 exports.CacheManager = CacheManager;
 // Create a global instance of the cache manager
 exports.globalCacheManager = new CacheManager();
+//# sourceMappingURL=cache.js.map

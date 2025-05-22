@@ -13,9 +13,21 @@ dotenv_1.default.config(); // Load environment variables from .env file
 // Constants - Consider moving to config
 const SOL_MINT_ADDRESS = 'So11111111111111111111111111111111111111112';
 const USDC_MINT_ADDRESS = process.env.USDC_MINT || 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'; // Default to mainnet USDC
+/**
+ * Utility function to pause execution for a specified duration.
+ * @param ms - The number of milliseconds to sleep.
+ * @returns A promise that resolves after the specified duration.
+ */
+const sleep = (ms) => {
+    return new Promise(resolve => setTimeout(resolve, ms));
+};
 class LiveOrderExecution {
+    connection;
+    wallet;
+    jupiterApi; // Type will be inferred from createJupiterApiClient
+    slippageBps;
+    tokenDecimalsCache = new Map(); // Cache for token decimals
     constructor(connection, wallet, config) {
-        this.tokenDecimalsCache = new Map(); // Cache for token decimals
         this.connection = connection;
         this.wallet = wallet;
         this.slippageBps = config?.slippageBps ?? 50; // Default 0.5% slippage
@@ -101,13 +113,19 @@ class LiveOrderExecution {
     async executeSwapTransaction(quoteResponse) {
         try {
             // Get the serialized transaction from Jupiter API
-            // Pass parameters directly to swapPost based on potential type issues
             const { swapTransaction } = await this.jupiterApi.swapPost({
-                quoteResponse,
-                userPublicKey: this.wallet.publicKey.toBase58(),
-                wrapAndUnwrapSol: true, // Automatically wrap/unwrap SOL if needed
-                dynamicComputeUnitLimit: true, // Let Jupiter estimate compute units
-                prioritizationFeeLamports: 'auto' // Use priority fees
+                swapRequest: {
+                    quoteResponse,
+                    userPublicKey: this.wallet.publicKey.toBase58(),
+                    wrapAndUnwrapSol: true, // Automatically wrap/unwrap SOL if needed
+                    dynamicComputeUnitLimit: true, // Let Jupiter estimate compute units
+                    prioritizationFeeLamports: {
+                        priorityLevelWithMaxLamports: {
+                            maxLamports: 1000000, // e.g., 0.001 SOL
+                            priorityLevel: "high"
+                        }
+                    }
+                }
             });
             // Deserialize the transaction
             const swapTransactionBuf = Buffer.from(swapTransaction, 'base64');
@@ -120,22 +138,42 @@ class LiveOrderExecution {
                 skipPreflight: true, // Often recommended for Jupiter swaps
                 maxRetries: 5,
             });
-            // Confirm the transaction
-            logger_1.default.info(`Swap transaction sent: ${txid}. Confirming...`);
-            const confirmation = await this.connection.confirmTransaction({
-                signature: txid,
-                blockhash: transaction.message.recentBlockhash,
-                lastValidBlockHeight: (await this.connection.getLatestBlockhash()).lastValidBlockHeight
-            }, 'confirmed');
-            if (confirmation.value.err) {
-                logger_1.default.error(`Swap transaction failed confirmation: ${txid}`, confirmation.value.err);
-                // Consider attempting to fetch transaction details for more info
-                // const txDetails = await this.connection.getTransaction(txid, {maxSupportedTransactionVersion: 0});
-                // logger.error('Failed Transaction Details:', txDetails?.meta?.logMessages);
-                return null;
+            // Confirm the transaction with retries
+            logger_1.default.info(`Swap transaction sent: ${txid}. Confirming with retries...`);
+            const maxConfirmationRetries = 5;
+            const retryDelayMs = 3000; // 3 seconds delay between retries
+            for (let attempt = 1; attempt <= maxConfirmationRetries; attempt++) {
+                logger_1.default.debug(`Confirmation attempt ${attempt}/${maxConfirmationRetries} for tx ${txid}`);
+                try {
+                    const confirmation = await this.connection.confirmTransaction({
+                        signature: txid,
+                        blockhash: transaction.message.recentBlockhash,
+                        lastValidBlockHeight: (await this.connection.getLatestBlockhash()).lastValidBlockHeight
+                    }, 'confirmed' // Use 'confirmed' commitment level
+                    );
+                    if (!confirmation.value.err) {
+                        logger_1.default.info(`Swap transaction confirmed successfully on attempt ${attempt}: ${txid}`);
+                        return txid;
+                    }
+                    else {
+                        logger_1.default.warn(`Confirmation attempt ${attempt} failed for tx ${txid}: ${confirmation.value.err}`);
+                        // Optional: Log transaction details on final failure if needed
+                        // if (attempt === maxConfirmationRetries) {
+                        //   const txDetails = await this.connection.getTransaction(txid, {maxSupportedTransactionVersion: 0});
+                        //   logger.error('Failed Transaction Details after final retry:', txDetails?.meta?.logMessages);
+                        // }
+                    }
+                }
+                catch (error) {
+                    logger_1.default.warn(`Error during confirmation attempt ${attempt} for tx ${txid}: ${error.message}`);
+                }
+                // Wait before retrying, unless it's the last attempt
+                if (attempt < maxConfirmationRetries) {
+                    await sleep(retryDelayMs);
+                }
             }
-            logger_1.default.info(`Swap transaction confirmed: ${txid}`);
-            return txid;
+            logger_1.default.error(`Swap transaction ${txid} failed to confirm after ${maxConfirmationRetries} attempts.`);
+            return null; // Failed to confirm after retries
         }
         catch (error) {
             logger_1.default.error('Error executing Jupiter swap transaction:', error?.message || error);
@@ -273,7 +311,11 @@ class LiveOrderExecution {
 exports.LiveOrderExecution = LiveOrderExecution;
 function createOrderExecution(connection, wallet, config) {
     if (!wallet) {
-        // Return mock implementation for testing
+        // Define cache outside the returned object, accessible via closure
+        const mockDecimalsCache = new Map([
+            [SOL_MINT_ADDRESS, 9],
+            [USDC_MINT_ADDRESS, 6],
+        ]);
         return {
             async executeOrder(order) {
                 try {
@@ -297,13 +339,14 @@ function createOrderExecution(connection, wallet, config) {
             },
             async getTokenDecimals(tokenAddress) {
                 // Mock implementation
-                if (this.tokenDecimalsCache.has(tokenAddress)) {
-                    return this.tokenDecimalsCache.get(tokenAddress);
+                // Use the mock's own cache
+                if (mockDecimalsCache.has(tokenAddress)) {
+                    return mockDecimalsCache.get(tokenAddress);
                 }
                 // Simulate fetching for unknown tokens in mock
                 logger_1.default.info(`Mock fetching decimals for ${tokenAddress}`);
                 const mockDecimals = 6; // Default mock
-                this.tokenDecimalsCache.set(tokenAddress, mockDecimals);
+                mockDecimalsCache.set(tokenAddress, mockDecimals);
                 return mockDecimals;
             }
         };
@@ -312,3 +355,4 @@ function createOrderExecution(connection, wallet, config) {
     const liveExecution = new LiveOrderExecution(connection, wallet, config);
     return liveExecution;
 }
+//# sourceMappingURL=orderExecution.js.map

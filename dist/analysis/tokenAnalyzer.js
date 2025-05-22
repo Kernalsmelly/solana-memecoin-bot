@@ -7,11 +7,17 @@ exports.TokenAnalyzer = void 0;
 const logger_1 = __importDefault(require("../utils/logger"));
 const cache_1 = require("../utils/cache");
 class TokenAnalyzer {
+    scamPatterns;
+    nameBlacklist;
+    addressBlacklist;
+    minLiquidity;
+    minHolders;
+    tokenScoreCache;
+    cacheManager = cache_1.globalCacheManager;
     constructor({ minLiquidity = 1000, // Minimum liquidity in USD
     minHolders = 10, // Minimum holder count
     cacheTimeMs = 3600000 // Cache scores for 1 hour
      } = {}) {
-        this.cacheManager = cache_1.globalCacheManager;
         this.minLiquidity = minLiquidity;
         this.minHolders = minHolders;
         // Initialize cache using our optimized cache manager
@@ -196,3 +202,4 @@ class TokenAnalyzer {
     }
 }
 exports.TokenAnalyzer = TokenAnalyzer;
+//# sourceMappingURL=tokenAnalyzer.js.map

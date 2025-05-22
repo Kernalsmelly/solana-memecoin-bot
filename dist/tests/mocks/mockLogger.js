@@ -15,3 +15,4 @@ const mockLogger = {
     clear: () => { }
 };
 exports.default = mockLogger;
+//# sourceMappingURL=mockLogger.js.map

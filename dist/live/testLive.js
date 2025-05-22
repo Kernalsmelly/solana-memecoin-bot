@@ -55,3 +55,4 @@ main().catch(error => {
     logger_1.default.error('Error in live trading test:', error);
     process.exit(1);
 });
+//# sourceMappingURL=testLive.js.map

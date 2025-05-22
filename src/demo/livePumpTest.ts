@@ -82,7 +82,9 @@ class PumpDetector {
   }
 
   private handlePriceUpdate(token: TokenData, data: PricePoint) {
-    const history = this.priceHistory.get(token.address)!;
+    const history = this.priceHistory.get(token.address);
+    if (!history) return;
+
     history.push(data);
 
     // Keep last 30 price points (5 minutes at 10s intervals)
@@ -92,25 +94,35 @@ class PumpDetector {
 
     // Check for pump conditions
     if (history.length >= 2) {
-      const priceChange = this.calculatePriceChange(history);
-      const volumeSpike = this.calculateVolumeSpike(history);
-      const buyRatio = data.buyRatio || 0;
+      const lastPoint = history[history.length - 1];
+      const firstPoint = history[0];
+      if (!lastPoint?.price || !firstPoint?.price) return;
 
-      // Only log significant updates
-      if (Math.abs(priceChange) > 1 || volumeSpike > 50) {
-        console.log(`\n[${token.symbol}] Significant Movement:`);
-        console.log(`- Price: $${data.price.toFixed(8)} (${priceChange > 0 ? '+' : ''}${priceChange.toFixed(2)}%)`);
-        console.log(`- Volume: $${data.volume.toFixed(2)} (${volumeSpike > 0 ? '+' : ''}${volumeSpike.toFixed(2)}%)`);
-        console.log(`- Buy/Sell Ratio: ${buyRatio.toFixed(2)}`);
+      const lastPrice = lastPoint.price;
+      const startPrice = firstPoint.price;
+      const priceChange = this.calculatePriceChange(history);
+      const recentVolume = history.slice(-5).reduce((sum, p) => sum + (p.volume || 0), 0);
+      const buyRatio = lastPoint.buyRatio || 0;
+
+      console.log(`\n${token.symbol}:`);
+      console.log(`- Price: $${lastPrice.toFixed(8)} (${priceChange > 0 ? '+' : ''}${priceChange.toFixed(2)}%)`);
+      console.log(`- Volume (5m): $${recentVolume.toFixed(2)}`);
+      console.log(`- Buy/Sell Ratio: ${buyRatio.toFixed(2)}`);
+
+      // Add momentum indicator
+      const recentHistory = history.slice(-5);
+      if (recentHistory.length >= 2) {
+        const recentChange = this.calculatePriceChange(recentHistory);
+        console.log(`- 1min Momentum: ${recentChange > 0 ? '+' : ''}${recentChange.toFixed(2)}%`);
       }
 
-      if (this.isPumpDetected(priceChange, volumeSpike, buyRatio)) {
+      if (this.isPumpDetected(priceChange, this.calculateVolumeSpike(history), buyRatio)) {
         const pumpEvent: PumpEvent = {
           token,
-          startPrice: history[0].price,
-          peakPrice: data.price,
+          startPrice,
+          peakPrice: lastPrice,
           priceChange,
-          volumeSpike,
+          volumeSpike: this.calculateVolumeSpike(history),
           buyRatio,
           duration: Math.floor((Date.now() - this.startTime) / 1000 / 60),
           success: true
@@ -123,14 +135,23 @@ class PumpDetector {
   }
 
   private calculatePriceChange(history: PricePoint[]): number {
-    const oldPrice = history[0].price;
-    const newPrice = history[history.length - 1].price;
-    return ((newPrice - oldPrice) / oldPrice) * 100;
+    if (!history || history.length < 2) return 0;
+
+    const lastPoint = history[history.length - 1];
+    const firstPoint = history[0];
+    if (!lastPoint?.price || !firstPoint?.price) return 0;
+
+    return ((lastPoint.price - firstPoint.price) / firstPoint.price) * 100;
   }
 
   private calculateVolumeSpike(history: PricePoint[]): number {
-    const avgVolume = history.slice(0, -1).reduce((sum, point) => sum + point.volume, 0) / (history.length - 1);
-    const currentVolume = history[history.length - 1].volume;
+    if (!history || history.length < 2) return 0;
+
+    const avgVolume = history.slice(0, -1).reduce((sum, point) => sum + (point.volume || 0), 0) / (history.length - 1);
+    const lastPoint = history[history.length - 1];
+    if (!lastPoint?.volume) return 0;
+
+    const currentVolume = lastPoint.volume;
     return ((currentVolume - avgVolume) / avgVolume) * 100;
   }
 
@@ -164,13 +185,17 @@ class PumpDetector {
     console.log('==================');
 
     for (const token of TOKENS_TO_TEST) {
-      const history = this.priceHistory.get(token.address)!;
-      if (history.length >= 2) {
-        const lastPrice = history[history.length - 1].price;
-        const startPrice = history[0].price;
-        const priceChange = ((lastPrice - startPrice) / startPrice) * 100;
-        const recentVolume = history.slice(-5).reduce((sum, p) => sum + p.volume, 0);
-        const buyRatio = history[history.length - 1].buyRatio || 0;
+      const history = this.priceHistory.get(token.address);
+      if (history && history.length >= 2) {
+        const lastPoint = history[history.length - 1];
+        const firstPoint = history[0];
+        if (!lastPoint?.price || !firstPoint?.price) continue;
+
+        const lastPrice = lastPoint.price;
+        const startPrice = firstPoint.price;
+        const priceChange = this.calculatePriceChange(history);
+        const recentVolume = history.slice(-5).reduce((sum, p) => sum + (p.volume || 0), 0);
+        const buyRatio = lastPoint.buyRatio || 0;
 
         console.log(`\n${token.symbol}:`);
         console.log(`- Price: $${lastPrice.toFixed(8)} (${priceChange > 0 ? '+' : ''}${priceChange.toFixed(2)}%)`);
@@ -180,7 +205,7 @@ class PumpDetector {
         // Add momentum indicator
         const recentHistory = history.slice(-5);
         if (recentHistory.length >= 2) {
-          const recentChange = ((recentHistory[recentHistory.length - 1].price - recentHistory[0].price) / recentHistory[0].price) * 100;
+          const recentChange = this.calculatePriceChange(recentHistory);
           console.log(`- 1min Momentum: ${recentChange > 0 ? '+' : ''}${recentChange.toFixed(2)}%`);
         }
       }
@@ -198,6 +223,59 @@ class PumpDetector {
     }
     
     console.log('\n==================');
+  }
+
+  private printSummary(): void {
+    console.log('\nToken Performance Summary');
+    console.log('==================');
+
+    for (const token of TOKENS_TO_TEST) {
+      const history = this.priceHistory.get(token.address);
+      if (!history || history.length < 2) continue;
+
+      const lastPoint = history[history.length - 1];
+      const firstPoint = history[0];
+      if (!lastPoint?.price || !firstPoint?.price) continue;
+
+      const lastPrice = lastPoint.price;
+      const startPrice = firstPoint.price;
+      const priceChange = this.calculatePriceChange(history);
+      const volumeSpike = this.calculateVolumeSpike(history);
+
+      console.log(`\n${token.symbol}:`);
+      console.log(`- Price: $${lastPrice.toFixed(8)} (${priceChange > 0 ? '+' : ''}${priceChange.toFixed(2)}%)`);
+      console.log(`- Volume Change: ${volumeSpike > 0 ? '+' : ''}${volumeSpike.toFixed(2)}%`);
+    }
+  }
+
+  private printAnalysisSummary(): void {
+    console.log('\nAnalysis Summary');
+    console.log('==================');
+
+    for (const token of TOKENS_TO_TEST) {
+      const tokenPumps = this.pumpEvents.filter(e => e.token.address === token.address);
+      const history = this.priceHistory.get(token.address);
+      if (!history || history.length < 2) continue;
+
+      const lastPoint = history[history.length - 1];
+      const firstPoint = history[0];
+      if (!lastPoint?.price || !firstPoint?.price) continue;
+
+      const lastPrice = lastPoint.price;
+      const startPrice = firstPoint.price;
+      const priceChange = this.calculatePriceChange(history);
+      const volumeSpike = this.calculateVolumeSpike(history);
+
+      console.log(`\n🔍 ${token.symbol} Analysis:`);
+      console.log(`- Pump Events: ${tokenPumps.length}`);
+      console.log(`- Total Price Change: ${priceChange > 0 ? '+' : ''}${priceChange.toFixed(2)}%`);
+      console.log(`- Average Volume: $${volumeSpike.toFixed(2)}`);
+
+      if (tokenPumps.length > 0) {
+        const successfulPumps = tokenPumps.filter(p => p.success);
+        console.log(`- Success Rate: ${((successfulPumps.length / tokenPumps.length) * 100).toFixed(2)}%`);
+      }
+    }
   }
 
   stop() {
@@ -219,20 +297,27 @@ class PumpDetector {
 
     for (const token of TOKENS_TO_TEST) {
       const tokenPumps = this.pumpEvents.filter(e => e.token.address === token.address);
-      const history = this.priceHistory.get(token.address)!;
+      const history = this.priceHistory.get(token.address);
       
       console.log(`\n🔍 ${token.symbol} Analysis:`);
       console.log(`- Pump Events: ${tokenPumps.length}`);
-      if (history.length >= 2) {
-        const totalPriceChange = ((history[history.length - 1].price - history[0].price) / history[0].price) * 100;
-        const avgVolume = history.reduce((sum, p) => sum + p.volume, 0) / history.length;
-        const avgBuyRatio = history.reduce((sum, p) => sum + (p.buyRatio || 0), 0) / history.length;
-        
-        console.log(`- Total Price Change: ${totalPriceChange > 0 ? '+' : ''}${totalPriceChange.toFixed(2)}%`);
-        console.log(`- Average Volume: $${avgVolume.toFixed(2)}`);
-        console.log(`- Average Buy/Sell Ratio: ${avgBuyRatio.toFixed(2)}`);
+      if (history && history.length >= 2) {
+        const lastPoint = history[history.length - 1];
+        const firstPoint = history[0];
+        if (!lastPoint?.price || !firstPoint?.price) continue;
+
+        const lastPrice = lastPoint.price;
+        const startPrice = firstPoint.price;
+        const priceChange = this.calculatePriceChange(history);
+        const volumeSpike = this.calculateVolumeSpike(history);
+
+        console.log(`- Total Price Change: ${priceChange > 0 ? '+' : ''}${priceChange.toFixed(2)}%`);
+        console.log(`- Average Volume: $${volumeSpike.toFixed(2)}`);
       }
     }
+
+    this.printSummary();
+    this.printAnalysisSummary();
 
     process.exit(0);
   }

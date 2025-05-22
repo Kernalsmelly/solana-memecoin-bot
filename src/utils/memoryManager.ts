@@ -9,36 +9,17 @@ import logger from './logger';
 /**
  * Memory usage information
  */
-export interface MemoryUsage {
-  /**
-   * Resident Set Size - total memory allocated for the process in bytes
-   */
-  rss: number;
-  
-  /**
-   * Total size of the allocated heap in bytes
-   */
-  heapTotal: number;
-  
-  /**
-   * Actual memory used by the heap in bytes
-   */
+export interface MemoryUsage extends NodeJS.MemoryUsage {
+}
+
+/**
+ * Memory leak information
+ */
+export interface MemoryLeak {
+  timestamp: number;
+  bytesLeaked: number;
   heapUsed: number;
-  
-  /**
-   * Memory used by C++ objects bound to JavaScript objects in bytes
-   */
-  external: number;
-  
-  /**
-   * Memory usage formatted as human-readable strings
-   */
-  formatted: {
-    rss: string;
-    heapTotal: string;
-    heapUsed: string;
-    external: string;
-  };
+  heapTotal: number;
 }
 
 /**
@@ -49,6 +30,7 @@ export class MemoryManager {
   private memoryWarningInterval: NodeJS.Timeout | null = null;
   private memoryHistory: Array<{timestamp: number, usage: MemoryUsage}> = [];
   private readonly MAX_HISTORY_SIZE = 100;
+  private readonly MEMORY_LEAK_THRESHOLD = 10; // 10% threshold
   
   /**
    * Create a new memory manager
@@ -92,7 +74,7 @@ export class MemoryManager {
    * Check current memory usage and issue warnings if needed
    */
   checkMemoryUsage(): void {
-    const usage = this.getMemoryUsage();
+    const usage: NodeJS.MemoryUsage = process.memoryUsage();
     
     // Store in history
     this.memoryHistory.push({timestamp: Date.now(), usage});
@@ -102,8 +84,8 @@ export class MemoryManager {
     
     // Check against threshold
     if (usage.heapUsed > this.memoryThreshold) {
-      logger.warn(`High memory usage detected: ${usage.formatted.heapUsed} heap used`, {
-        memoryUsage: usage.formatted
+      logger.warn(`High memory usage detected: ${this.formatBytes(usage.heapUsed)} heap used`, {
+        memoryUsage: this.formatMemoryUsage(usage)
       });
       
       // Suggest forced garbage collection if available
@@ -114,6 +96,8 @@ export class MemoryManager {
         logger.info('Consider running with --expose-gc flag to enable garbage collection');
       }
     }
+    
+    this.findMemoryLeaks();
   }
   
   /**
@@ -121,24 +105,11 @@ export class MemoryManager {
    * @returns Memory usage information
    */
   getMemoryUsage(): MemoryUsage {
-    // Get memory usage from Node.js
-    const memoryUsage = process.memoryUsage();
+    // Get memory usage directly from Node.js
+    const memoryUsage: NodeJS.MemoryUsage = process.memoryUsage();
     
-    // Create formatted version for logging
-    const formatted = {
-      rss: this.formatBytes(memoryUsage.rss),
-      heapTotal: this.formatBytes(memoryUsage.heapTotal),
-      heapUsed: this.formatBytes(memoryUsage.heapUsed),
-      external: this.formatBytes(memoryUsage.external)
-    };
-    
-    return {
-      rss: memoryUsage.rss,
-      heapTotal: memoryUsage.heapTotal,
-      heapUsed: memoryUsage.heapUsed,
-      external: memoryUsage.external,
-      formatted
-    };
+    // Return the standard NodeJS.MemoryUsage object, cast to our (now identical) MemoryUsage type
+    return memoryUsage as MemoryUsage;
   }
   
   /**
@@ -148,10 +119,10 @@ export class MemoryManager {
     const usage = this.getMemoryUsage();
     
     logger.info('Memory usage', {
-      rss: usage.formatted.rss,
-      heapTotal: usage.formatted.heapTotal,
-      heapUsed: usage.formatted.heapUsed,
-      external: usage.formatted.external
+      rss: this.formatBytes(usage.rss),
+      heapTotal: this.formatBytes(usage.heapTotal),
+      heapUsed: this.formatBytes(usage.heapUsed),
+      external: this.formatBytes(usage.external)
     });
   }
   
@@ -171,8 +142,8 @@ export class MemoryManager {
       const savedBytes = beforeUsage.heapUsed - afterUsage.heapUsed;
       
       logger.info(`Garbage collection completed: ${this.formatBytes(savedBytes)} freed`, {
-        before: beforeUsage.formatted.heapUsed,
-        after: afterUsage.formatted.heapUsed
+        before: this.formatBytes(beforeUsage.heapUsed),
+        after: this.formatBytes(afterUsage.heapUsed)
       });
     } else {
       logger.warn('Garbage collection not available. Run with --expose-gc flag to enable.');
@@ -200,7 +171,7 @@ export class MemoryManager {
    * @param bytes Number of bytes
    * @returns Human readable string
    */
-  private formatBytes(bytes: number): string {
+  public formatBytes(bytes: number): string {
     if (bytes === 0) return '0 B';
     
     const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -246,6 +217,18 @@ export class MemoryManager {
     // Calculate memory growth rate
     const first = this.memoryHistory[0];
     const last = this.memoryHistory[this.memoryHistory.length - 1];
+    
+    // Ensure first and last elements exist before accessing properties
+    if (!first || !last) {
+      return {
+        increasing: false,
+        rate: 'Error',
+        averageIncrease: 0,
+        potentialLeak: false,
+        recommendation: 'Error retrieving memory history data'
+      };
+    }
+    
     const timeDiffMs = last.timestamp - first.timestamp;
     const memoryDiffBytes = last.usage.heapUsed - first.usage.heapUsed;
     
@@ -255,7 +238,10 @@ export class MemoryManager {
     // Determine if memory is consistently increasing
     let increasingCount = 0;
     for (let i = 1; i < this.memoryHistory.length; i++) {
-      if (this.memoryHistory[i].usage.heapUsed > this.memoryHistory[i-1].usage.heapUsed) {
+      // Ensure both current and previous heapUsed values are numbers before comparing
+      const currentHeapUsed = this.memoryHistory[i]?.usage?.heapUsed;
+      const previousHeapUsed = this.memoryHistory[i-1]?.usage?.heapUsed;
+      if (typeof currentHeapUsed === 'number' && typeof previousHeapUsed === 'number' && currentHeapUsed > previousHeapUsed) {
         increasingCount++;
       }
     }
@@ -281,6 +267,71 @@ export class MemoryManager {
       recommendation
     };
   }
+  
+  /**
+   * Format memory usage to human readable string
+   * @param usage Memory usage information
+   * @returns Human readable string
+   */
+  private formatMemoryUsage(usage: NodeJS.MemoryUsage): {
+    rss: string;
+    heapTotal: string;
+    heapUsed: string;
+    external: string;
+  } {
+    return {
+      rss: this.formatBytes(usage.rss),
+      heapTotal: this.formatBytes(usage.heapTotal),
+      heapUsed: this.formatBytes(usage.heapUsed),
+      external: this.formatBytes(usage.external)
+    };
+  }
+  
+  private calculateMemoryDiff(): { memoryDiffBytes: number; timeDiffMs: number } {
+    if (!this.memoryHistory || this.memoryHistory.length < 2) {
+      return { memoryDiffBytes: 0, timeDiffMs: 0 };
+    }
+
+    const last = this.memoryHistory[this.memoryHistory.length - 1];
+    const first = this.memoryHistory[0];
+
+    if (!last || !first) {
+      logger.warn('Insufficient memory history for diff calculation.'); // Added log
+      return { memoryDiffBytes: 0, timeDiffMs: 0 };
+    }
+
+    const timeDiffMs = last.timestamp - first.timestamp;
+    const memoryDiffBytes = last.usage.heapUsed - first.usage.heapUsed;
+
+    return { memoryDiffBytes, timeDiffMs };
+  }
+
+  private findMemoryLeaks(): MemoryLeak[] {
+    const leaks: MemoryLeak[] = [];
+
+    if (!this.memoryHistory || this.memoryHistory.length < 2) {
+      return leaks;
+    }
+
+    for (let i = 1; i < this.memoryHistory.length; i++) {
+      const current = this.memoryHistory[i];
+      const previous = this.memoryHistory[i - 1];
+
+      if (!current?.usage || !previous?.usage) continue;
+
+      if (current.usage.heapUsed > previous.usage.heapUsed) {
+        const leak: MemoryLeak = {
+          timestamp: current.timestamp,
+          bytesLeaked: current.usage.heapUsed - previous.usage.heapUsed,
+          heapUsed: current.usage.heapUsed,
+          heapTotal: current.usage.heapTotal
+        };
+        leaks.push(leak);
+      }
+    }
+
+    return leaks;
+  }
 }
 
 // Export singleton instance
@@ -291,8 +342,8 @@ export function diagnoseMemory(): void {
   const usage = memoryManager.getMemoryUsage(); // Use getMemoryUsage() to get the data
   
   logger.info('=== MEMORY DIAGNOSTIC REPORT ===');
-  logger.info(`Total process memory: ${usage.formatted.rss}`);
-  logger.info(`Heap usage: ${usage.formatted.heapUsed} / ${usage.formatted.heapTotal}`);
+  logger.info(`Total process memory: ${memoryManager.formatBytes(usage.rss)}`);
+  logger.info(`Heap usage: ${memoryManager.formatBytes(usage.heapUsed)} / ${memoryManager.formatBytes(usage.heapTotal)}`);
   
   // Try to run garbage collection
   if (global.gc) {
@@ -304,11 +355,3 @@ export function diagnoseMemory(): void {
   const trend = memoryManager.analyzeMemoryTrend();
   logger.info('Memory trend analysis:', trend);
 }
-
-// Remove conflicting global declaration block
-/*
-// Add global type definition for gc when running with --expose-gc
-declare global {
-  var gc: (() => void) | undefined;
-}
-*/

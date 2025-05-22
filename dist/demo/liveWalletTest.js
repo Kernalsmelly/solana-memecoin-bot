@@ -27,10 +27,15 @@ const INITIAL_BALANCE = 100; // $100 USD
 const TEST_DURATION = 30 * 60 * 1000; // 30 minutes
 const UPDATE_INTERVAL = 60 * 1000; // Status update every minute
 class LiveTradeSimulator extends events_1.EventEmitter {
+    wallet;
+    priceHistory;
+    startTime;
+    statusInterval;
+    newCoinDetector;
+    maxPositions = 3;
+    maxPositionSize = 50; // Max $50 per position
     constructor() {
         super();
-        this.maxPositions = 3;
-        this.maxPositionSize = 50; // Max $50 per position
         this.wallet = {
             cash: INITIAL_BALANCE,
             positions: new Map(),
@@ -421,3 +426,4 @@ class LiveTradeSimulator extends events_1.EventEmitter {
 }
 // Start the simulation
 new LiveTradeSimulator().start().catch((error) => console.error('Error starting simulation:', error?.message || 'Unknown error'));
+//# sourceMappingURL=liveWalletTest.js.map

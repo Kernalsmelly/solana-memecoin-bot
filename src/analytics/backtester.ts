@@ -149,6 +149,12 @@ export class PatternBacktester {
       for (let i = 0; i < this.priceData.length; i++) {
         const currentPoint = this.priceData[i];
         
+        // Skip iteration if points are missing
+        if (!currentPoint) {
+          logger.warn(`Skipping backtest iteration ${i} due to missing data point.`);
+          continue;
+        }
+        
         // Need at least 5 data points to establish a pattern
         if (i < 5) continue;
         
@@ -192,34 +198,61 @@ export class PatternBacktester {
     const currentPoint = this.priceData[index];
     const prevPoints = this.priceData.slice(Math.max(0, index - 5), index);
     
+    // Skip iteration if points are missing
+    if (!currentPoint || prevPoints.length === 0) {
+      logger.warn(`Skipping backtest iteration ${index} due to missing data point.`);
+      return null;
+    }
+    
     // Calculate buy ratio based on current point
-    const buyRatio = currentPoint.buys / (currentPoint.sells || 1);
+    const buyRatio = (currentPoint.buys ?? 0) / ((currentPoint.sells ?? 0) || 1);
     
     // Calculate volume change
-    const prevVolume = prevPoints.length > 0 ? prevPoints[prevPoints.length - 1].volume : 0;
-    const volumeChange = prevVolume > 0 ? 
-                         ((currentPoint.volume - prevVolume) / prevVolume) * 100 : 0;
+    const volumeChange = this.calculateVolumeChange(prevPoints);
     
     // Create simulated token object similar to what token discovery provides
     return {
       address: this.config.tokenAddress,
       symbol: 'SIMTOKEN',
       name: 'Simulated Token',
-      price: currentPoint.price,
-      liquidity: currentPoint.liquidity,
-      volume24h: currentPoint.volume * 24, // Simulate 24h volume
+      price: currentPoint.price ?? 0,
+      liquidity: currentPoint.liquidity ?? 0,
+      volume24h: (currentPoint.volume ?? 0) * 24, // Simulate 24h volume
       buyRatio,
-      buys5min: currentPoint.buys,
-      sells5min: currentPoint.sells,
+      buys5min: currentPoint.buys ?? 0,
+      sells5min: currentPoint.sells ?? 0,
       volumeChange,
       age: 12, // Fixed simulated age (12 hours)
       isNew: true,
       score: 70, // Simulated discovery score
       timestamp: currentPoint.timestamp,
-      priceHistory: prevPoints.map(p => p.price).concat(currentPoint.price)
+      priceHistory: prevPoints.map(p => p.price).concat(currentPoint.price ?? 0)
     };
   }
-  
+
+  private calculateVolumeChange(prevPoints: PriceDataPoint[]): number {
+    if (!prevPoints || prevPoints.length === 0) return 0;
+    
+    const lastPoint = prevPoints[prevPoints.length - 1];
+    if (!lastPoint) return 0;
+    
+    const currentIndex = this.priceData.findIndex(p => 
+      p.timestamp === lastPoint.timestamp && 
+      p.price === lastPoint.price && 
+      p.volume === lastPoint.volume
+    );
+    
+    if (currentIndex === -1 || currentIndex + 1 >= this.priceData.length) return 0;
+    
+    const nextPoint = this.priceData[currentIndex + 1];
+    if (!nextPoint) return 0;
+    
+    const prevVolume = lastPoint.volume ?? 0;
+    const currentVolume = nextPoint.volume ?? 0;
+    
+    return prevVolume > 0 ? ((currentVolume - prevVolume) / prevVolume) * 100 : 0;
+  }
+
   /**
    * Detect patterns based on current market state
    */
@@ -319,8 +352,16 @@ export class PatternBacktester {
         return;
       }
       
-      const entryPrice = this.priceData[startIndex].price;
-      const entryTime = this.priceData[startIndex].timestamp;
+      const entryPrice = this.priceData[startIndex]?.price ?? 0;
+      if (entryPrice === 0) return;
+      
+      const entryTime = this.priceData[startIndex]?.timestamp ?? 0;
+      
+      // Skip if price is missing
+      if (entryPrice === undefined || entryPrice === null) {
+        logger.warn(`Cannot execute trade for ${this.config.tokenAddress} at index ${startIndex}: entryPrice is undefined.`);
+        return;
+      }
       
       // Convert stop loss and take profit to price levels using defaults
       const stopLossPrice = entryPrice * (1 + this.defaultStopLossPercent / 100);
@@ -337,6 +378,13 @@ export class PatternBacktester {
       // Simulate trade through subsequent price points
       for (let i = startIndex + 1; i < this.priceData.length; i++) {
         const currentPoint = this.priceData[i];
+        
+        // Skip iteration if points are missing
+        if (!currentPoint) {
+          logger.warn(`Skipping backtest iteration ${i} due to missing data point.`);
+          continue;
+        }
+        
         const currentPrice = currentPoint.price;
         const currentTime = currentPoint.timestamp;
         

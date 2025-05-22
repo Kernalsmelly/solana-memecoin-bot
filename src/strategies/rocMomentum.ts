@@ -42,13 +42,23 @@ export async function analyzeMomentum(
     }
 
     // Calculate Rate of Change (ROC)
-    const oldestPrice = priceHistory[0].price;
+    const oldestPricePoint = priceHistory[0];
+    if (!oldestPricePoint) {
+        return { signal: 'HOLD', roc: 0, volatility: 0, confidence: 0, reason: 'Error accessing oldest price' };
+    }
+    const oldestPrice = oldestPricePoint.price;
     const roc = ((currentPrice - oldestPrice) / oldestPrice) * 100;
 
     // Calculate volatility using standard deviation of returns
     const returns = priceHistory.map((point, i) => {
         if (i === 0) return 0;
-        return ((point.price - priceHistory[i-1].price) / priceHistory[i-1].price) * 100;
+        const prevPoint = priceHistory[i-1];
+        // Check if both current point and previous point exist and have prices
+        if (!point || typeof point.price !== 'number' || !prevPoint || typeof prevPoint.price !== 'number') {
+            // logger.warn(`Invalid price data at index ${i} or ${i-1} in rocMomentum`);
+            return 0; // Return 0 or handle error appropriately
+        }
+        return ((point.price - prevPoint.price) / prevPoint.price) * 100;
     }).slice(1);
 
     const avgReturn = returns.reduce((a, b) => a + b, 0) / returns.length;

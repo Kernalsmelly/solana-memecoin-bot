@@ -48,11 +48,12 @@ const path = __importStar(require("path"));
  * and ensure only high-quality trading opportunities
  */
 class TokenVettingService extends events_1.EventEmitter {
+    config;
+    blacklistedAddresses = new Set();
+    blacklistedCreators = new Set();
+    vettingResults = new Map();
     constructor(config) {
         super();
-        this.blacklistedAddresses = new Set();
-        this.blacklistedCreators = new Set();
-        this.vettingResults = new Map();
         this.config = {
             blacklistPath: './data/security/blacklist.json',
             minHolders: 20,
@@ -266,8 +267,10 @@ class TokenVettingService extends events_1.EventEmitter {
             // This is a simplified placeholder
             const signatures = await this.config.connection.getSignaturesForAddress(new web3_js_1.PublicKey(tokenAddress), { limit: 1 });
             if (signatures.length > 0) {
-                const blockTime = signatures[0].blockTime;
-                if (blockTime) {
+                // Ensure the first signature exists and has a blockTime
+                const firstSignature = signatures[0];
+                if (firstSignature && firstSignature.blockTime) {
+                    const blockTime = firstSignature.blockTime;
                     return (Date.now() / 1000 - blockTime) / 3600; // Convert to hours
                 }
             }
@@ -367,3 +370,4 @@ class TokenVettingService extends events_1.EventEmitter {
     }
 }
 exports.TokenVettingService = TokenVettingService;
+//# sourceMappingURL=tokenVettingService.js.map

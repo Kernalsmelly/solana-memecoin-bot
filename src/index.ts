@@ -1,129 +1,223 @@
+console.log('Cascade index.ts test: started');
+import * as dotenv from 'dotenv';
+import path from 'path'; // Import path module
+
+// Load .env file from project root first thing
+dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+
+// Global error handlers
+process.on('unhandledRejection', (reason, promise) => {
+  // eslint-disable-next-line no-console
+  console.error('[GLOBAL] Unhandled Rejection:', reason);
+});
+process.on('uncaughtException', (err) => {
+  // eslint-disable-next-line no-console
+  console.error('[GLOBAL] Uncaught Exception:', err);
+});
+
+
 import { NewCoinDetector } from './services/newCoinDetector';
+import { MultiSourceTokenDetector, MultiSourceTokenEvent } from './services/multiSourceTokenDetector';
 import { NotificationManager } from './live/notificationManager';
 import { Connection, Keypair, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { Wallet } from '@coral-xyz/anchor'; // Correct import for Wallet
 import bs58 from 'bs58';
-import { BirdeyeAPI } from './api/birdeyeAPI';
 import { LiveOrderExecution } from './orderExecution';
 import { RiskManager } from './live/riskManager';
 import { ExitManager, ExitManagerConfig, ManagedPosition } from './strategy/exitManager';
 import { PortfolioOptimizer } from './strategy/portfolioOptimizer';
+import { setTimeout } from 'timers/promises';
 import logger from './utils/logger';
-import dotenv from 'dotenv';
+import { config } from './utils/config'; // USE NAMED IMPORT
+import verifyConfig from './utils/verifyConfig'; // Import default verifyConfig function
+import { Config } from './utils/config'; // Keep Config type import if needed elsewhere
 import { 
   PatternDetection, 
   Position,
   TradeOrder,
   OrderExecutionResult
 } from './types';
-import { CoinDetectorConfig } from './services/newCoinDetector';
-
-dotenv.config();
 
 // --- Environment Variable Validation ---
-const SOLANA_RPC_URL = process.env.SOLANA_RPC_URL;
-const SOLANA_PRIVATE_KEY = process.env.SOLANA_PRIVATE_KEY;
-const BIRDEYE_API_KEY = process.env.BIRDEYE_API_KEY;
-
-if (!SOLANA_RPC_URL || !SOLANA_PRIVATE_KEY || !BIRDEYE_API_KEY) {
-    logger.error('Missing required environment variables: SOLANA_RPC_URL, SOLANA_PRIVATE_KEY, BIRDEYE_API_KEY');
-    process.exit(1);
-}
-
-let wallet: Keypair;
-try {
-    wallet = Keypair.fromSecretKey(bs58.decode(SOLANA_PRIVATE_KEY));
-    logger.info(`Wallet loaded: ${wallet.publicKey.toBase58()}`);
-} catch (error) {
-    logger.error('Failed to decode SOLANA_PRIVATE_KEY. Ensure it is a base58 encoded secret key.', error);
+if (!process.env.SOLANA_RPC_URL || !process.env.SOLANA_PRIVATE_KEY) {
+    logger.error('Missing required environment variables: SOLANA_RPC_URL, SOLANA_PRIVATE_KEY');
     process.exit(1);
 }
 
 // --- Main Application Setup ---
 async function main() {
-    // Re-check critical keys just before use to satisfy TypeScript
-    if (!SOLANA_PRIVATE_KEY) {
-        throw new Error('SOLANA_PRIVATE_KEY is unexpectedly undefined');
+    logger.info('[DEBUG] Starting main()...');
+    // Load and verify configuration first
+    const validationResult = await verifyConfig(); // Remove 'config' argument
+    if (!validationResult.isValid) {
+        logger.error('Configuration validation failed. Please check .env file and logs.');
+        // Log specific issues
+        if (validationResult.missingRequired.length > 0) {
+          logger.error(`Missing required env vars: ${validationResult.missingRequired.join(', ')}`);
+        }
+        if (validationResult.riskParameters && validationResult.riskParameters.issues.length > 0) {
+          logger.error(`Risk parameter issues: ${validationResult.riskParameters.issues.join(', ')}`);
+        }
+        if (!validationResult.walletStatus.valid) {
+          logger.error(`Wallet validation error: ${validationResult.walletStatus.error}`);
+        }
+        if (!validationResult.rpcStatus.valid) {
+          logger.error(`RPC validation error: ${validationResult.rpcStatus.error}`);
+        }
+        process.exit(1);
+    }
+
+    logger.info('[DEBUG] Configuration verified successfully.');
+    if (validationResult.missingRecommended.length > 0) {
+      logger.warn(`Missing recommended env vars: ${validationResult.missingRecommended.join(', ')}`);
     }
 
     // Declare NotificationManager outside try block to use in catch
     let notificationManager: NotificationManager | null = null;
+    let wallet: Wallet;
+    let keypair: Keypair;
 
     try {
-        // Initialize notification manager
+        // Decode Private Key and create Wallet
+        const privateKeyString = config.solana.walletPrivateKey.trim(); // Correct property name
+        if (!privateKeyString) {
+            throw new Error('SOLANA_PRIVATE_KEY is missing or empty in config.');
+        }
+        const privateKeyBytes = bs58.decode(privateKeyString);
+        keypair = Keypair.fromSecretKey(privateKeyBytes);
+        wallet = new Wallet(keypair);
+        logger.info(`Wallet loaded: ${wallet.publicKey.toBase58()}`);
+
+        // Initialize notification manager using config
         notificationManager = new NotificationManager({
-            discord: process.env.DISCORD_WEBHOOK ? {
-                webhookUrl: process.env.DISCORD_WEBHOOK
+            discord: config.notifications.discordWebhookUrl ? {
+                webhookUrl: config.notifications.discordWebhookUrl
             } : undefined,
-            telegram: process.env.TELEGRAM_API_ID && process.env.TELEGRAM_API_HASH && process.env.TELEGRAM_SESSION && process.env.TELEGRAM_CHAT_ID ? {
-                apiId: parseInt(process.env.TELEGRAM_API_ID),
-                apiHash: process.env.TELEGRAM_API_HASH || '', // Add default
-                sessionString: process.env.TELEGRAM_SESSION || '', // Add default
-                chatId: process.env.TELEGRAM_CHAT_ID || '' // Add default
+            telegram: config.notifications.telegramApiId && config.notifications.telegramApiHash && config.notifications.telegramSessionString && config.notifications.telegramChatId ? {
+                apiId: config.notifications.telegramApiId,
+                apiHash: config.notifications.telegramApiHash,
+                sessionString: config.notifications.telegramSessionString, // Corrected property name usage
+                chatId: config.notifications.telegramChatId
             } : undefined,
-            notifyLevel: (process.env.NOTIFY_LEVEL as any) || 'all' // Cast to any to allow string values
+            notifyLevel: config.notifications.notifyLevel || 'all' // Corrected property name usage
         });
 
-        // 1. Initialize Core Services
+        // 1. Initialize Core Services using config
         logger.info(`Initializing core services...`);
         logger.info(`Using wallet: ${wallet.publicKey.toBase58()}`);
-        logger.info(`Connecting to Solana RPC: ${SOLANA_RPC_URL}`);
-        const connection = new Connection(SOLANA_RPC_URL!, 'confirmed');
+        const connection = new Connection(config.solana.rpcEndpoint, 'confirmed');
+        logger.info(`Connected to Solana RPC: ${config.solana.rpcEndpoint}`);
 
-        const birdeyeApi = new BirdeyeAPI(BIRDEYE_API_KEY!); // Use non-null assertion
-        const orderExecution = new LiveOrderExecution(connection, wallet, {
-            slippageBps: parseInt(process.env.JUPITER_SLIPPAGE_BPS || '100') // Default 1%
+        // Correctly pass only slippageBps to LiveOrderExecution options
+        const orderExecution = new LiveOrderExecution(connection, keypair, {
+            slippageBps: config.trading.jupiterSlippageBps // Use config
         });
-        // Provide RiskManager configuration from env vars or defaults
+
+        // Provide RiskManager configuration from config
         const riskManager = new RiskManager({
-            maxDrawdown: parseFloat(process.env.RISK_MAX_DRAWDOWN || '20'), // 20% default
-            maxDailyLoss: parseFloat(process.env.RISK_MAX_DAILY_LOSS || '10'), // 10% default
-            maxPositions: parseInt(process.env.MAX_POSITIONS || '5'),
-            maxPositionSize: parseFloat(process.env.MAX_POSITION_SIZE_SOL || '1'), // Max 1 SOL per position default
-            // Optional config can be added here from env vars
-            maxPositionValueUsd: parseFloat(process.env.TARGET_POSITION_VALUE_USD || '50'),
-            maxLiquidityPercent: parseFloat(process.env.MAX_LIQUIDITY_PERCENTAGE || '0.05'), // 5% default
-            minPositionValueUsd: parseFloat(process.env.MIN_POSITION_VALUE_USD || '10')
+            maxDrawdown: config.risk.maxDrawdownPercent,
+            maxDailyLoss: config.risk.maxDailyLossPercent,
+            maxPositions: config.risk.maxActivePositions, // Corrected property name
+            maxPositionSize: config.trading.maxPositionSize, // Use trading.maxPositionSize (needs clarification SOL vs USD)
+            maxPositionValueUsd: config.trading.targetPositionValueUsd, // Map from trading config
+            maxLiquidityPercent: config.trading.maxLiquidityPercentage, // Corrected property name
+            minPositionValueUsd: config.trading.minPositionValueUsd // Map from trading config
         });
-        // TODO: Define ExitManager config - potentially load from a file or env vars
+
+        // Configure ExitManager with optimized settings from memory
         const exitManagerConfig: Partial<ExitManagerConfig> = { 
-            // Example overrides
-            lossExits: { stopLoss: -15 }, // 15% stop loss default
-            trailingStops: { enabled: true, activationThreshold: 20, trailPercent: 10 },
+            timeBasedExits: {
+                maxHoldingTimeHours: 24,
+                quickProfitMinutes: 15,
+                quickProfitThreshold: 10 // 10% profit in 15 minutes = exit
+            },
+            profitExits: {
+                takeProfit: 30, // 30% profit target
+                megaProfitExit: { threshold: 50, lockInPercent: 40 }, // Activate at 50%, lock in 40%
+                superProfitExit: 150 // 150% = super profit exit
+            },
+            lossExits: {
+                stopLoss: config.risk.defaultStopLossPercent * -1, // Use default SL from config
+                timeBasedStopAdjustment: { afterMinutes: 60, newStopPercent: -5 } // Tighten stop after 1 hour
+            },
+            trailingStops: { 
+                enabled: config.risk.trailingStopEnabled ?? true,
+                activationThreshold: config.risk.trailingStopActivationPercent ?? 15, // Start trailing at 15% profit
+                trailPercent: config.risk.trailingStopTrailPercent ?? 10 // Trail by 10% of peak price
+            },
+            volatilityExits: {
+                enabled: true,
+                lookbackPeriods: 10,
+                stdDevMultiplier: 2.5
+            },
+            // Pattern-specific rules based on our optimization results
+            patternSpecificRules: {
+                'Mega Pump and Dump': [
+                    { type: 'profit', value: 50, description: 'Higher take profit for mega pumps' },
+                    { type: 'trailing', value: 15, description: 'Tighter trailing for mega pumps' }
+                ],
+                'Volatility Squeeze': [
+                    { type: 'profit', value: 40, description: 'Higher take profit for volatility squeeze' }
+                ],
+                'Smart Money Trap': [
+                    { type: 'trailing', value: 8, description: 'Tighter trailing for smart money trap' }
+                ]
+            }
         };
-        const exitManager = new ExitManager(orderExecution, riskManager, birdeyeApi, exitManagerConfig);
+        // Initialize ExitManager with null for API client since we're not using it directly
+        const exitManager = new ExitManager(orderExecution, riskManager, null, exitManagerConfig);
 
         // 2. Initialize Portfolio Optimizer
         const portfolioOptimizer = new PortfolioOptimizer({
             orderExecution: orderExecution,
             riskManager: riskManager,
-            birdeyeApi: birdeyeApi,
+            birdeyeApi: null, // We're not using BirdeyeAPI directly
             exitManager: exitManager, // PortfolioOptimizer needs ExitManager ref
-            maxPortfolioAllocationPercent: parseFloat(process.env.MAX_PORTFOLIO_ALLOCATION || '50'), // 50% of capital
-            targetPositionValueUsd: parseFloat(process.env.TARGET_POSITION_VALUE_USD || '50'), // Target $50 per position
-            minPositionValueUsd: parseFloat(process.env.MIN_POSITION_VALUE_USD || '10'),    // Min $10 per position
-            maxPositions: parseInt(process.env.MAX_POSITIONS || '5') // Max 5 positions
+            maxPortfolioAllocationPercent: config.risk.maxPortfolioAllocationPercent,
+            targetPositionValueUsd: config.trading.targetPositionValueUsd,
+            minPositionValueUsd: config.trading.minPositionValueUsd,
+            maxPositions: config.risk.maxActivePositions
         });
 
-        // 3. Initialize Token Detection (Replace Demo Detector)
-        // Example: Using Birdeye WebSocket Integration (assuming class exists)
-        // const tokenDetector = new BirdeyeTokenDetector(BIRDEYE_API_KEY, { /* config */ });
-        // For now, keep the demo detector to avoid breaking execution, but mark as TODO
-        logger.info('Initializing Real New Coin Detector...');
-        const detectorConfig: CoinDetectorConfig = {
-            minLiquidity: parseFloat(process.env.MIN_LIQUIDITY || '5000'), // Default $5000
-            maxAgeHours: parseFloat(process.env.MAX_TOKEN_AGE_HOURS || '24'), // Default 24 hours
-            scanIntervalSec: parseInt(process.env.DETECTOR_SCAN_INTERVAL_SEC || '60'), // Default 60 seconds
-            birdeyeApiKey: BIRDEYE_API_KEY!, // Required - Use non-null assertion
-            defaultStopLossPercent: parseFloat(process.env.DEFAULT_STOP_LOSS_PERCENT || '10'), // Default 10%
-            defaultTimeframe: process.env.DEFAULT_TIMEFRAME || '15m', // Default 15 minutes
-        };
-        const newCoinDetector = new NewCoinDetector(detectorConfig);
-        logger.info('New Coin Detector initialized.');
+        logger.info('Portfolio Optimizer initialized.');
+
+        // 3. Initialize Token Detection 
+        logger.info('Initializing Multi-Source Token Detector...');
+        const multiSourceTokenDetector = new MultiSourceTokenDetector();
+        logger.info('Multi-Source Token Detector initialized.');
 
         // --- Event Wiring ---
         logger.info('Wiring up event listeners...');
 
-        // 1. Detector finds a potential pattern -> Optimizer evaluates it
+        logger.info('[DEBUG] Initializing PriceWatcher...');
+        const priceWatcher = new (await import('./services/priceWatcher')).PriceWatcher(connection, config);
+        logger.info('[DEBUG] PriceWatcher initialized.');
+
+        // Force-watch a known active token (e.g., USDC) to test watcher/signal pipeline
+        const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+        logger.warn('[FORCE] Adding USDC to PriceWatcher for pipeline test');
+        priceWatcher.watchToken(USDC_MINT);
+        logger.info('[DEBUG] Called priceWatcher.watchToken(USDC_MINT)');
+
+        // Listen for new tokens from Birdeye, Jupiter, Dexscreener
+        try {
+          logger.info('[DEBUG] Wiring MultiSourceTokenDetector event handler...');
+          multiSourceTokenDetector.on('newTokenDetected', (evt: MultiSourceTokenEvent) => {
+            logger.info(`[MultiSourceTokenDetector] New token detected from ${evt.source}: ${evt.mint} (${evt.symbol || ''})`);
+            priceWatcher.watchToken(evt.mint, evt.poolAddress);
+          });
+          logger.info('[DEBUG] MultiSourceTokenDetector event handler wired.');
+        } catch (e) {
+          logger.error('[Startup] Error wiring MultiSourceTokenDetector:', e);
+        }
+
+        // Optionally keep NewCoinDetector for Raydium/legacy detection
+        logger.info('Initializing New Coin Detector...');
+        logger.info(`Using QuickNode RPC: ${config.solana.rpcEndpoint}`);
+        logger.info(`Using QuickNode WSS: ${config.solana.wssEndpoint}`);
+        const newCoinDetector = new NewCoinDetector(connection, config);
+        logger.info('New Coin Detector initialized.');
+
         newCoinDetector.on('patternDetected', async (patternDetection: PatternDetection) => { 
             logger.info(`<<< Pattern Detected: ${patternDetection.pattern} for ${patternDetection.tokenAddress} >>>`);
             notificationManager?.notifyPattern(patternDetection);
@@ -220,11 +314,35 @@ async function main() {
 
         // --- Start Services ---
         logger.info('Starting services...');
-        await notificationManager.notifyInfo('Bot starting up...');
-        exitManager.start(); // Start ExitManager monitoring loops
-        await newCoinDetector.start(); // Use start() instead of startScanning()
-
-        logger.info('Trading bot is running.');
+        await notificationManager.notifyInfo('Bot starting up in live trading mode...');
+        
+        // Start ExitManager monitoring loops
+        logger.info('Starting ExitManager...');
+        exitManager.start();
+        
+        // Start NewCoinDetector
+        logger.info('Starting NewCoinDetector...');
+        await newCoinDetector.start();
+        
+        // Set up a periodic check to ensure components are still running
+        const healthCheckInterval = setInterval(() => {
+            try {
+                // Log basic health metrics
+                const positions = portfolioOptimizer.getActivePositions();
+                logger.info(`Health check: ${positions.length} active positions`);
+                
+                // Check RPC connection
+                connection.getSlot().catch(err => {
+                    logger.error('RPC connection error during health check:', err);
+                    notificationManager?.notifyError(`RPC connection error: ${err.message}`);
+                });
+            } catch (error: any) {
+                logger.error('Error during health check:', error);
+            }
+        }, 5 * 60 * 1000); // Every 5 minutes
+        
+        logger.info('Trading bot is running in live mode with QuickNode.');
+        logger.info('Monitoring for new memecoin opportunities...');
 
     } catch (error: unknown) { 
         const errorMessage = error instanceof Error ? error.message : String(error);
@@ -232,12 +350,21 @@ async function main() {
         try {
             // Attempt to notify about the critical failure if manager was initialized
             notificationManager?.notifyError(`CRITICAL BOT FAILURE: ${errorMessage}`);
+            
+            // Attempt to gracefully shut down any running components
+            try {
+                if (exitManager) exitManager.stop();
+                if (newCoinDetector) newCoinDetector.stop();
+            } catch (shutdownError) {
+                logger.error('Error during emergency shutdown:', shutdownError);
+            }
         } catch (notificationError) {
             logger.error('Failed to send error notification:', notificationError);
         }
         process.exit(1); // Exit on critical failure
-    } /* No finally block needed as process exits or continues */
-    // We don't reach here if startDetection runs indefinitely or process exits
+    }
+    
+    // We don't reach here if process exits on error
     logger.info('Bot initialization sequence complete. Running...');
 };
 

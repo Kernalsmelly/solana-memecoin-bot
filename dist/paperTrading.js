@@ -59,3 +59,4 @@ if (require.main === module) {
         process.exit(1);
     });
 }
+//# sourceMappingURL=paperTrading.js.map

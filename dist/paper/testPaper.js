@@ -43,3 +43,4 @@ main().catch(error => {
     logger_1.default.error('Error in paper trading test:', error);
     process.exit(1);
 });
+//# sourceMappingURL=testPaper.js.map

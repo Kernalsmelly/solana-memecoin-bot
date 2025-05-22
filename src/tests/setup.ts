@@ -99,10 +99,10 @@ global.fetch = vi.fn().mockImplementation((url) => {
 });
 
 // Clean up after each test
-afterEach(() => {
-  vi.clearAllMocks();
-  // Force cleanup of memory usage - safely check if method exists
-  if (typeof mockLogger.clear === 'function') {
-    mockLogger.clear();
-  }
-});
+// afterEach(() => {
+//   vi.clearAllMocks();
+//   // Force cleanup of memory usage - safely check if method exists
+//   if (typeof mockLogger.clear === 'function') {
+//     mockLogger.clear();
+//   }
+// });

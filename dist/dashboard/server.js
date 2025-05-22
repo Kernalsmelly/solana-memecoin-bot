@@ -72,3 +72,4 @@ process.on('SIGINT', async () => {
     httpServer.close();
     process.exit(0);
 });
+//# sourceMappingURL=server.js.map
