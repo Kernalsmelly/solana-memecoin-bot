@@ -192,9 +192,9 @@ export class NewCoinDetector extends EventEmitter {
     public stop(): void {
         logger.info('Stopping NewCoinDetector...');
         this.pollingActive = false; // Clear flag
-        if (this.pollingIntervalId) {
-            clearInterval(this.pollingIntervalId);
-            this.pollingIntervalId = null;
+        if (this.pollIntervalId) {
+            clearInterval(this.pollIntervalId);
+            this.pollIntervalId = null;
             logger.debug('[Polling] Cleared scheduled poll timeout.');
         }
     }
@@ -420,16 +420,15 @@ export class NewCoinDetector extends EventEmitter {
     }
 
     private async processSignature(signature: string): Promise<void> {
-        // Skip if we've already processed this signature
+        // Skip if already processed
         if (this.processedPools.has(signature)) {
             logger.debug(`[NewCoinDetector] Signature already processed, skipping: ${signature}`);
             return;
         }
-        
-        // Add to processed set to avoid duplicate processing
+
         this.processedPools.add(signature);
-        
-        // Check both local and global rate limits
+
+        // Respect rate limits
         if (!this.checkRpcRateLimit()) {
             logger.warn(`[RateLimit] Skipping signature processing due to rate limiting: ${signature}`);
             return;
@@ -441,36 +440,53 @@ export class NewCoinDetector extends EventEmitter {
                 maxSupportedTransactionVersion: 0
             });
 
-            if (!tx || !tx.meta || !tx.transaction) {
+            if (!tx || !tx.transaction) {
                 logger.warn(`Invalid transaction data for signature: ${signature}`);
                 return;
             }
 
-            // Check if this is a Raydium pool creation transaction
-            const isRaydiumPoolCreation = this.isRaydiumPoolCreationTx(tx);
-            if (!isRaydiumPoolCreation) {
-    return;
+            // Attempt to locate the initialize2 instruction within the transaction
+            const ix = tx.transaction.message.instructions.find(i => {
+                if ('data' in i && 'programId' in i) {
+                    try {
+                        const programId = (i as PartiallyDecodedInstruction).programId as PublicKey;
+                        const dataBuf = Buffer.from(bs58.decode((i as PartiallyDecodedInstruction).data));
+                        return programId.equals(RAYDIUM_LP_V4_PROGRAM_ID) &&
+                            Buffer.compare(dataBuf.slice(0, 8), INITIALIZE2_DISCRIMINATOR) === 0;
+                    } catch {
+                        return false;
+                    }
+                }
+                return false;
+            }) as PartiallyDecodedInstruction | undefined;
+
+            if (!ix) {
+                return; // Not a Raydium initialize2 tx
+            }
+
+            const data = Buffer.from(bs58.decode(ix.data));
+            const baseMint = new PublicKey(data.slice(72, 104)).toBase58();
+            const quoteMint = new PublicKey(data.slice(104, 136)).toBase58();
+            const accountKeys: any = (tx.transaction as any).message.accountKeys;
+            const accountKey = accountKeys ? (accountKeys as any)[(ix as any).accounts[0]] : null;
+            const poolAddress = accountKey?.pubkey ? accountKey.pubkey.toBase58() : accountKey?.toBase58?.() || '';
+
+            const event: NewPoolDetectedEvent = {
+                poolAddress,
+                baseMint,
+                quoteMint,
+                lpMint: '',
+                market: '',
+                signature,
+                timestamp: tx.blockTime ? tx.blockTime * 1000 : Date.now()
+            };
+
+            debugLogPoolDiscovery('Emitting newPoolDetected', event);
+            this.emit('newPoolDetected', event);
+            appendPoolDetectionLog(event);
+        } catch (error: any) {
+            logger.error(`[processSignature] Failed to process signature ${signature}: ${error.message}`);
+        }
+    }
 }
-try {
-    // Quote mint (mintB) - bytes 104:136
-    const quoteMint = new PublicKey(data.slice(104, 136)).toBase58();
-    // Optional: LP mint and market (skip for now or parse if needed)
-    const lpMint = '';
-    const market = '';
-    const timestamp = tx.blockTime ? tx.blockTime * 1000 : Date.now();
-    const event: NewPoolDetectedEvent = {
-        poolAddress,
-        baseMint,
-        quoteMint,
-        lpMint,
-        market,
-        signature,
-        timestamp
-    };
-    debugLogPoolDiscovery('Emitting newPoolDetected', event);
-    this.emit('newPoolDetected', event);
-    appendPoolDetectionLog(event);
-    return;
-} catch (parseErr) {
-    logger.error(`[processSignature] Failed to parse Raydium initialize2 fields: ${parseErr}`);
-}
+
