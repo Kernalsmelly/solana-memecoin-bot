@@ -22,7 +22,7 @@
     // "lib": ["es2022", "dom", "dom.iterable"],
 
      /* If your code doesn't run in the DOM: */
-     "lib": ["es2022"], // Standard ES2022 libraries
+     "lib": ["es2020", "dom"], // Use ES2020 and DOM standard libraries
 
     /* Module Resolution Options: */
     "module": "CommonJS", // Use CommonJS module system (standard for Node.js)

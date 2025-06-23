@@ -1,5 +1,4 @@
 import { EventEmitter } from 'events';
-import { BirdeyeAPI } from '../api/birdeyeAPI';
 import { AnalyzedToken } from '../analysis/tokenAnalyzer';
 export interface TokenDiscoveryOptions {
     minLiquidity?: number;
@@ -12,10 +11,11 @@ export interface RiskManager {
     [key: string]: any;
 }
 export declare class TokenDiscovery extends EventEmitter {
-    private birdeyeAPI;
+    private rpcRotator;
     private tokenAnalyzer;
     private riskManager?;
     private tokensDiscovered;
+    private dataBroker;
     private tokenProcessQueue;
     private tokenExpiryTimes;
     private cleanupInterval;
@@ -26,7 +26,7 @@ export declare class TokenDiscovery extends EventEmitter {
     private CLEANUP_INTERVAL_MS;
     private TOKEN_MAX_AGE_MS;
     private ANALYSIS_THROTTLE_MS;
-    constructor(birdeyeAPI: BirdeyeAPI, options?: TokenDiscoveryOptions, riskManager?: RiskManager);
+    constructor(options?: TokenDiscoveryOptions, riskManager?: RiskManager);
     private setupEventListeners;
     start(): Promise<boolean>;
     stop(): void;

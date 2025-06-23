@@ -103,11 +103,12 @@ function main() {
             continue;
         if (!poolTradeStats[key])
             poolTradeStats[key] = { pnlSum: 0, winCount: 0, tradeCount: 0 };
+        const stats = poolTradeStats[key];
         const pnl = Number(t.pnl ?? 0);
-        poolTradeStats[key].pnlSum += pnl;
+        stats.pnlSum += pnl;
         if (pnl > 0)
-            poolTradeStats[key].winCount++;
-        poolTradeStats[key].tradeCount++;
+            stats.winCount++;
+        stats.tradeCount++;
     }
     const tradedPoolKeys = Object.keys(poolTradeStats);
     const avgPL = tradedPoolKeys.length
@@ -291,11 +292,12 @@ function parameterSweep(pools, trades) {
             continue;
         if (!poolTradeStats[key])
             poolTradeStats[key] = { pnlSum: 0, winCount: 0, tradeCount: 0 };
+        const stats = poolTradeStats[key];
         const pnl = Number(t.pnl ?? 0);
-        poolTradeStats[key].pnlSum += pnl;
+        stats.pnlSum += pnl;
         if (pnl > 0)
-            poolTradeStats[key].winCount++;
-        poolTradeStats[key].tradeCount++;
+            stats.winCount++;
+        stats.tradeCount++;
     }
     const results = [];
     for (const minLiquidity of liquidityRange) {

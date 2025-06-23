@@ -13,7 +13,7 @@ interface DashboardOptions {
 }
 
 export class PerformanceDashboard {
-  private app: express.Express;
+  private app: express.Application;
   private server: http.Server | null = null;
   private riskManager: RiskManager;
   private port: number;
@@ -37,26 +37,27 @@ export class PerformanceDashboard {
   }
 
   private setupRoutes() {
+    const app = this.app as any;
     // Serve static assets
-    this.app.use(express.static(path.join(__dirname, '../../public')));
+    app.use(express.static(path.join(__dirname, '../../public')));
 
     // API routes
-    this.app.get('/api/metrics', (req, res) => {
+    app.get('/api/metrics', (req: express.Request, res: express.Response) => {
       const metrics = this.riskManager.getMetrics();
-      res.json(metrics);
+      (res as any).json(metrics);
     });
 
-    this.app.get('/api/performance', (req, res) => {
-      res.json(this.performanceHistory.slice(-100)); // Return last 100 data points
+    app.get('/api/performance', (req: express.Request, res: express.Response) => {
+      (res as any).json(this.performanceHistory.slice(-100)); // Return last 100 data points
     });
 
-    this.app.get('/api/status', (req, res) => {
+    app.get('/api/status', (req: express.Request, res: express.Response) => {
       const metrics = this.riskManager.getMetrics();
       const circuitBreakers = metrics.circuitBreakers;
       const emergencyStop = metrics.emergencyStopActive;
       const systemEnabled = metrics.systemEnabled;
       
-      res.json({
+      (res as any).json({
         status: systemEnabled ? (emergencyStop ? 'EMERGENCY_STOP' : 'RUNNING') : 'DISABLED',
         circuitBreakers,
         lastUpdated: new Date().toISOString()
@@ -64,14 +65,14 @@ export class PerformanceDashboard {
     });
 
     // Main dashboard HTML
-    this.app.get('/', (req, res) => {
-      res.sendFile(path.join(__dirname, '../../public/dashboard.html'));
+    app.get('/', (req: express.Request, res: express.Response) => {
+      (res as any).sendFile(path.join(__dirname, '../../public/dashboard.html'));
     });
   }
 
   public start(): Promise<void> {
     return new Promise((resolve) => {
-      this.server = this.app.listen(this.port, () => {
+      this.server = http.createServer(this.app).listen(this.port, () => {
         logger.info(`Performance dashboard running on port ${this.port}`);
         
         // Start metrics collection

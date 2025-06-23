@@ -73,7 +73,7 @@ async function verifyConfig() {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error connecting to RPC';
         logger_1.default.error(`RPC connection check failed for ${process.env.QUICKNODE_RPC_URL}: ${errorMessage}`, {
             errorDetails: error instanceof Error ? error : JSON.stringify(error),
-            cause: error instanceof Error && error.cause ? error.cause : 'N/A',
+            cause: error instanceof Error && 'cause' in error ? error.cause : 'N/A',
             stack: error instanceof Error ? error.stack : 'N/A'
         });
         result.rpcStatus = {

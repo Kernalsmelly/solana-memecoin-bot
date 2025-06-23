@@ -23,7 +23,7 @@ export declare class NotificationManager {
     notifyRisk(metrics: RiskMetrics): Promise<void>;
     notifyError(error: string | Error): Promise<void>;
     notifyInfo(message: string): Promise<void>;
-    private notify;
+    notify(message: string, level: 'all' | 'trades' | 'errors' | 'patterns'): Promise<void>;
     private sendDiscordMessage;
     private sendTelegramMessage;
     cleanup(): Promise<void>;

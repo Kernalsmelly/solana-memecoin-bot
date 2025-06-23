@@ -83,6 +83,33 @@ export class TradeLogger {
             logger.error('Failed to write to trade log', error);
         }
     }
+    /**
+     * Logs a scenario event (e.g., circuit breaker, emergency stop, pattern trigger, error).
+     * @param scenarioName Name of the scenario or event
+     * @param details      Details or metadata (object or string)
+     */
+    public logScenario(scenarioName: string, details: Record<string, any> | string) {
+        const scenarioFile = path.join(this.logDir, 'scenario_log.csv');
+        let detailsString: string;
+        if (typeof details === 'string') {
+            detailsString = details.replace(/,/g, ';');
+        } else {
+            detailsString = Object.entries(details).map(([k, v]) => `${k}=${String(v).replace(/,/g, ';')}`).join('; ');
+        }
+        const row = [
+            new Date().toISOString(),
+            scenarioName.replace(/,/g, ';'),
+            detailsString
+        ].join(',') + '\n';
+        if (!fs.existsSync(scenarioFile)) {
+            fs.writeFileSync(scenarioFile, 'timestamp,scenario,details\n');
+        }
+        try {
+            fs.appendFileSync(scenarioFile, row);
+        } catch (error) {
+            logger.error('Failed to write to scenario log', error);
+        }
+    }
 }
 
 export const tradeLogger = new TradeLogger();

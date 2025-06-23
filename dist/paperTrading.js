@@ -49,13 +49,23 @@ async function runPaperTrading() {
         logger_1.default.info("Paper trading system shutdown complete.");
     }
     catch (error) {
-        logger_1.default.error("Paper trading encountered an error:", error);
+        if (error instanceof Error) {
+            logger_1.default.error("Paper trading encountered an error:", error);
+        }
+        else {
+            logger_1.default.error("Paper trading encountered an unknown error:", String(error));
+        }
     }
 }
 // If this file is executed directly, run the paper trading module.
 if (require.main === module) {
     runPaperTrading().catch(err => {
-        logger_1.default.error("Fatal error during paper trading:", err);
+        if (err instanceof Error) {
+            logger_1.default.error("Fatal error during paper trading:", err);
+        }
+        else {
+            logger_1.default.error("Fatal error during paper trading (unknown error):", String(err));
+        }
         process.exit(1);
     });
 }

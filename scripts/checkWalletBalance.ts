@@ -3,7 +3,8 @@ import { config } from '../src/utils/config';
 import * as fs from 'fs';
 
 // Import or copy the getWalletBalance logic from fundManager
-import { getWalletBalance } from '../src/utils/fundManager';
+// import { getWalletBalance } from '../utils/fundManager';
+// TODO: getWalletBalance implementation missing. Please provide or restore fundManager.ts.
 
 async function main() {
   // Load wallet from config
@@ -12,12 +13,13 @@ async function main() {
   const connection = new Connection(config.solana.rpcEndpoint, 'confirmed');
 
   try {
-    const report = await getWalletBalance(connection, wallet);
-    console.log('\n===== WALLET BALANCE REPORT =====');
-    console.log(`SOL: ${report.solBalance}`);
-    console.log(`USDC: ${report.usdcBalance}`);
-    console.log('Other tokens:', report.tokens);
-    console.log(`Total Estimated Value (USD): $${report.totalValueUsd}`);
+    // const report = await getWalletBalance(connection, wallet);
+    // console.log('\n===== WALLET BALANCE REPORT =====');
+    // console.log(`SOL: ${report.solBalance}`);
+    // console.log(`USDC: ${report.usdcBalance}`);
+    // console.log('Other tokens:', report.tokens);
+    // console.log(`Total Estimated Value (USD): $${report.totalValueUsd}`);
+    console.error('getWalletBalance is not implemented. Please restore fundManager.ts for this functionality.');
     console.log('=================================\n');
   } catch (err) {
     console.error('Error fetching wallet balance:', err);

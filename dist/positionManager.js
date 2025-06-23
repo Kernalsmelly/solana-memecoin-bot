@@ -64,12 +64,67 @@ class PositionManager {
         return position;
     }
     /**
-     * Closes (or partially closes) a position.
-     * @param tokenMint - Token address.
-     * @param quantityToSell - Quantity to sell.
-     * @param sellPrice - Price at which the token is sold.
-     * @returns The updated position or null if fully closed.
+     * Calculates real-time PnL for a single position.
      */
+    async getPositionPnL(tokenMint) {
+        const position = this.positions.get(tokenMint);
+        if (!position)
+            return null;
+        const currentPrice = await this.fetchTokenPrice(tokenMint);
+        const unrealizedPnL = (currentPrice - position.entryPrice) * position.quantity;
+        const unrealizedPnLPercent = position.entryPrice > 0 ? (unrealizedPnL / (position.entryPrice * position.quantity)) * 100 : 0;
+        return {
+            tokenMint,
+            tokenSymbol: position.tokenSymbol,
+            quantity: position.quantity,
+            entryPrice: position.entryPrice,
+            currentPrice,
+            unrealizedPnL,
+            unrealizedPnLPercent
+        };
+    }
+    /**
+     * Calculates real-time PnL for all open positions.
+     */
+    async getAllPositionsPnL() {
+        const results = [];
+        for (const position of this.positions.values()) {
+            const pnl = await this.getPositionPnL(position.tokenMint);
+            if (pnl)
+                results.push(pnl);
+        }
+        return results;
+    }
+    /**
+     * Checks if a position should be exited due to stop-loss, take-profit, trailing stop, or time-based exit.
+     * Returns a reason string if exit is triggered, otherwise null.
+     * (Stub logic, to be filled in with advanced rules)
+     */
+    async checkExitTriggers(tokenMint) {
+        // TODO: Integrate with advanced logic (momentum, trailing stops, pattern triggers, etc.)
+        // Example stub: exit if loss > 20% or gain > 50%
+        const pnl = await this.getPositionPnL(tokenMint);
+        if (!pnl)
+            return null;
+        if (pnl.unrealizedPnLPercent <= -20)
+            return 'stop-loss';
+        if (pnl.unrealizedPnLPercent >= 50)
+            return 'take-profit';
+        // TODO: Add trailing stop, time-based, and pattern-based exits
+        return null;
+    }
+    /**
+     * (Stub) Applies trailing stop logic for a position. To be filled in with advanced rules.
+     */
+    async applyTrailingStop(tokenMint) {
+        // TODO: Implement trailing stop logic (momentum, volatility, etc.)
+    }
+    /**
+     * (Stub) Applies time-based exit logic for a position. To be filled in with advanced rules.
+     */
+    async applyTimeBasedExit(tokenMint) {
+        // TODO: Implement max holding period logic
+    }
     async closePosition(tokenMint, quantityToSell, sellPrice) {
         const position = this.positions.get(tokenMint);
         if (!position) {

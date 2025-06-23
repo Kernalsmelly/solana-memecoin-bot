@@ -7,8 +7,13 @@ exports.NewCoinDetector = void 0;
 const events_1 = require("events");
 const web3_js_1 = require("@solana/web3.js"); // Ensure PublicKey & ParsedAccountData are imported
 const logger_1 = __importDefault(require("../utils/logger"));
-const bs58_1 = __importDefault(require("bs58")); // Try default import again, but access .decode property
+const tradeLogger_1 = require("../utils/tradeLogger");
+const notifications_1 = require("../utils/notifications");
 const api_1 = require("@jup-ag/api"); // Import Jupiter API client
+const poolDetectionLogger_1 = require("../utils/poolDetectionLogger");
+const axios_1 = __importDefault(require("axios"));
+const helpers_1 = require("../utils/helpers");
+const launch_1 = require("../launch");
 // Constants
 const RAYDIUM_LP_V4_PROGRAM_ID = new web3_js_1.PublicKey("675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8");
 const SOL_MINT = "So11111111111111111111111111111111111111112";
@@ -23,6 +28,34 @@ function debugLogPoolDiscovery(context, data) {
 // SHA256("global:initialize2").slice(0, 8)
 const INITIALIZE2_DISCRIMINATOR = Buffer.from([0xf1, 0x4b, 0x4f, 0x4a, 0x30, 0xa4, 0x20, 0xec]);
 // --- Type Guards ---
+// Utility: Fetch Raydium pool by baseMint or quoteMint using filtered getProgramAccounts
+async function fetchRaydiumPoolsByMint(connection, mint) {
+    // Raydium pool layout: baseMint at offset 72, quoteMint at offset 104
+    const filters = [
+        { dataSize: 624 },
+        { memcmp: { offset: 72, bytes: mint } }
+    ];
+    let accounts = [];
+    try {
+        accounts = Array.from(await connection.getProgramAccounts(RAYDIUM_LP_V4_PROGRAM_ID, { filters }));
+    }
+    catch (err) {
+        logger_1.default.warn(`[BirdeyeHybrid] On-chain fetch error for mint ${mint}:`, err);
+        return [];
+    }
+    return accounts.map(acc => {
+        const buf = acc.account.data;
+        let lpMint = '', baseMint = '', quoteMint = '', market = '';
+        try {
+            lpMint = new web3_js_1.PublicKey(buf.slice(40, 72)).toBase58();
+            baseMint = new web3_js_1.PublicKey(buf.slice(72, 104)).toBase58();
+            quoteMint = new web3_js_1.PublicKey(buf.slice(104, 136)).toBase58();
+            market = new web3_js_1.PublicKey(buf.slice(136, 168)).toBase58();
+        }
+        catch { }
+        return { ammId: acc.pubkey.toBase58(), baseMint, quoteMint, lpMint, market };
+    });
+}
 // Type guard to check if an instruction is a ParsedInstruction or PartiallyDecodedInstruction
 // containing valid Initialize2Info in its parsed data.
 function isParsedInstructionWithInitializeInfo(instruction // Start with any as input comes from array iteration
@@ -64,17 +97,51 @@ function isMintAccountInfoWithDecimals(accountInfo // Start with any as input co
     );
 }
 class NewCoinDetector extends events_1.EventEmitter {
-    // ... existing properties and constructor ...
-    // Ensure manageRecentlyProcessedSet is a method of this class
+    tokenDiscovery = null;
+    birdeyeListenerActive = false;
+    // Attach TokenDiscovery for Birdeye hybrid mode
+    attachTokenDiscovery(tokenDiscovery) {
+        this.tokenDiscovery = tokenDiscovery;
+        if (!this.birdeyeListenerActive && tokenDiscovery) {
+            tokenDiscovery.on('tokenDiscovered', async (token) => {
+                logger_1.default.info(`[BirdeyeHybrid] New token discovered: ${token.address} (${token.symbol})`);
+                // Try both baseMint and quoteMint lookups
+                let pools = [];
+                pools = await fetchRaydiumPoolsByMint(this.connection, token.address);
+                if (pools.length === 0) {
+                    pools = await fetchRaydiumPoolsByMint(this.connection, token.baseMint || token.address);
+                }
+                if (pools.length > 0) {
+                    logger_1.default.info(`[BirdeyeHybrid] Found ${pools.length} Raydium pools for token ${token.address}`);
+                    for (const pool of pools) {
+                        await this.processRaydiumPool(pool);
+                    }
+                }
+                else {
+                    logger_1.default.info(`[BirdeyeHybrid] No Raydium pools found on-chain for token ${token.address}`);
+                }
+            });
+            this.birdeyeListenerActive = true;
+        }
+    }
     connection;
     config;
     jupiterApi;
     processedSignatures = new Set();
     pollingActive = false; // Flag to control polling loop
-    pollingIntervalId = null; // Stores the timeout ID
+    pollIntervalId = null; // Stores the timeout ID
     pollingIntervalMs; // Stores the interval duration
     isPolling = false; // Flag for active poll execution
     lastProcessedSignatureForPolling = ""; // Marker for the next poll, now always a string
+    // Rate limiting properties
+    rpcCallCount = 0;
+    rpcCallResetTime = Date.now();
+    MAX_RPC_CALLS_PER_MINUTE = 50; // Reduced from 60 to 50 to be more conservative
+    // Process tracking
+    processedPools = new Set();
+    MAX_PROCESSED_POOLS = 1000; // Limit memory usage
+    MAX_POOLS_TO_PROCESS = 5; // Process max 5 pools per cycle
+    DELAY_BETWEEN_POOLS_MS = 1000; // 1 second delay between processing pools
     constructor(connection, config) {
         super();
         this.connection = connection;
@@ -83,212 +150,369 @@ class NewCoinDetector extends events_1.EventEmitter {
         this.jupiterApi = (0, api_1.createJupiterApiClient)(); // Initialize Jupiter API client
         logger_1.default.info("NewCoinDetector initialized.");
         logger_1.default.info(`Using RPC endpoint: ${connection.rpcEndpoint}`);
-    }
-    /**
-     * Manages the size of the processed signatures set, keeping only the most recent maxSize entries.
-     */
-    manageRecentlyProcessedSet(set, key, maxSize) {
-        set.add(key);
-        if (set.size > maxSize) {
-            const oldest = set.values().next().value;
-            set.delete(oldest);
-        }
+        logger_1.default.info(`[NewCoinDetector] Configured WSS endpoint: ${this.config.solana.wssEndpoint}`);
+        // Set up a timer to reset the processed pools periodically to prevent memory leaks
+        setInterval(() => {
+            const oldSize = this.processedPools.size;
+            if (oldSize > this.MAX_PROCESSED_POOLS / 2) {
+                // Convert to array, keep only the most recent half, and convert back to Set
+                const poolsArray = Array.from(this.processedPools);
+                const newPoolsArray = poolsArray.slice(poolsArray.length / 2);
+                this.processedPools = new Set(newPoolsArray);
+                logger_1.default.debug(`[NewCoinDetector] Cleaned processed pools cache from ${oldSize} to ${this.processedPools.size} entries`);
+            }
+        }, 30 * 60 * 1000); // Clean every 30 minutes
     }
     start() {
-        logger_1.default.info(`Starting New Coin Detector (Polling Mode)... Interval: ${this.config.tokenMonitor.pollingIntervalSeconds} seconds`);
-        this.pollingActive = true; // Set flag
-        this.isPolling = false; // Reset execution flag
-        this.lastProcessedSignatureForPolling = ""; // Reset last signature to empty string
-        this.processedSignatures.clear(); // Clear processed set on start
-        // Clear any existing timeout just in case
-        if (this.pollingIntervalId) {
-            clearTimeout(this.pollingIntervalId);
-            this.pollingIntervalId = null;
+        if (this.pollIntervalId) {
+            logger_1.default.warn('NewCoinDetector polling already active.');
+            return;
         }
-        this.pollForNewPools(); // Start the first poll immediately
+        logger_1.default.info('Starting NewCoinDetector polling with enhanced rate limiting...');
+        // Poll every 2 minutes to further reduce RPC calls
+        const pollInterval = 2 * 60 * 1000; // 2 minutes instead of 1 minute
+        logger_1.default.info(`[NewCoinDetector] Using poll interval of ${pollInterval / 1000} seconds with max ${this.MAX_RPC_CALLS_PER_MINUTE} RPC calls/min`);
+        logger_1.default.info(`[NewCoinDetector] Processing max ${this.MAX_POOLS_TO_PROCESS} pools per cycle with ${this.DELAY_BETWEEN_POOLS_MS}ms delay between pools`);
+        this.pollIntervalId = setInterval(() => {
+            // Check if we're approaching rate limits and potentially skip this cycle
+            const rpcUtilization = this.rpcCallCount / this.MAX_RPC_CALLS_PER_MINUTE;
+            const globalUtilization = launch_1.globalRateLimiter.getUtilizationPercent() / 100;
+            if (rpcUtilization > 0.8 || globalUtilization > 0.8) {
+                logger_1.default.warn(`[RateLimit] Skipping NewCoinDetector poll cycle due to high API utilization - Local: ${(rpcUtilization * 100).toFixed(0)}%, Global: ${(globalUtilization * 100).toFixed(0)}%`);
+                return;
+            }
+            this.pollForNewPools().catch(error => {
+                logger_1.default.error(`Error in NewCoinDetector polling: ${error.message}`);
+            });
+        }, pollInterval);
+        // Initial poll with a delay to allow other systems to initialize first
+        setTimeout(() => {
+            this.pollForNewPools().catch(error => {
+                logger_1.default.error(`Error in initial NewCoinDetector polling: ${error.message}`);
+            });
+        }, 10000); // 10 second delay before first poll
     }
     stop() {
-        logger_1.default.info('Stopping New Coin Detector (Polling Mode)...');
+        logger_1.default.info('Stopping NewCoinDetector...');
         this.pollingActive = false; // Clear flag
-        if (this.pollingIntervalId) {
-            clearTimeout(this.pollingIntervalId);
-            this.pollingIntervalId = null;
+        if (this.pollIntervalId) {
+            clearInterval(this.pollIntervalId);
+            this.pollIntervalId = null;
             logger_1.default.debug('[Polling] Cleared scheduled poll timeout.');
         }
+    }
+    async fetchOnChainPools() {
+        const sizes = [624, 680];
+        let accounts = [];
+        for (const size of sizes) {
+            try {
+                const accs = await this.connection.getProgramAccounts(RAYDIUM_LP_V4_PROGRAM_ID, { filters: [{ dataSize: size }] });
+                logger_1.default.info(`[Polling] On-chain fetched ${accs.length} accounts size ${size}.`);
+                accounts = accounts.concat(accs);
+            }
+            catch (err) {
+                logger_1.default.warn(`[Polling] On-chain fetch error size=${size}:`, err);
+            }
+        }
+        // Deduplicate
+        const seen = new Set();
+        const unique = accounts.filter(acc => {
+            const key = acc.pubkey.toBase58();
+            if (seen.has(key))
+                return false;
+            seen.add(key);
+            return true;
+        });
+        logger_1.default.info(`[Polling] On-chain unique accounts: ${unique.length}`);
+        // Parse to poolData
+        return unique.map(acc => {
+            const buf = acc.account.data;
+            let lpMint = '', baseMint = '', quoteMint = '', market = '';
+            try {
+                lpMint = new web3_js_1.PublicKey(buf.slice(40, 72)).toBase58();
+                baseMint = new web3_js_1.PublicKey(buf.slice(72, 104)).toBase58();
+                quoteMint = new web3_js_1.PublicKey(buf.slice(104, 136)).toBase58();
+                market = new web3_js_1.PublicKey(buf.slice(136, 168)).toBase58();
+            }
+            catch { }
+            return { ammId: acc.pubkey.toBase58(), baseMint, quoteMint, lpMint, market };
+        });
+    }
+    /**
+     * Fetch pools from Raydium API (HTTP request, not RPC call)
+     * @returns Array of pool data or empty array if failed
+     */
+    async fetchRaydiumPools() {
+        try {
+            const raydiumUrl = 'https://api.raydium.io/v2/sdk/liquidity/mainnet.json';
+            const response = await axios_1.default.get(raydiumUrl, { timeout: 5000 });
+            const poolData = response.data?.official || response.data || [];
+            logger_1.default.info(`[Raydium API] Successfully fetched ${poolData.length} pools`);
+            return poolData;
+        }
+        catch (error) {
+            logger_1.default.warn(`[Raydium API] Failed to fetch pools: ${error.message}`);
+            return [];
+        }
+    }
+    /**
+     * Process a Raydium pool and emit event if it's a valid new pool
+     * @param pool The pool data from Raydium API
+     */
+    async processRaydiumPool(pool) {
+        try {
+            // Basic validation
+            if (!pool.ammId || !pool.baseMint || !pool.quoteMint) {
+                logger_1.default.debug(`[ProcessPool] Invalid pool data: ${JSON.stringify(pool)}`);
+                return;
+            }
+            // Emit the new pool detected event
+            const event = {
+                poolAddress: pool.ammId,
+                baseMint: pool.baseMint,
+                quoteMint: pool.quoteMint,
+                lpMint: pool.lpMint || '',
+                market: pool.market || '',
+                signature: '',
+                timestamp: Date.now()
+            };
+            this.emit('newPoolDetected', event);
+            logger_1.default.info(`[ProcessPool] New pool detected: ${pool.ammId} (${pool.baseMint})`);
+        }
+        catch (error) {
+            logger_1.default.error(`[ProcessPool] Error processing pool ${pool?.ammId}: ${error.message}`);
+            tradeLogger_1.tradeLogger.logScenario('NEW_COIN_DETECTOR_ERROR', {
+                event: 'processRaydiumPool',
+                pool: pool?.ammId,
+                error: error?.message || String(error),
+                timestamp: new Date().toISOString()
+            });
+            await (0, notifications_1.sendAlert)(`[NewCoinDetector] Error processing pool ${pool?.ammId}: ${error.message}`, 'CRITICAL');
+        }
+    }
+    /**
+     * Poll for new pools using on-chain data as fallback
+     */
+    async pollOnChain() {
+        // Emit heartbeat for NewCoinDetector (on-chain polling)
+        if (globalThis.heartbeat?.NewCoinDetector) {
+            globalThis.heartbeat.NewCoinDetector();
+        }
+        else {
+            logger_1.default.debug('[HEARTBEAT] NewCoinDetector heartbeat function not found');
+        }
+        // Check rate limit before making expensive RPC calls
+        if (!this.checkRpcRateLimit()) {
+            logger_1.default.warn(`[OnChain] Skipping on-chain polling due to rate limiting`);
+            return;
+        }
+        logger_1.default.info(`[OnChain] Falling back to on-chain polling for new pools`);
+        try {
+            const pools = await this.fetchOnChainPools();
+            if (pools.length > 0) {
+                logger_1.default.info(`[OnChain] Found ${pools.length} pools, processing max ${this.MAX_POOLS_TO_PROCESS}`);
+                // Process only a limited number of pools
+                const poolsToProcess = pools.slice(0, this.MAX_POOLS_TO_PROCESS);
+                for (const pool of poolsToProcess) {
+                    // Skip if already processed
+                    if (this.processedPools.has(pool.ammId)) {
+                        continue;
+                    }
+                    await this.processRaydiumPool(pool);
+                    this.processedPools.add(pool.ammId);
+                    await (0, helpers_1.sleep)(this.DELAY_BETWEEN_POOLS_MS);
+                }
+            }
+        }
+        catch (error) {
+            logger_1.default.error(`[OnChain] Error in on-chain polling: ${error.message}`);
+            await (0, notifications_1.sendAlert)(`[NewCoinDetector] Error in on-chain polling: ${error.message}`, 'CRITICAL');
+        }
+    }
+    /**
+     * Rate limiter for RPC calls to prevent excessive QuickNode usage
+     * Uses both local and global rate limiters for better control
+     * @returns true if the call is allowed, false if it should be throttled
+     */
+    checkRpcRateLimit() {
+        const now = Date.now();
+        // Reset counter if a minute has passed
+        if (now - this.rpcCallResetTime > 60000) {
+            this.rpcCallCount = 0;
+            this.rpcCallResetTime = now;
+        }
+        // Check if we're over the local limit
+        if (this.rpcCallCount >= this.MAX_RPC_CALLS_PER_MINUTE) {
+            logger_1.default.warn(`[RateLimit] NewCoinDetector local RPC call limit reached (${this.MAX_RPC_CALLS_PER_MINUTE}/min). Throttling.`);
+            return false;
+        }
+        // Also check the global rate limiter
+        if (!launch_1.globalRateLimiter.checkLimit()) {
+            logger_1.default.warn(`[RateLimit] Global RPC call limit reached. Throttling.`);
+            return false;
+        }
+        // Increment local counter for this call
+        this.rpcCallCount++;
+        return true;
     }
     async pollForNewPools() {
         if (this.isPolling) {
             logger_1.default.debug('[Polling] Poll already in progress, skipping.');
             return;
-            this.isPolling = true;
-            logger_1.default.info('[Polling] Starting poll for new pools...'); // Changed from debug to info for visibility
-            try {
-                const options = {
-                    limit: 100, // Fetch last 100 signatures
-                    // Use 'before' to get signatures *newer* than the last processed one
-                    before: this.lastProcessedSignatureForPolling
-                };
-                logger_1.default.debug(`[Polling] Fetching signatures from RPC: ${this.connection.rpcEndpoint} with options: ${JSON.stringify(options)}`);
-                // Fetch signatures
-                const signaturesInfo = await this.connection.getSignaturesForAddress(RAYDIUM_LP_V4_PROGRAM_ID, options, 'confirmed' // Keep using 'confirmed' as in original code
-                );
-                if (!signaturesInfo || signaturesInfo.length === 0) {
-                    logger_1.default.debug('[Polling] No new signatures found.');
-                    // No return here, proceed to finally block
+        }
+        this.isPolling = true;
+        // Log current rate limit status
+        const localUtilization = (this.rpcCallCount / this.MAX_RPC_CALLS_PER_MINUTE) * 100;
+        const globalUtilization = launch_1.globalRateLimiter.getUtilizationPercent();
+        logger_1.default.info(`[Polling] Starting Raydium pool poll... RPC utilization: Local ${localUtilization.toFixed(0)}%, Global ${globalUtilization}%`);
+        try {
+            logger_1.default.debug('[Polling] Attempting to fetch pools from Raydium API...');
+            const raydiumPools = await this.fetchRaydiumPools();
+            logger_1.default.debug(`[Polling] Raydium API returned ${raydiumPools ? raydiumPools.length : 0} pools.`);
+            if (raydiumPools && raydiumPools.length > 0) {
+                logger_1.default.info(`[Polling] Found ${raydiumPools.length} pools from Raydium API, processing max ${this.MAX_POOLS_TO_PROCESS}`);
+                logger_1.default.debug(`[Polling] Pool IDs: ${raydiumPools.slice(0, 10).map(p => p.id).join(', ')}${raydiumPools.length > 10 ? ', ...' : ''}`);
+                // Process only a limited number of pools per cycle to avoid rate limits
+                const poolsToProcess = raydiumPools.slice(0, this.MAX_POOLS_TO_PROCESS);
+                let processedCount = 0;
+                for (const pool of poolsToProcess) {
+                    logger_1.default.debug(`[Polling] Processing pool: ${JSON.stringify(pool)}`);
+                    // Check rate limit before processing each pool
+                    if (!this.checkRpcRateLimit()) {
+                        logger_1.default.warn(`[RateLimit] Pausing pool processing due to rate limiting. Processed ${processedCount} of ${poolsToProcess.length} pools.`);
+                        break;
+                    }
+                    // Skip if we've already processed this pool
+                    if (this.processedPools.has(pool.id)) {
+                        logger_1.default.debug(`[Polling] Pool ${pool.id} already processed, skipping.`);
+                        continue;
+                    }
+                    // Process the pool
+                    try {
+                        await this.processRaydiumPool(pool);
+                        logger_1.default.debug(`[Polling] Successfully processed pool ${pool.id}`);
+                    }
+                    catch (e) {
+                        if (e instanceof Error) {
+                            logger_1.default.error(`[Polling] Error processing pool ${pool.id}: ${e.message}`);
+                        }
+                        else {
+                            logger_1.default.error(`[Polling] Error processing pool ${pool.id}:`, e);
+                        }
+                    }
+                    processedCount++;
+                    // Add to processed set
+                    this.processedPools.add(pool.id);
+                    // Add delay between processing pools to avoid rate limits
+                    await (0, helpers_1.sleep)(this.DELAY_BETWEEN_POOLS_MS);
+                }
+                logger_1.default.info(`[Polling] Completed processing ${processedCount} new pools.`);
+            }
+            else {
+                logger_1.default.warn('[Polling] No new pools found from Raydium API! Will attempt on-chain fallback.');
+                // Check if we should proceed with on-chain polling based on rate limits
+                if (typeof localUtilization !== 'undefined' && typeof globalUtilization !== 'undefined' && (localUtilization > 70 || globalUtilization > 70)) {
+                    logger_1.default.warn(`[RateLimit] Skipping on-chain polling due to high API utilization.`);
                 }
                 else {
-                    logger_1.default.info(`[Polling] Found ${signaturesInfo.length} potential new signatures.`);
-                    // Update the marker for the *next* poll *before* processing
-                    // The first signature in the result is the newest one when using 'before'
-                    const newestSignature = signaturesInfo[0]?.signature;
-                    if (newestSignature) {
-                        this.lastProcessedSignatureForPolling = newestSignature;
-                        logger_1.default.debug(`[Polling] New 'lastProcessedSignatureForPolling' marker set to: ${this.lastProcessedSignatureForPolling}`);
-                    }
-                    else {
-                        logger_1.default.warn('[Polling] Received signatures array but the first element was missing a signature string.');
-                    }
-                    // Filter out signatures we've already processed (using the main processed set)
-                    // No need to reverse when using 'before', newest are already first
-                    const signaturesToProcess = signaturesInfo
-                        .filter(sigInfo => !this.processedSignatures.has(sigInfo.signature));
-                    if (signaturesToProcess.length === 0) {
-                        logger_1.default.debug('[Polling] All found signatures were already processed.');
-                        // No return here, proceed to finally block
-                    }
-                    else {
-                        logger_1.default.info(`[Polling] Processing ${signaturesToProcess.length} new signatures.`);
-                        const batchSize = 10; // Process 10 concurrently
-                        let processedCount = 0;
-                        for (let i = 0; i < signaturesToProcess.length; i += batchSize) {
-                            const batchSignaturesInfo = signaturesToProcess.slice(i, i + batchSize);
-                            const batchNumber = Math.floor(i / batchSize) + 1;
-                            const totalBatches = Math.ceil(signaturesToProcess.length / batchSize);
-                            logger_1.default.info(`[Polling] Processing batch ${batchNumber}/${totalBatches} containing ${batchSignaturesInfo.length} signatures...`);
-                            // Create promises for processing each signature in the batch
-                            const promises = batchSignaturesInfo.map(sigInfo => {
-                                this.processedSignatures.add(sigInfo.signature); // Add to processed set *before* starting async task
-                                // Note: Using processSignature, assuming analyzeNewPoolTransaction is called within it
-                                return this.processSignature(sigInfo.signature)
-                                    .catch(error => ({ signature: sigInfo.signature, error })); // Catch errors within the promise
-                            });
-                            // Wait for the current batch to complete
-                            const results = await Promise.allSettled(promises);
-                            // Log any errors from the batch processing
-                            results.forEach((result) => {
-                                if (result.status === 'rejected') {
-                                    logger_1.default.error(`[Polling] Batch Error (Rejected Promise): ${result.reason}`);
-                                }
-                                else if (result.status === 'fulfilled' && result.value?.error) {
-                                    logger_1.default.error(`[Polling] Error processing signature ${result.value.signature}: ${result.value.error?.message || result.value.error}`);
-                                }
-                                processedCount++;
-                            });
-                            // Add a small delay between batches
-                            if (i + batchSize < signaturesToProcess.length) {
-                                // Schedule next poll ONLY if polling is still active
-                                if (this.pollingActive) {
-                                    debugLogPoolDiscovery('Fetching transaction details', { signature });
-                                    try {
-                                        // Fetch the transaction details
-                                        // Use maxSupportedTransactionVersion: 0 to ensure legacy transaction format is parsed correctly if needed
-                                        const tx = await this.connection.getParsedTransaction(signature, { maxSupportedTransactionVersion: 0 });
-                                        if (!tx) {
-                                            logger_1.default.warn(`[Processor] Failed to fetch transaction details for signature: ${signature}`);
-                                            // Mark as processed even if failed to fetch
-                                            this.processedSignatures.add(signature);
-                                            this.manageRecentlyProcessedSet(this.processedSignatures, signature, this.config.tokenMonitor.maxSignaturesToStore ?? 1000);
-                                            return;
-                                        }
-                                        if (tx.meta?.err) {
-                                            logger_1.default.debug(`[Processor] Transaction ${signature} failed: ${JSON.stringify(tx.meta.err)}. Skipping.`);
-                                            // Mark failed transactions as processed
-                                            this.processedSignatures.add(signature);
-                                            this.manageRecentlyProcessedSet(this.processedSignatures, signature, this.config.tokenMonitor.maxSignaturesToStore ?? 1000);
-                                            return;
-                                        }
-                                        // Process instructions
-                                        for (const ix of tx.transaction.message.instructions) {
-                                            // Check if it's a PartiallyDecodedInstruction (more likely for program calls)
-                                            if ('accounts' in ix && 'data' in ix && 'programId' in ix) {
-                                                const instruction = ix;
-                                                // Log if we find ANY instruction matching the Raydium V4 Program ID
-                                                if (instruction.programId.equals(RAYDIUM_LP_V4_PROGRAM_ID)) {
-                                                    logger_1.default.debug(`[DETECTION] Found Raydium V4 instruction in tx: ${signature}`);
-                                                    try {
-                                                        // Ensure data is valid base58 before decoding
-                                                        if (typeof instruction.data === 'string' && /^[1-9A-HJ-NP-Za-km-z]+$/.test(instruction.data)) {
-                                                            const decodedDataBuffer = Buffer.from(bs58_1.default.decode(instruction.data));
-                                                            logger_1.default.debug(`[DETECTION] Decoded data (first 16 bytes): ${decodedDataBuffer.slice(0, 16).toString('hex')}`);
-                                                            logger_1.default.debug(`[DETECTION] Expected discriminator:      ${INITIALIZE2_DISCRIMINATOR.toString('hex')}`);
-                                                            // Check if it's the initialize2 instruction using the discriminator
-                                                            if (this.isInitialize2Discriminator(decodedDataBuffer)) {
-                                                                logger_1.default.info(`[DETECTION] Found initialize2 instruction in transaction: ${signature}`);
-                                                                // Extract account indices (ensure they exist and are numbers)
-                                                                const accountIndices = {
-                                                                    amm: instruction.accounts[1],
-                                                                    lpMint: instruction.accounts[4],
-                                                                    coinMint: instruction.accounts[5],
-                                                                    pcMint: instruction.accounts[6],
-                                                                    serumMarket: instruction.accounts[15], // Assuming market is at index 15
-                                                                };
-                                                                // Validate indices and extract PublicKeys
-                                                                const accountKeys = tx.transaction.message.accountKeys;
-                                                                // Robust index and key validation
-                                                                if (typeof accountIndices.amm === 'number' && accountIndices.amm < accountKeys.length && accountKeys[accountIndices.amm] &&
-                                                                    typeof accountIndices.lpMint === 'number' && accountIndices.lpMint < accountKeys.length && accountKeys[accountIndices.lpMint]) {
-                                                                    // ... your logic here (e.g., set params, call analyzeNewPoolTransaction, etc.)
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                    catch (error) {
-                                                        logger_1.default.error(`[Processor] Error processing signature ${signature}:`, error);
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                    catch (error) {
-                                        logger_1.default.error(`[Processor] Error processing signature ${signature}:`, error);
-                                    }
-                                    finally {
-                                        // Mark as processed AFTER checking all instructions, even on error
-                                        this.processedSignatures.add(signature);
-                                        this.manageRecentlyProcessedSet(this.processedSignatures, signature, this.config.tokenMonitor.maxSignaturesToStore ?? 1000);
-                                    }
-                                }
-                                // Process instructions
-                                for (const ix of tx.transaction.message.instructions) {
-                                    // Check if it's a PartiallyDecodedInstruction (more likely for program calls)
-                                    if ('accounts' in ix && 'data' in ix && 'programId' in ix) {
-                                        const instruction = ix;
-                                        // Log if we find ANY instruction matching the Raydium V4 Program ID
-                                        if (instruction.programId.equals(RAYDIUM_LP_V4_PROGRAM_ID)) {
-                                            logger_1.default.debug(`[DETECTION] Found Raydium V4 instruction in tx: ${signature}`);
-                                            try {
-                                                // Ensure data is valid base58 before decoding
-                                                if (typeof instruction.data === 'string' && /^[1-9A-HJ-NP-Za-km-z]+$/.test(instruction.data)) {
-                                                    const decodedDataBuffer = Buffer.from(bs58_1.default.decode(instruction.data)); // Convert Uint8Array to Buffer
-                                                    logger_1.default.debug(`[DETECTION] Decoded data (first 16 bytes): ${decodedDataBuffer.slice(0, 16).toString('hex')}`);
-                                                    logger_1.default.debug(`[DETECTION] Expected discriminator:      ${INITIALIZE2_DISCRIMINATOR.toString('hex')}`);
-                                                    // Check if it's the initialize2 instruction using the discriminator
-                                                    if (this.isInitialize2Discriminator(decodedDataBuffer)) { // Pass Buffer
-                                                        logger_1.default.info(`[DETECTION] Found initialize2 instruction in transaction: ${signature}`);
-                                                        // Extract account indices (ensure they exist and are numbers)
-                                                    }
-                                                }
-                                            }
-                                            finally { }
-                                        }
-                                    }
-                                }
+                    logger_1.default.debug('[Polling] Attempting on-chain fallback for new pool detection...');
+                    // Fall back to on-chain polling if API doesn't return results
+                    await this.pollOnChain();
+                }
+            }
+        }
+        catch (error) {
+            logger_1.default.error(`[Polling] Error polling for new pools: ${error.message}`);
+            tradeLogger_1.tradeLogger.logScenario('NEW_COIN_DETECTOR_ERROR', {
+                event: 'pollForNewPools',
+                error: error?.message || String(error),
+                timestamp: new Date().toISOString()
+            });
+            await (0, notifications_1.sendAlert)(`[NewCoinDetector] Error polling for new pools: ${error.message}`, 'CRITICAL');
+        }
+        finally {
+            this.isPolling = false;
+            // Log final rate limit status
+            const finalLocalUtilization = (this.rpcCallCount / this.MAX_RPC_CALLS_PER_MINUTE) * 100;
+            const finalGlobalUtilization = launch_1.globalRateLimiter.getUtilizationPercent();
+            logger_1.default.debug(`[Polling] Completed poll cycle. RPC utilization: Local ${finalLocalUtilization.toFixed(0)}%, Global ${finalGlobalUtilization}%`);
+        }
+    }
+    async processSignature(signature) {
+        // Skip if we've already processed this signature
+        if (this.processedPools.has(signature)) {
+            logger_1.default.debug(`[NewCoinDetector] Signature already processed, skipping: ${signature}`);
+            return;
+        }
+        // Add to processed set to avoid duplicate processing
+        this.processedPools.add(signature);
+        // Check both local and global rate limits
+        if (!this.checkRpcRateLimit()) {
+            logger_1.default.warn(`[RateLimit] Skipping signature processing due to rate limiting: ${signature}`);
+            return;
+        }
+        try {
+            const tx = await this.connection.getParsedTransaction(signature, {
+                commitment: 'confirmed',
+                maxSupportedTransactionVersion: 0
+            });
+            if (!tx || !tx.meta || !tx.transaction) {
+                logger_1.default.warn(`Invalid transaction data for signature: ${signature}`);
+                return;
+            }
+            // Attempt to extract Raydium pool creation info from instructions
+            let poolAddress = '';
+            let baseMint = '';
+            let quoteMint = '';
+            let lpMint = '';
+            let market = '';
+            let found = false;
+            for (const ix of tx.transaction.message.instructions) {
+                // Check for Raydium LP V4 program
+                if (ix.programId && ix.programId.equals(RAYDIUM_LP_V4_PROGRAM_ID)) {
+                    // Try to parse as PartiallyDecodedInstruction
+                    if ('data' in ix && typeof ix.data === 'string') {
+                        const dataBuf = Buffer.from(ix.data, 'base64');
+                        // Check for initialize2 discriminator
+                        if (dataBuf.slice(0, 8).equals(INITIALIZE2_DISCRIMINATOR)) {
+                            try {
+                                // Extract pool fields from the instruction accounts
+                                poolAddress = ix.accounts && ix.accounts[0] ? ix.accounts[0].toBase58() : '';
+                                lpMint = ix.accounts && ix.accounts[1] ? ix.accounts[1].toBase58() : '';
+                                baseMint = ix.accounts && ix.accounts[2] ? ix.accounts[2].toBase58() : '';
+                                quoteMint = ix.accounts && ix.accounts[3] ? ix.accounts[3].toBase58() : '';
+                                market = ix.accounts && ix.accounts[4] ? ix.accounts[4].toBase58() : '';
+                                found = true;
+                                break;
+                            }
+                            catch (decodeErr) {
+                                logger_1.default.warn(`[processSignature] Failed to decode Raydium pool creation instruction: ${decodeErr}`);
                             }
                         }
                     }
                 }
             }
-            finally { }
+            if (!found || !poolAddress || !baseMint || !quoteMint) {
+                logger_1.default.debug(`[processSignature] No valid Raydium pool creation instruction found in tx: ${signature}`);
+                return;
+            }
+            const timestamp = tx.blockTime ? tx.blockTime * 1000 : Date.now();
+            const event = {
+                poolAddress,
+                baseMint,
+                quoteMint,
+                lpMint,
+                market,
+                signature,
+                timestamp
+            };
+            debugLogPoolDiscovery('Emitting newPoolDetected', event);
+            this.emit('newPoolDetected', event);
+            (0, poolDetectionLogger_1.appendPoolDetectionLog)(event);
+        }
+        catch (error) {
+            logger_1.default.error(`[processSignature] Error processing signature ${signature}: ${error?.stack || JSON.stringify(error) || error}`);
+            await (0, notifications_1.sendAlert)(`[NewCoinDetector] Error processing signature ${signature}: ${error?.stack || JSON.stringify(error) || error}`, 'CRITICAL');
         }
     }
 }

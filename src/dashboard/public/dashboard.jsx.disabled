@@ -1,0 +1,114 @@
+import React, { useEffect, useState } from 'react';
+
+const API_URL = '/api/analytics';
+
+function AlertBanner({ alerts }) {
+  if (!alerts || alerts.length === 0) return null;
+  return (
+    <div style={{ background: '#ffeb3b', color: '#222', padding: '1em', marginBottom: '1em', borderRadius: '6px' }}>
+      <b>Alerts:</b>
+      <ul style={{ margin: 0 }}>
+        {alerts.map((a, i) => <li key={i}>{a}</li>)}
+      </ul>
+    </div>
+  );
+}
+
+function OpenPositions({ openPositions }) {
+  if (!openPositions || openPositions.count === 0) return <div>No open positions.</div>;
+  return (
+    <div>
+      <h3>Open Positions ({openPositions.count})</h3>
+      <table style={{ width: '100%', background: '#222', color: '#fff', borderCollapse: 'collapse' }}>
+        <thead>
+          <tr>
+            <th>Symbol</th><th>Entry Time</th><th>Unrealized PnL</th><th>Largest Drawdown</th>
+          </tr>
+        </thead>
+        <tbody>
+          {openPositions.entries.map((p, i) => (
+            <tr key={i} style={{ background: i % 2 === 0 ? '#292929' : '#232323' }}>
+              <td>{p.symbol}</td>
+              <td>{p.entryTs ? new Date(p.entryTs).toLocaleString() : 'N/A'}</td>
+              <td>{typeof p.unrealizedPnl === 'number' ? p.unrealizedPnl.toFixed(2) + '%' : 'N/A'}</td>
+              <td>{openPositions.largestDrawdownSymbol === p.symbol ? (openPositions.largestDrawdown?.toFixed(2) + '%') : ''}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div style={{ marginTop: '0.5em', fontSize: '0.95em' }}>
+        <b>Aggregate UnrPnL:</b> {openPositions.aggUnrealizedPnl !== null ? openPositions.aggUnrealizedPnl.toFixed(2) + '%' : 'N/A'}
+        {' | '}<b>Avg UnrPnL:</b> {openPositions.avgUnrealizedPnl !== null ? openPositions.avgUnrealizedPnl.toFixed(2) + '%' : 'N/A'}
+        {' | '}<b>Avg Hold:</b> {openPositions.avgHoldingMinutes !== null ? openPositions.avgHoldingMinutes + ' min' : 'N/A'}
+      </div>
+    </div>
+  );
+}
+
+function RecentTrades({ trades }) {
+  if (!trades || trades.length === 0) return <div>No recent trades.</div>;
+  return (
+    <div>
+      <h3>Recent Trades</h3>
+      <table style={{ width: '100%', background: '#222', color: '#fff', borderCollapse: 'collapse' }}>
+        <thead>
+          <tr>
+            <th>Token</th><th>PnL</th><th>Time</th>
+          </tr>
+        </thead>
+        <tbody>
+          {trades.slice(-10).reverse().map((t, i) => (
+            <tr key={i} style={{ background: i % 2 === 0 ? '#292929' : '#232323' }}>
+              <td>{t.tokenSymbol || t.token || 'UNKNOWN'}</td>
+              <td>{t.pnl !== undefined ? t.pnl + '%' : 'N/A'}</td>
+              <td>{t.timestamp ? new Date(t.timestamp).toLocaleString() : 'N/A'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export default function Dashboard() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(API_URL);
+      if (!res.ok) throw new Error('Failed to fetch analytics');
+      const json = await res.json();
+      setData(json);
+      setError(null);
+    } catch (e) {
+      setError(e.message);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchData();
+    const interval = setInterval(fetchData, 30000); // [DISABLED FOR BOT STABILITY] Entire file commented out to prevent dashboard errors during bot dry-run and production.
+// auto-refresh every 30s
+    return () => clearInterval(interval);
+  }, []);
+
+  if (loading) return <div style={{ color: '#fff' }}>Loading...</div>;
+  if (error) return <div style={{ color: 'red' }}>Error: {error}</div>;
+
+  return (
+    <div style={{ background: '#181818', minHeight: '100vh', padding: '2em', color: '#fff', fontFamily: 'system-ui' }}>
+      <h2>Solana Memecoin Bot Dashboard</h2>
+      <AlertBanner alerts={data.openPositionAlerts} />
+      <div style={{ marginBottom: '1.5em' }}>
+        <b>Total Trades:</b> {data.tradeCount} | <b>Realized PnL:</b> {data.realizedPnl} | <b>Win/Loss:</b> {data.winCount}/{data.lossCount} | <b>Avg PnL:</b> {data.avgPnl}
+      </div>
+      <OpenPositions openPositions={data.openPositions} />
+      <div style={{ margin: '2em 0' }} />
+      <RecentTrades trades={data.trades} />
+    </div>
+  );
+}

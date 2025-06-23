@@ -1,12 +1,11 @@
 import { Connection } from '@solana/web3.js';
-import { Position, RiskMetrics } from './types';
+import { Position } from './types';
 export declare class TradingSystem {
     private connection;
     private orderExecution;
     private contractValidator;
     private tokenMonitor;
     private persistenceManager;
-    private state;
     constructor(connection: Connection);
     private setupEventListeners;
     private handleNewToken;
@@ -24,7 +23,7 @@ export declare class TradingSystem {
     getPosition(tokenAddress: string): Position | undefined;
     getAllPositions(): Position[];
     getActivePositions(): Position[];
-    getRiskMetrics(): RiskMetrics;
+    getRiskMetrics(): {};
     start(): void;
     stop(): void;
 }

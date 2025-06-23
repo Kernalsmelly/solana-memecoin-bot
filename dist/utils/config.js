@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.config = void 0;
+exports.analyticsConfig = exports.config = void 0;
 exports.validateConfig = validateConfig;
 // src/utils/config.ts
 const dotenv_1 = __importDefault(require("dotenv"));
@@ -92,7 +92,8 @@ exports.config = {
     },
     solana: {
         rpcEndpoint: getEnv('QUICKNODE_RPC_URL', 'https://api.mainnet-beta.solana.com'),
-        wssEndpoint: getEnv('QUICKNODE_WSS_URL', ''), // Load WSS endpoint from QuickNode var
+        // WebSocket endpoint: prefer SOLANA_WSS_ENDPOINT, fallback to QUICKNODE_WSS_URL
+        wssEndpoint: getEnv('SOLANA_WSS_ENDPOINT', getEnv('QUICKNODE_WSS_URL', '')),
         walletPrivateKey: getEnv('SOLANA_PRIVATE_KEY', ''),
         usdcMint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
         cluster: getEnvAsCluster('SOLANA_CLUSTER', 'mainnet-beta'),
@@ -153,7 +154,12 @@ exports.config = {
         minSellBuyRatio: getEnvAsNumber('MIN_SELL_BUY_RATIO'),
         stopLossPercent: getEnvAsNumber('STOP_LOSS_PERCENT'),
         takeProfitPercent: getEnvAsNumber('TAKE_PROFIT_PERCENT'),
-    }
+    },
+};
+// --- Analytics/Notification Config ---
+exports.analyticsConfig = {
+    summaryIntervalMinutes: getEnvAsNumber('SUMMARY_INTERVAL_MINUTES', 120),
+    analyticsWindowMinutes: getEnvAsNumber('ANALYTICS_WINDOW_MINUTES', 120)
 };
 function validateConfig(config) {
     // Validate QuickNode URLs if they are intended to be primary

@@ -54,6 +54,10 @@ function getRiskLevel(key: string, defaultValue: RiskLevel): RiskLevel {
 
 // Define and export the structure of the configuration object
 export interface Config {
+  /**
+   * If true, the bot will simulate trades (no live orders sent).
+   */
+  dryRun?: boolean;
   trading: {
     initialBalance: number;
     maxPositionSize: number;
@@ -155,8 +159,20 @@ export interface Config {
     stopLossPercent: number | undefined;
     takeProfitPercent: number | undefined;
   };
-  discordWebhookUrl: string;
-  signalOnlyMode: boolean;
+}
+
+/**
+ * Bot analytics & notification settings
+ */
+export interface AnalyticsConfig {
+  /**
+   * How often to send summary notifications (minutes)
+   */
+  summaryIntervalMinutes: number;
+  /**
+   * How far back to look for realized PnL analytics (minutes)
+   */
+  analyticsWindowMinutes: number;
 }
 
 // Default configuration object loading values from environment variables
@@ -262,7 +278,13 @@ export const config: Config = {
     minSellBuyRatio: getEnvAsNumber('MIN_SELL_BUY_RATIO'),
     stopLossPercent: getEnvAsNumber('STOP_LOSS_PERCENT'),
     takeProfitPercent: getEnvAsNumber('TAKE_PROFIT_PERCENT'),
-  }
+  },
+};
+
+// --- Analytics/Notification Config ---
+export const analyticsConfig: AnalyticsConfig = {
+  summaryIntervalMinutes: getEnvAsNumber('SUMMARY_INTERVAL_MINUTES', 120),
+  analyticsWindowMinutes: getEnvAsNumber('ANALYTICS_WINDOW_MINUTES', 120)
 };
 
 export function validateConfig(config: Config): void {

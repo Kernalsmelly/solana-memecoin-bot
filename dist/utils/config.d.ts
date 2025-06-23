@@ -1,6 +1,10 @@
 import { RiskLevel } from '../contractValidator';
 import { Cluster } from '@solana/web3.js';
 export interface Config {
+    /**
+     * If true, the bot will simulate trades (no live orders sent).
+     */
+    dryRun?: boolean;
     trading: {
         initialBalance: number;
         maxPositionSize: number;
@@ -100,6 +104,20 @@ export interface Config {
         takeProfitPercent: number | undefined;
     };
 }
+/**
+ * Bot analytics & notification settings
+ */
+export interface AnalyticsConfig {
+    /**
+     * How often to send summary notifications (minutes)
+     */
+    summaryIntervalMinutes: number;
+    /**
+     * How far back to look for realized PnL analytics (minutes)
+     */
+    analyticsWindowMinutes: number;
+}
 export declare const config: Config;
+export declare const analyticsConfig: AnalyticsConfig;
 export declare function validateConfig(config: Config): void;
 //# sourceMappingURL=config.d.ts.map

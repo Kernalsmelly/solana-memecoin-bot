@@ -7,6 +7,7 @@ exports.PersistenceManager = void 0;
 const fs_1 = require("fs");
 const path_1 = require("path");
 const logger_1 = __importDefault(require("./utils/logger"));
+const tradeLogger_1 = require("./utils/tradeLogger");
 class PersistenceManager {
     dataDir;
     stateFile;
@@ -33,7 +34,12 @@ class PersistenceManager {
             this.saveState(state);
         }
         catch (error) {
-            logger_1.default.error('Error saving position:', error);
+            if (error instanceof Error) {
+                logger_1.default.error('PersistenceManager error:', error);
+            }
+            else {
+                logger_1.default.error('Unknown error:', String(error));
+            }
         }
     }
     deletePosition(tokenAddress) {
@@ -43,7 +49,12 @@ class PersistenceManager {
             this.saveState(state);
         }
         catch (error) {
-            logger_1.default.error('Error deleting position:', error);
+            if (error instanceof Error) {
+                logger_1.default.error('PersistenceManager error:', error);
+            }
+            else {
+                logger_1.default.error('Unknown error:', String(error));
+            }
         }
     }
     saveRiskMetrics(metrics) {
@@ -53,7 +64,12 @@ class PersistenceManager {
             this.saveState(state);
         }
         catch (error) {
-            logger_1.default.error('Error saving risk metrics:', error);
+            if (error instanceof Error) {
+                logger_1.default.error('PersistenceManager error:', error);
+            }
+            else {
+                logger_1.default.error('Unknown error:', String(error));
+            }
         }
     }
     addTradeHistory(entry) {
@@ -63,7 +79,12 @@ class PersistenceManager {
             (0, fs_1.writeFileSync)(this.historyFile, JSON.stringify(history, null, 2));
         }
         catch (error) {
-            logger_1.default.error('Error adding trade history:', error);
+            if (error instanceof Error) {
+                logger_1.default.error('PersistenceManager error:', error);
+            }
+            else {
+                logger_1.default.error('Unknown error:', String(error));
+            }
         }
     }
     loadState() {
@@ -72,15 +93,23 @@ class PersistenceManager {
                 return {
                     positions: [],
                     riskMetrics: {
+                        maxDrawdown: 0,
+                        maxDailyLoss: 0,
+                        activePositions: 0,
+                        pnl: 0,
                         currentBalance: 1000,
                         dailyPnL: 0,
                         drawdown: 0,
                         winRate: 0,
-                        activePositions: 0,
                         availablePositions: 3,
                         highWaterMark: 1000,
-                        dailyLoss: 0
+                        dailyLoss: 0,
+                        minute: 0,
+                        hour: 0,
+                        day: 0
                     },
+                    allocatedCash: 0,
+                    totalValue: 0,
                     timestamp: Date.now()
                 };
             }
@@ -88,19 +117,29 @@ class PersistenceManager {
             return JSON.parse(data);
         }
         catch (error) {
-            logger_1.default.error('Error loading state:', error);
+            if (error instanceof Error) {
+                logger_1.default.error('PersistenceManager error:', error);
+            }
+            else {
+                logger_1.default.error('Unknown error:', String(error));
+            }
             return {
                 positions: [],
                 riskMetrics: {
+                    maxDrawdown: 0,
+                    maxDailyLoss: 0,
+                    activePositions: 0,
+                    pnl: 0,
                     currentBalance: 1000,
                     dailyPnL: 0,
                     drawdown: 0,
                     winRate: 0,
-                    activePositions: 0,
                     availablePositions: 3,
                     highWaterMark: 1000,
                     dailyLoss: 0
                 },
+                allocatedCash: 0,
+                totalValue: 0,
                 timestamp: Date.now()
             };
         }
@@ -110,6 +149,12 @@ class PersistenceManager {
             (0, fs_1.writeFileSync)(this.stateFile, JSON.stringify(state, null, 2));
         }
         catch (error) {
+            if (error instanceof Error) {
+                logger_1.default.error('PersistenceManager error:', error);
+            }
+            else {
+                logger_1.default.error('Unknown error:', String(error));
+            }
             logger_1.default.error('Error saving state:', error);
         }
     }
@@ -122,6 +167,12 @@ class PersistenceManager {
             return JSON.parse(data);
         }
         catch (error) {
+            if (error instanceof Error) {
+                logger_1.default.error('PersistenceManager error:', error);
+            }
+            else {
+                logger_1.default.error('Unknown error:', String(error));
+            }
             logger_1.default.error('Error loading trade history:', error);
             return [];
         }
@@ -145,7 +196,19 @@ class PersistenceManager {
             (0, fs_1.writeFileSync)(outputFile, csv);
         }
         catch (error) {
+            if (error instanceof Error) {
+                logger_1.default.error('PersistenceManager error:', error);
+            }
+            else {
+                logger_1.default.error('Unknown error:', String(error));
+            }
             logger_1.default.error('Error exporting trade history:', error);
+            tradeLogger_1.tradeLogger.logScenario('PERSISTENCE_ERROR', {
+                event: 'exportTradeHistory',
+                file: outputFile,
+                error: error instanceof Error ? error.message : String(error),
+                timestamp: new Date().toISOString()
+            });
         }
     }
     createBackup() {
@@ -157,6 +220,11 @@ class PersistenceManager {
         }
         catch (error) {
             logger_1.default.error('Error creating backup:', error);
+            tradeLogger_1.tradeLogger.logScenario('PERSISTENCE_ERROR', {
+                event: 'saveState',
+                error: error instanceof Error ? error.message : String(error),
+                timestamp: new Date().toISOString()
+            });
         }
     }
 }

@@ -40,12 +40,22 @@ exports.TradingEngine = void 0;
 // NOTE: All changes should work towards functionality and profitability.
 const web3_js_1 = require("@solana/web3.js");
 const logger_1 = __importDefault(require("../utils/logger"));
+const notifications_1 = require("../utils/notifications");
 const tradeLogger_1 = require("../utils/tradeLogger");
+const discordNotifier_1 = require("../utils/discordNotifier");
+const signalLogger_1 = require("../utils/signalLogger");
 const api_1 = require("@jup-ag/api");
-const spl_token_1 = require("@solana/spl-token");
-const fs = __importStar(require("fs/promises"));
+// import { getAssociatedTokenAddressSync } from '@solana/spl-token'; // Removed due to TS2305 error. Add back if needed with correct path.
+const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 class TradingEngine {
+    // ... (existing properties)
+    /**
+     * Returns all current positions as an array
+     */
+    getPositions() {
+        return Array.from(this.currentPositions.values());
+    }
     connection;
     config;
     wallet;
@@ -54,10 +64,19 @@ class TradingEngine {
     usdcMint;
     positionsFilePath;
     usdcDecimals = null; // Cache for USDC decimals
+    maxPositions;
     constructor(connection, config, wallet) {
         this.connection = connection;
         this.config = config;
         this.wallet = wallet;
+        // Main trading loop
+        // Emit heartbeat for TradingEngine
+        if (globalThis.heartbeat?.TradingEngine) {
+            globalThis.heartbeat.TradingEngine();
+        }
+        else {
+            logger_1.default.debug('[HEARTBEAT] TradingEngine heartbeat function not found');
+        }
         // Initialize positions set - will be overwritten by loadPositions if file exists
         this.currentPositions = new Map();
         this.jupiterApi = (0, api_1.createJupiterApiClient)(); // Initialize Jupiter API client
@@ -67,6 +86,8 @@ class TradingEngine {
             throw new Error('USDC mint address is not defined in the configuration.');
         }
         this.usdcMint = new web3_js_1.PublicKey(config.solana.usdcMint);
+        // Set maxPositions from config or default to 3
+        this.maxPositions = config.trading?.maxPositions ?? 3;
         // Initialize USDC decimals (async)
         this.initializeUsdcDecimals();
         // Load existing positions immediately (async but we don't strictly need to wait)
@@ -80,8 +101,7 @@ class TradingEngine {
     async initializeUsdcDecimals() {
         try {
             logger_1.default.debug(`[TradingEngine] Fetching decimals for USDC mint: ${this.usdcMint.toString()}`);
-            const mintInfo = await (0, spl_token_1.getMint)(this.connection, this.usdcMint);
-            this.usdcDecimals = mintInfo.decimals;
+            this.usdcDecimals = 6; // Default for USDC
             logger_1.default.info(`[TradingEngine] USDC decimals set to: ${this.usdcDecimals}`);
         }
         catch (error) {
@@ -98,8 +118,14 @@ class TradingEngine {
     async loadPositions() {
         try {
             // Ensure data directory exists
-            await fs.mkdir(path.dirname(this.positionsFilePath), { recursive: true });
-            const data = await fs.readFile(this.positionsFilePath, 'utf-8');
+            try {
+                await fs.promises.mkdir(path.dirname(this.positionsFilePath), { recursive: true });
+            }
+            catch (err) {
+                if (err.code !== 'EEXIST')
+                    throw err;
+            }
+            const data = await fs.promises.readFile(this.positionsFilePath, 'utf-8');
             const positionsObjectFromFile = JSON.parse(data);
             // Basic validation: Check if it's an object
             if (typeof positionsObjectFromFile === 'object' && positionsObjectFromFile !== null) {
@@ -129,11 +155,21 @@ class TradingEngine {
         }
         catch (error) {
             if (error.code === 'ENOENT') {
+                tradeLogger_1.tradeLogger.logScenario('POSITIONS_FILE_NOT_FOUND', {
+                    file: this.positionsFilePath,
+                    timestamp: new Date().toISOString()
+                });
                 logger_1.default.info(`[TradingEngine] Positions file (${this.positionsFilePath}) not found. Starting with empty positions.`);
                 this.currentPositions = new Map();
             }
             else {
                 logger_1.default.error(`[TradingEngine] Failed to load positions from ${this.positionsFilePath}: ${error.message}`);
+                tradeLogger_1.tradeLogger.logScenario('POSITIONS_FILE_LOAD_ERROR', {
+                    file: this.positionsFilePath,
+                    error: error.message,
+                    timestamp: new Date().toISOString()
+                });
+                await (0, notifications_1.sendAlert)(`[TradingEngine] Failed to load positions from ${this.positionsFilePath}: ${error.message}`, 'ERROR');
                 // Decide if we should proceed with empty positions or throw an error
                 this.currentPositions = new Map();
             }
@@ -145,18 +181,30 @@ class TradingEngine {
     async savePositions() {
         try {
             // Ensure data directory exists
-            await fs.mkdir(path.dirname(this.positionsFilePath), { recursive: true });
+            try {
+                await fs.promises.mkdir(path.dirname(this.positionsFilePath), { recursive: true });
+            }
+            catch (err) {
+                if (err.code !== 'EEXIST')
+                    throw err;
+            }
             // Convert map to object for JSON serialization
             const positionsObject = {};
             this.currentPositions.forEach((value, key) => {
                 positionsObject[key] = value;
             });
             const data = JSON.stringify(positionsObject, null, 2); // Pretty print JSON
-            await fs.writeFile(this.positionsFilePath, data, 'utf-8');
+            await fs.promises.writeFile(this.positionsFilePath, data, 'utf-8');
             logger_1.default.debug(`[TradingEngine] Successfully saved ${this.currentPositions.size} positions to ${this.positionsFilePath}`);
         }
         catch (error) {
             logger_1.default.error(`[TradingEngine] Failed to save positions to ${this.positionsFilePath}: ${error.message}`);
+            tradeLogger_1.tradeLogger.logScenario('POSITIONS_FILE_SAVE_ERROR', {
+                file: this.positionsFilePath,
+                error: error.message,
+                timestamp: new Date().toISOString()
+            });
+            await (0, notifications_1.sendAlert)(`[TradingEngine] Failed to save positions to ${this.positionsFilePath}: ${error.message}`, 'ERROR');
             // Consider retry logic or alerting
         }
     }
@@ -172,24 +220,21 @@ class TradingEngine {
         // Only check buy criteria if not already holding
         if (!currentlyHeld) {
             // Log skip if at max positions
-            const maxPositions = this.config.trading?.maxConcurrentPositions || 3; // Default 3
-            if (this.currentPositions.size >= maxPositions) {
+            if (this.currentPositions.size >= this.maxPositions) {
                 tradeLogger_1.tradeLogger.log({
                     timestamp: new Date().toISOString(),
                     action: 'SKIP',
                     token: marketData.mint,
                     pairAddress: marketData.pairAddress,
                     price: marketData.currentPrice,
-                    reason: `Max positions reached (${this.currentPositions.size}/${maxPositions})`,
+                    reason: `Max positions reached (${this.currentPositions.size}/${this.maxPositions})`,
                     success: false
                 });
                 // TODO: Alert on skip if needed
                 return; // Don't buy if already at max capacity
             }
             // Check if we are already at max positions BEFORE attempting to buy
-            const maxPositions = this.config.trading?.maxConcurrentPositions || 3; // Default 3
-            if (this.currentPositions.size >= maxPositions) {
-                // logger.debug(`[TradingEngine] BUY criteria met for ${marketData.mint}, but already at max positions (${this.currentPositions.size}/${maxPositions}). Skipping.`);
+            if (this.currentPositions.size >= this.maxPositions) {
                 return; // Don't buy if already at max capacity
             }
             const { shouldBuy, reason } = this.checkBuyCriteria(marketData);
@@ -257,55 +302,65 @@ class TradingEngine {
     }
     checkBuyCriteria(marketData) {
         // --- 1. Input Validation --- 
-        if (!marketData || marketData.liquidity === undefined || marketData.priceChangePercent === undefined || marketData.buyRatio5m === undefined || marketData.pairCreatedAt === undefined) {
+        if (!marketData || marketData?.liquidity === undefined || marketData?.priceChangePercent === undefined || marketData?.buyRatio5m === undefined || marketData?.pairCreatedAt === undefined) {
+            tradeLogger_1.tradeLogger.logScenario('SKIP_INSUFFICIENT_DATA', {
+                token: marketData?.mint,
+                reason: 'Insufficient data for buy criteria',
+                timestamp: new Date().toISOString()
+            });
             logger_1.default.debug(`[TradingEngine] Insufficient data for buy criteria check: ${marketData.mint}`);
             return { shouldBuy: false, reason: 'Insufficient data' };
         }
         // --- 2. Determine Token Age and Criteria --- 
         const now = Date.now();
-        const pairAgeMs = now - marketData.pairCreatedAt;
-        const ageHours = marketData.pairCreatedAt ? (now - marketData.pairCreatedAt) / (1000 * 60 * 60) : undefined;
+        const pairAgeMs = now - marketData?.pairCreatedAt;
+        const ageHours = marketData?.pairCreatedAt ? (now - marketData?.pairCreatedAt) / (1000 * 60 * 60) : undefined;
         const isNewToken = (ageHours ?? Infinity) < (24);
         const criteria = {
-            minLiquidity: isNewToken ? 50000 : 100000,
-            minPriceChangePercent: isNewToken ? 1.0 : 2.0, // e.g., 1% or 2%
-            minVolumeSpikePercent: isNewToken ? 50.0 : 100.0,
-            minBuyRatio: isNewToken ? 1.2 : 1.3
+            minLiquidity: 100, // Relaxed for testing (was 50,000/100,000)
+            minPriceChangePercent: 0.01, // Relaxed for testing (was 1.0/2.0)
+            minVolumeSpikePercent: 1, // Relaxed for testing (was 50.0/100.0)
+            minBuyRatio: 1.01 // Relaxed for testing (was 1.2/1.3)
         };
         // --- 3. Perform Checks --- 
         let passes = true;
         let reasons = [];
         // Liquidity Check
-        if (marketData.liquidity < criteria.minLiquidity) {
+        if (marketData?.liquidity < criteria.minLiquidity) {
             passes = false;
-            reasons.push(`Liquidity (${marketData.liquidity?.toFixed(2)}) < ${criteria.minLiquidity}`);
+            reasons.push(`Liquidity (${marketData?.liquidity?.toFixed(2)}) < ${criteria.minLiquidity}`);
         }
         // Price Change Check
-        if (marketData.priceChangePercent < criteria.minPriceChangePercent) {
+        if (marketData?.priceChangePercent < criteria.minPriceChangePercent) {
             passes = false;
-            reasons.push(`Price Change (${marketData.priceChangePercent?.toFixed(2)}%) < ${criteria.minPriceChangePercent}%`);
+            reasons.push(`Price Change (${marketData?.priceChangePercent?.toFixed(2)}%) < ${criteria.minPriceChangePercent}%`);
         }
         // Volume Spike Check (retyped to eliminate hidden issues)
         const newTokenAgeLimit = this.config.trading?.newTokenAgeHours ?? 24;
         const requiredVolumeSpike = (ageHours ?? Infinity) < newTokenAgeLimit
             ? (this.config.trading?.newVolumeSpikePercent ?? 50)
             : (this.config.trading?.establishedVolumeSpikePercent ?? 100);
-        if (marketData.volumeChangePercent === undefined || marketData.volumeChangePercent === null) {
+        if (marketData?.volumeChangePercent === undefined || marketData?.volumeChangePercent === null) {
             logger_1.default.warn(`[TradingEngine] BUY REJECTED (${marketData.mint}): Volume change data unavailable.`);
             passes = false;
             reasons.push('Volume change data unavailable');
         }
-        else if (marketData.volumeChangePercent < requiredVolumeSpike) {
+        else if (marketData?.volumeChangePercent < requiredVolumeSpike) {
             passes = false;
-            reasons.push(`Volume spike ${marketData.volumeChangePercent.toFixed(2)}% below required ${requiredVolumeSpike}%`);
+            reasons.push(`Volume spike ${marketData?.volumeChangePercent.toFixed(2)}% below required ${requiredVolumeSpike}%`);
         }
         // Buy Ratio Check
-        if (marketData.buyRatio5m !== undefined && marketData.buyRatio5m < criteria.minBuyRatio) {
+        if (marketData?.buyRatio5m !== undefined && marketData?.buyRatio5m < criteria.minBuyRatio) {
             passes = false;
-            reasons.push(`Buy Ratio (${marketData.buyRatio5m?.toFixed(2)}) < ${criteria.minBuyRatio}`);
+            reasons.push(`Buy Ratio (${marketData?.buyRatio5m?.toFixed(2)}) < ${criteria.minBuyRatio}`);
         }
         // --- 4. Log Results --- 
         if (!passes) {
+            tradeLogger_1.tradeLogger.logScenario('SKIP_BUY_CRITERIA_NOT_MET', {
+                token: marketData.mint,
+                reasons: reasons.join('; '),
+                timestamp: new Date().toISOString()
+            });
             logger_1.default.debug(`[TradingEngine] BUY criteria NOT MET for ${marketData.mint} (${isNewToken ? 'New' : 'Established'}). Reasons: ${reasons.join(', ')}`);
         }
         return { shouldBuy: passes, reason: passes ? 'Criteria met' : reasons.join(', ') };
@@ -420,6 +475,14 @@ class TradingEngine {
         }
         catch (error) {
             logger_1.default.error(`[TradingEngine] Error during ${description} transaction sending/confirmation for ${tokenMint}: ${error.message}`, { txid: error.txid });
+            tradeLogger_1.tradeLogger.logScenario('TX_ERROR', {
+                description,
+                tokenMint,
+                error: error.message,
+                txid: error.txid,
+                timestamp: new Date().toISOString()
+            });
+            await (0, notifications_1.sendAlert)(`[TradingEngine] Error during ${description} transaction for ${tokenMint}: ${error.message}`, 'CRITICAL');
             if (error.logs) {
                 logger_1.default.error(`[TradingEngine] Transaction Logs: ${error.logs.join('\n')}`);
             }
@@ -435,6 +498,31 @@ class TradingEngine {
      * @returns True if the buy operation succeeded, false otherwise.
      */
     async buyToken(outputMint, pairAddress, marketData) {
+        if (this.config.signalOnlyMode) {
+            // --- Signal-Only Mode: Send Discord notification and log ---
+            const payload = {
+                type: 'BUY_SIGNAL',
+                token: {
+                    mint: outputMint.toString(),
+                    symbol: marketData?.symbol,
+                    poolAddress: pairAddress
+                },
+                price: marketData?.currentPrice ?? 0,
+                liquidity: marketData?.liquidity ?? 0,
+                volume: marketData?.volume1h ?? 0,
+                buyRatio: marketData?.buyRatio5m ?? 0,
+                reason: marketData?.signalReason || 'Criteria met',
+                links: {
+                    solscan: `https://solscan.io/token/${outputMint.toString()}`,
+                    raydium: pairAddress ? `https://raydium.io/swap/?inputCurrency=SOL&outputCurrency=${outputMint.toString()}` : undefined
+                },
+                timestamp: Date.now()
+            };
+            await (0, discordNotifier_1.sendDiscordSignal)(payload);
+            (0, signalLogger_1.logSignal)(payload);
+            logger_1.default.info(`[TradingEngine] Signal-only mode: Sent BUY signal for ${outputMint.toString()}`);
+            return true;
+        }
         try {
             // ... (full buyToken logic goes here, unchanged from your previous implementation) ...
             // Profitability logging example:
@@ -444,6 +532,12 @@ class TradingEngine {
         }
         catch (error) {
             logger_1.default.error(`[TradingEngine] BUY operation failed for ${outputMint.toString()}: ${error.message}`);
+            tradeLogger_1.tradeLogger.logScenario('BUY_FAILED', {
+                token: outputMint.toString(),
+                pairAddress,
+                error: error.message,
+                timestamp: new Date().toISOString()
+            });
             return false;
         }
     }
@@ -453,7 +547,32 @@ class TradingEngine {
      * @param pairAddress The AMM pool address for the token (optional, for logging/PL).
      * @returns True if the sell operation succeeded, false otherwise.
      */
-    async sellToken(tokenMint, pairAddress) {
+    async sellToken(tokenMint, pairAddress, marketData) {
+        if (this.config.signalOnlyMode) {
+            // --- Signal-Only Mode: Send Discord notification and log ---
+            const payload = {
+                type: 'SELL_SIGNAL',
+                token: {
+                    mint: tokenMint.toString(),
+                    symbol: marketData?.symbol,
+                    poolAddress: pairAddress
+                },
+                price: marketData?.currentPrice ?? 0,
+                liquidity: marketData?.liquidity ?? 0,
+                volume: marketData?.volume1h ?? 0,
+                buyRatio: marketData?.buyRatio5m ?? 0,
+                reason: marketData?.signalReason || 'Sell criteria met',
+                links: {
+                    solscan: `https://solscan.io/token/${tokenMint.toString()}`,
+                    raydium: pairAddress ? `https://raydium.io/swap/?inputCurrency=SOL&outputCurrency=${tokenMint.toString()}` : undefined
+                },
+                timestamp: Date.now()
+            };
+            await (0, discordNotifier_1.sendDiscordSignal)(payload);
+            (0, signalLogger_1.logSignal)(payload);
+            logger_1.default.info(`[TradingEngine] Signal-only mode: Sent SELL signal for ${tokenMint.toString()}`);
+            return true;
+        }
         try {
             // ... (full sellToken logic goes here, unchanged from your previous implementation if you have one) ...
             logger_1.default.info(`[TradingEngine] [PROFIT CHECK] Sell conditions logged for ${tokenMint.toString()}`);

@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { OrderExecution } from '../orderExecution';
+import { OrderExecution } from '../types';
 import { Position } from '../types';
 import { RiskManager } from '../live/riskManager';
 import { BirdeyeAPI } from '../api/birdeyeAPI';
@@ -76,12 +76,11 @@ export declare class ExitManager extends EventEmitter {
     private config;
     private orderExecution;
     private riskManager;
-    private birdeyeApi;
+    private birdeyeApi?;
     private priceUpdateInterval;
     private analysisInterval;
     private priceHistory;
-    constructor(orderExecution: OrderExecution, riskManager: RiskManager, birdeyeApi: BirdeyeAPI, // Add birdeyeApi parameter
-    config?: Partial<ExitManagerConfig>);
+    constructor(orderExecution: OrderExecution, riskManager: RiskManager, birdeyeApi?: BirdeyeAPI, config?: Partial<ExitManagerConfig>);
     /**
      * Start monitoring positions for exit signals
      */

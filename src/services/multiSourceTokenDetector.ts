@@ -2,6 +2,10 @@ import EventEmitter from 'events';
 import WebSocket from 'ws';
 import axios from 'axios';
 import logger from '../utils/logger';
+import { tradeLogger } from '../utils/tradeLogger';
+import { fetchTokenMetrics } from '../utils/fetchTokenMetrics';
+import { scoreOpportunity } from '../utils/opportunityScorer';
+import { persistOpportunity } from '../utils/persistence';
 
 // Define the event type for new token detection
 export interface MultiSourceTokenEvent {
@@ -9,6 +13,7 @@ export interface MultiSourceTokenEvent {
   symbol?: string;
   poolAddress?: string;
   source: 'birdeye' | 'jupiter' | 'dexscreener';
+  metrics?: import('../types').TokenMetrics;
   extra?: any;
 }
 
@@ -85,15 +90,33 @@ export class MultiSourceTokenDetector extends EventEmitter {
       for (const t of tokens) {
         logger.debug(`[MultiSourceTokenDetector] Jupiter considering token: ${t.address} (${t.symbol || ''})`);
         if (t.address && !this.watchedMints.has(t.address)) {
-          this.watchedMints.add(t.address);
-          this.emit('newTokenDetected', {
-            mint: t.address,
-            symbol: t.symbol,
-            poolAddress: undefined,
-            source: 'jupiter',
-            extra: t
-          } as MultiSourceTokenEvent);
-          logger.info(`[MultiSourceTokenDetector] Jupiter detected new token: ${t.address}`);
+          // Score the token before emitting
+          try {
+            const metrics = await fetchTokenMetrics(t.address);
+            if (!metrics) continue;
+            const { score, reasons } = scoreOpportunity(metrics);
+            logger.info(`[MultiSourceTokenDetector] Scored ${metrics.symbol || t.symbol} (${t.address}): ${score} [${reasons.join(', ')}]`);
+            if (score >= 50) {
+              this.watchedMints.add(t.address);
+              this.emit('newTokenDetected', {
+                mint: t.address,
+                symbol: t.symbol,
+                poolAddress: undefined,
+                source: 'jupiter',
+                metrics,
+                extra: t
+              } as MultiSourceTokenEvent);
+              logger.info(`[MultiSourceTokenDetector] Jupiter detected new token: ${t.address}`);
+            } else {
+              logger.debug(`[MultiSourceTokenDetector] Skipping ${metrics.symbol || t.symbol} (${t.address}) due to low score (${score})`);
+            }
+          } catch (err) {
+            if (err instanceof Error) {
+              logger.warn(`[MultiSourceTokenDetector] Error scoring token ${t.address}: ${err.message}`);
+            } else {
+              logger.warn(`[MultiSourceTokenDetector] Error scoring token ${t.address}: ${String(err)}`);
+            }
+          }
         }
       }
     } catch (e) {
@@ -104,19 +127,37 @@ export class MultiSourceTokenDetector extends EventEmitter {
   private async pollDexscreener() {
     try {
       const res = await axios.get(this.dexscreenerUrl);
-      const tokens = res.data?.pairs || [];
+      const tokens = res.data?.tokens || [];
       for (const t of tokens) {
-        logger.debug(`[MultiSourceTokenDetector] Dexscreener considering token: ${t.baseToken?.address} (${t.baseToken?.symbol || ''})`);
-        if (t.baseToken?.address && !this.watchedMints.has(t.baseToken.address)) {
-          this.watchedMints.add(t.baseToken.address);
-          this.emit('newTokenDetected', {
-            mint: t.baseToken.address,
-            symbol: t.baseToken.symbol,
-            poolAddress: t.pairAddress,
-            source: 'dexscreener',
-            extra: t
-          } as MultiSourceTokenEvent);
-          logger.info(`[MultiSourceTokenDetector] Dexscreener detected new token: ${t.baseToken.address}`);
+        logger.debug(`[MultiSourceTokenDetector] Dexscreener considering token: ${t.address} (${t.symbol || ''})`);
+        if (t.address && !this.watchedMints.has(t.address)) {
+          // Score the token before emitting
+          try {
+            const metrics = await fetchTokenMetrics(t.address);
+            if (!metrics) continue;
+            const { score, reasons } = scoreOpportunity(metrics);
+            logger.info(`[MultiSourceTokenDetector] Scored ${metrics.symbol || t.symbol} (${t.address}): ${score} [${reasons.join(', ')}]`);
+            if (score >= 50) {
+              this.watchedMints.add(t.address);
+              this.emit('newTokenDetected', {
+                mint: t.address,
+                symbol: t.symbol,
+                poolAddress: undefined,
+                source: 'dexscreener',
+                metrics,
+                extra: t
+              } as MultiSourceTokenEvent);
+              logger.info(`[MultiSourceTokenDetector] Dexscreener detected new token: ${t.address}`);
+            } else {
+              logger.debug(`[MultiSourceTokenDetector] Skipping ${metrics.symbol || t.symbol} (${t.address}) due to low score (${score})`);
+            }
+          } catch (err) {
+            if (err instanceof Error) {
+              logger.warn(`[MultiSourceTokenDetector] Error scoring token ${t.address}: ${err.message}`);
+            } else {
+              logger.warn(`[MultiSourceTokenDetector] Error scoring token ${t.address}: ${String(err)}`);
+            }
+          }
         }
       }
     } catch (e) {

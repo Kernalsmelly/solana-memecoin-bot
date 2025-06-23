@@ -1,35 +1,18 @@
 import { EventEmitter } from 'events';
 import { TokenDiscovery } from '../discovery/tokenDiscovery';
 import { RiskManager } from '../live/riskManager';
-import { PatternType } from '../types';
+import { PatternType, PatternDetectorConfig, PatternCriteria, PatternMatch } from '../types';
+export type { PatternMatch };
+
 import logger from '../utils/logger';
-
-export interface PatternDetectorConfig {
-  tokenDiscovery: TokenDiscovery;
-  riskManager: RiskManager;
-  maxTokenAge?: number; // in hours
-  minLiquidity?: number; // in USD
-  maxPositionValue?: number; // in USD
-  enabledPatterns?: PatternType[];
-}
-
-export interface PatternCriteria {
-  priceChangeMin: number; // Minimum price change percentage
-  volumeChangeMin: number; // Minimum volume change percentage
-  buyRatioMin: number; // Minimum buy/sell ratio
-  liquidityMin: number; // Minimum liquidity in USD
-  ageMax?: number; // Maximum token age in hours
-  holdersMin?: number; // Minimum number of holders
-}
-
-export interface PatternMatch {
-  pattern: PatternType;
-  confidence: number; // 0-100
-  signalType: 'buy' | 'sell';
-}
+import { tradeLogger } from '../utils/tradeLogger';
 
 // Define DetectedPattern as an alias for PatternMatch if needed by other files
+
 // export type DetectedPattern = PatternMatch;
+
+import { calculatePositionSize } from '../utils/positionSizing';
+import { AccountBalance } from '../positionManager';
 
 /**
  * Pattern Detector System
@@ -53,76 +36,91 @@ export class PatternDetector extends EventEmitter {
     this.maxPositionValue = config.maxPositionValue || 100; // $100 max position
     
     // Define criteria for pattern recognition - optimized based on performance metrics
+    // Allow pattern criteria to be loaded from config or environment for hot-reload
+    const customCriteria = (global as any).PATTERN_CRITERIA || {};
     this.patternCriteria = {
-      'Mega Pump and Dump': {
-        // Achieved 187.5% returns with 65.2% drawdown
-        priceChangeMin: 40, // Higher threshold for price movement
-        volumeChangeMin: 170, // Strong volume increase
-        buyRatioMin: 2.5, // Heavy buying pressure
-        liquidityMin: 50000, // Ensure sufficient liquidity
-        ageMax: 12 // Focus on newer tokens
+      'Mega Pump and Dump': customCriteria['Mega Pump and Dump'] || {
+        priceChangeMin: 40,
+        volumeChangeMin: 170,
+        buyRatioMin: 2.5,
+        liquidityMin: 50000,
+        ageMax: 12
       },
-      'Volatility Squeeze': {
-        // Achieved 75.9% returns with 43.2% drawdown
+      'Volatility Squeeze': customCriteria['Volatility Squeeze'] || {
         priceChangeMin: 20,
         volumeChangeMin: 100,
         buyRatioMin: 1.7,
         liquidityMin: 75000,
-        ageMax: 24 // Slightly older tokens can work for this pattern
+        ageMax: 24
       },
-      'Smart Money Trap': {
-        // Achieved 66.8% returns with 40.0% drawdown
+      'Smart Money Trap': customCriteria['Smart Money Trap'] || {
         priceChangeMin: 15,
         volumeChangeMin: 80,
         buyRatioMin: 1.8,
         liquidityMin: 90000,
         ageMax: 36
       },
-      'Algorithmic Stop Hunt': {
-        // Achieved 61.0% returns with 37.9% drawdown
+      'Algorithmic Stop Hunt': customCriteria['Algorithmic Stop Hunt'] || {
         priceChangeMin: 25,
         volumeChangeMin: 120,
         buyRatioMin: 1.5,
         liquidityMin: 100000
       },
-      'Smart Money Reversal': {
-        // Achieved 55.3% returns with 35.6% drawdown
+      'Smart Money Reversal': customCriteria['Smart Money Reversal'] || {
         priceChangeMin: 18,
         volumeChangeMin: 90,
         buyRatioMin: 1.6,
         liquidityMin: 85000
       },
-      'Volume Divergence': {
+      'Volume Divergence': customCriteria['Volume Divergence'] || {
         priceChangeMin: 12,
         volumeChangeMin: 80,
         buyRatioMin: 1.4,
         liquidityMin: 100000
       },
-      'Hidden Accumulation': {
+      'Hidden Accumulation': customCriteria['Hidden Accumulation'] || {
         priceChangeMin: 10,
         volumeChangeMin: 50,
         buyRatioMin: 1.3,
         liquidityMin: 120000
       },
-      'Wyckoff Spring': {
+      'Wyckoff Spring': customCriteria['Wyckoff Spring'] || {
         priceChangeMin: 15,
         volumeChangeMin: 60,
         buyRatioMin: 1.5,
         liquidityMin: 150000
       },
-      'Liquidity Grab': {
+      'Liquidity Grab': customCriteria['Liquidity Grab'] || {
         priceChangeMin: 30,
         volumeChangeMin: 120,
         buyRatioMin: 1.6,
         liquidityMin: 80000
       },
-      'FOMO Cycle': {
+      'FOMO Cycle': customCriteria['FOMO Cycle'] || {
         priceChangeMin: 35,
         volumeChangeMin: 150,
         buyRatioMin: 2.0,
         liquidityMin: 60000
+      },
+      // --- New Patterns ---
+      'Volatility Breakout': customCriteria['Volatility Breakout'] || {
+        priceChangeMin: 25, // Large price move in short time
+        volumeChangeMin: 130, // Volume spike
+        buyRatioMin: 1.8,
+        liquidityMin: 70000,
+        ageMax: 36
+      },
+      'Mean Reversion': customCriteria['Mean Reversion'] || {
+        priceChangeMin: 10, // Modest move
+        volumeChangeMin: 40, // Lower volume
+        buyRatioMin: 1.0, // Neutral buy/sell
+        liquidityMin: 50000,
+        ageMax: 72
       }
     };
+    if (Object.keys(customCriteria).length > 0) {
+      logger.info('[PatternDetector] Loaded custom pattern thresholds from config/global.');
+    }
     
     // Set enabled patterns (default to all if not specified)
     this.enabledPatterns = config.enabledPatterns || Object.keys(this.patternCriteria) as PatternType[];
@@ -153,7 +151,13 @@ export class PatternDetector extends EventEmitter {
    */
   public analyzeTokenForPattern(token: any): PatternMatch | null {
     logger.info('[DEBUG] analyzeTokenForPattern called', { token });
+    tradeLogger.logScenario('PATTERN_ANALYSIS', {
+      event: 'analyzeTokenForPattern',
+      token: token.symbol || token.mint || token.address,
+      timestamp: new Date().toISOString()
+    });
     // Skip if token is too old or doesn't meet liquidity requirements
+    try {
     if ((token.age && token.age > this.maxTokenAge)) {
       logger.info('[DEBUG] Token skipped due to age', { token, maxTokenAge: this.maxTokenAge });
       return null;
@@ -166,10 +170,15 @@ export class PatternDetector extends EventEmitter {
     const patternMatch = this.analyzePatternMatch(token);
     if (patternMatch) {
       const { pattern, confidence, signalType } = patternMatch;
-      // Calculate position size based on risk parameters
-      const positionSize = this.calculatePositionSize(token.price);
-      // Check if we can open a position
-      if (this.riskManager.canOpenPosition(positionSize, token.symbol, token.price)) {
+      // Calculate position size using new utility and risk/account state
+      const rawBalance = this.riskManager.getAccountBalance ? this.riskManager.getAccountBalance() : { availableCash: 0, allocatedCash: 0, totalValue: 0 };
+const accountBalance: AccountBalance = typeof rawBalance === 'object' && rawBalance !== null
+  ? rawBalance
+  : { availableCash: 0, allocatedCash: 0, totalValue: 0 };
+
+      const positionSize = calculatePositionSize(token, this.riskManager, accountBalance);
+      logger.info('[DEBUG] Calculated position size', { token: token.symbol, positionSize });
+      if (positionSize > 0 && this.riskManager.canOpenPosition(positionSize, token.symbol, token.price)) {
         logger.info('[DEBUG] Pattern matched and can open position', { token, pattern, confidence, positionSize });
         // Emit pattern detected event
         this.emit('patternDetected', {
@@ -177,25 +186,23 @@ export class PatternDetector extends EventEmitter {
           tokenSymbol: token.symbol,
           pattern,
           confidence,
-          signalType,
-          price: token.price,
-          positionSize,
-          timestamp: Date.now()
+          signalType
         });
         logger.info('[DEBUG] patternDetected event emitted', { token, pattern, confidence, positionSize });
         return patternMatch;
       } else {
-        logger.info('[DEBUG] Pattern matched but cannot open position', { token, pattern, confidence, positionSize });
+        logger.info('[DEBUG] Pattern matched but cannot open position or size is zero', { token, pattern, confidence, positionSize });
       }
     } else {
       logger.info('[DEBUG] No pattern matched for token', { token });
     }
     return null;
+  } catch (error) {
+    logger.error('[PatternDetector] Error in analyzeTokenForPattern', { error });
+    return null;
   }
-  
-  /**
-   * Analyze token metrics to detect patterns
-   */
+  }
+
   private analyzePatternMatch(token: any): PatternMatch | null {
     // Skip tokens with insufficient data
     if (!token || !token.price || !token.priceChange24h) {
@@ -245,19 +252,6 @@ export class PatternDetector extends EventEmitter {
     }
     
     return bestMatch;
-  }
-  
-  /**
-   * Calculate position size based on token price and risk parameters
-   */
-  public calculatePositionSize(tokenPrice: number): number {
-    // Get max position value from risk manager
-    const maxPositionValue = this.riskManager.getMaxPositionValueUsd();
-    
-    // Calculate tokens to buy (maxPositionValue / tokenPrice)
-    const positionSize = maxPositionValue / tokenPrice;
-    
-    return positionSize;
   }
   
   /**

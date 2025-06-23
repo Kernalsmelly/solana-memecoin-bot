@@ -2,6 +2,7 @@ import { Position, RiskMetrics, TradingState, TradeHistoryEntry } from './types'
 import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import logger from './utils/logger';
+import { tradeLogger } from './utils/tradeLogger';
 
 export class PersistenceManager {
     private dataDir: string;
@@ -31,7 +32,12 @@ export class PersistenceManager {
             state.positions.push(position);
             this.saveState(state);
         } catch (error) {
-            logger.error('Error saving position:', error);
+  if (error instanceof Error) {
+    logger.error('PersistenceManager error:', error);
+  } else {
+    logger.error('Unknown error:', String(error));
+  }
+
         }
     }
 
@@ -41,7 +47,12 @@ export class PersistenceManager {
             state.positions = state.positions.filter(p => p.tokenAddress !== tokenAddress);
             this.saveState(state);
         } catch (error) {
-            logger.error('Error deleting position:', error);
+  if (error instanceof Error) {
+    logger.error('PersistenceManager error:', error);
+  } else {
+    logger.error('Unknown error:', String(error));
+  }
+
         }
     }
 
@@ -51,7 +62,12 @@ export class PersistenceManager {
             state.riskMetrics = metrics;
             this.saveState(state);
         } catch (error) {
-            logger.error('Error saving risk metrics:', error);
+  if (error instanceof Error) {
+    logger.error('PersistenceManager error:', error);
+  } else {
+    logger.error('Unknown error:', String(error));
+  }
+
         }
     }
 
@@ -61,7 +77,12 @@ export class PersistenceManager {
             history.push(entry);
             writeFileSync(this.historyFile, JSON.stringify(history, null, 2));
         } catch (error) {
-            logger.error('Error adding trade history:', error);
+  if (error instanceof Error) {
+    logger.error('PersistenceManager error:', error);
+  } else {
+    logger.error('Unknown error:', String(error));
+  }
+
         }
     }
 
@@ -69,37 +90,56 @@ export class PersistenceManager {
         try {
             if (!existsSync(this.stateFile)) {
                 return {
-                    positions: [],
+                    positions: [] as Position[],
                     riskMetrics: {
+                        maxDrawdown: 0,
+                        maxDailyLoss: 0,
+                        activePositions: 0,
+                        pnl: 0,
                         currentBalance: 1000,
                         dailyPnL: 0,
                         drawdown: 0,
                         winRate: 0,
-                        activePositions: 0,
                         availablePositions: 3,
                         highWaterMark: 1000,
-                        dailyLoss: 0
+                        dailyLoss: 0,
+                        minute: 0,
+                        hour: 0,
+                        day: 0
                     },
+                    allocatedCash: 0,
+                    totalValue: 0,
                     timestamp: Date.now()
                 };
+
             }
 
             const data = readFileSync(this.stateFile, 'utf8');
             return JSON.parse(data);
         } catch (error) {
-            logger.error('Error loading state:', error);
+  if (error instanceof Error) {
+    logger.error('PersistenceManager error:', error);
+  } else {
+    logger.error('Unknown error:', String(error));
+  }
+
             return {
                 positions: [],
                 riskMetrics: {
+                    maxDrawdown: 0,
+                    maxDailyLoss: 0,
+                    activePositions: 0,
+                    pnl: 0,
                     currentBalance: 1000,
                     dailyPnL: 0,
                     drawdown: 0,
                     winRate: 0,
-                    activePositions: 0,
                     availablePositions: 3,
                     highWaterMark: 1000,
                     dailyLoss: 0
                 },
+                allocatedCash: 0,
+                totalValue: 0,
                 timestamp: Date.now()
             };
         }
@@ -109,6 +149,12 @@ export class PersistenceManager {
         try {
             writeFileSync(this.stateFile, JSON.stringify(state, null, 2));
         } catch (error) {
+  if (error instanceof Error) {
+    logger.error('PersistenceManager error:', error);
+  } else {
+    logger.error('Unknown error:', String(error));
+  }
+
             logger.error('Error saving state:', error);
         }
     }
@@ -122,6 +168,12 @@ export class PersistenceManager {
             const data = readFileSync(this.historyFile, 'utf8');
             return JSON.parse(data);
         } catch (error) {
+  if (error instanceof Error) {
+    logger.error('PersistenceManager error:', error);
+  } else {
+    logger.error('Unknown error:', String(error));
+  }
+
             logger.error('Error loading trade history:', error);
             return [];
         }
@@ -146,7 +198,19 @@ export class PersistenceManager {
             const csv = [headers.join(','), ...rows].join('\n');
             writeFileSync(outputFile, csv);
         } catch (error) {
+  if (error instanceof Error) {
+    logger.error('PersistenceManager error:', error);
+  } else {
+    logger.error('Unknown error:', String(error));
+  }
+
             logger.error('Error exporting trade history:', error);
+            tradeLogger.logScenario('PERSISTENCE_ERROR', {
+              event: 'exportTradeHistory',
+              file: outputFile,
+              error: error instanceof Error ? error.message : String(error),
+              timestamp: new Date().toISOString()
+            });
         }
     }
 
@@ -156,8 +220,13 @@ export class PersistenceManager {
             const backupFile = join(this.backupDir, `backup_${timestamp}.json`);
             const state = this.loadState();
             writeFileSync(backupFile, JSON.stringify(state, null, 2));
-        } catch (error) {
+        } catch (error: any) { 
             logger.error('Error creating backup:', error);
+            tradeLogger.logScenario('PERSISTENCE_ERROR', {
+                event: 'saveState',
+                error: error instanceof Error ? error.message : String(error),
+                timestamp: new Date().toISOString()
+            });
         }
     }
 }

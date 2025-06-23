@@ -1,7 +1,10 @@
 // src/services/priceWatcher.ts
+import { TokenMetrics } from '../types';
+import { tradeLogger } from '../utils/tradeLogger';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { Config } from '../utils/config';
 import logger from '../utils/logger';
+import { sendAlert } from '../utils/notifications';
 import { EventEmitter } from 'events';
 import { createJupiterApiClient, QuoteResponse } from '@jup-ag/api';
 import axios, { AxiosError } from 'axios';
@@ -34,6 +37,9 @@ export interface MarketDataUpdateEvent {
     pairCreatedAt?: number; // Added pairCreatedAt
     volumeChangePercent?: number; // Added: Short-term volume % change (spike)
     // ... other relevant data points
+    signalReason?: string;
+    symbol?: string;
+    volume1h?: number;
 }
 
 export class PriceWatcher extends EventEmitter {
@@ -245,6 +251,12 @@ export class PriceWatcher extends EventEmitter {
     }
 
     private async pollWatchedTokens() {
+        // Emit heartbeat for PriceWatcher
+        if ((globalThis as any).heartbeat?.PriceWatcher) {
+            (globalThis as any).heartbeat.PriceWatcher();
+        } else {
+            logger.debug('[HEARTBEAT] PriceWatcher heartbeat function not found');
+        }
         if (this.watchedTokens.size === 0) {
             return; // Nothing to poll
         }
@@ -268,10 +280,17 @@ export class PriceWatcher extends EventEmitter {
         const results = await Promise.allSettled(pollPromises);
 
         // Log errors
-        results.forEach((result, index) => {
+        results.forEach(async (result, index) => {
             if (result.status === 'rejected') {
                 const mint = Array.from(this.watchedTokens.keys())[index];
                 logger.warn(`[PriceWatcher] Polling promise rejected for ${mint}: ${result.reason}`);
+        tradeLogger.logScenario('PRICE_WATCHER_ERROR', {
+          event: 'pollWatchedTokens',
+          token: mint,
+          error: result.reason?.message || String(result.reason),
+          timestamp: new Date().toISOString()
+        });
+            await sendAlert(`[PriceWatcher] Polling promise rejected for ${mint}: ${result.reason}`, 'CRITICAL');
             }
         });
     }
@@ -341,28 +360,28 @@ export class PriceWatcher extends EventEmitter {
             const priceChange1m = this.calculatePriceChange(tokenData.priceHistory, 60 * 1000); // 1 minute
             const priceChangePercent = this.calculatePriceChange(tokenData.priceHistory, 5 * 60 * 1000); // 5 minutes
             const volumeChangePercent = this.calculateVolumeChangePercent(tokenData.volumeHistory, 15 * 60 * 1000); // 15 minutes
-            // TODO: Add volume change calculation if needed for strategy
-            // const volumeChange1h = this.calculateVolumeChange(tokenData.volumeHistory, 60 * 60 * 1000); // 1 hour
-            const buyRatio5m = this.calculateBuyRatio(pairData, 'm5'); // 5 minutes
 
-            const updateEventData: MarketDataUpdateEvent = {
-                mint: mintAddress,
-                pairAddress: tokenData.pairAddress,
-                decimals: tokenData.decimals, // Include decimals in the event
-                currentPrice: currentPrice,
-                priceChangePercent: priceChangePercent,
-                priceChange1m: priceChange1m,
-                volume5m: pairData?.volume?.m5, // Pass through 5m volume if available
-                volumeChangePercent: volumeChangePercent,
-                liquidity: tokenData.liquidity ?? 0, // Use stored liquidity or 0
-                buyRatio5m: buyRatio5m,
-                pairCreatedAt: pairData?.pairCreatedAt // Add creation timestamp
-            };
 
-            // --- 4. Emit Event ---
-            // Reduce log verbosity, maybe only log if change is significant?
-            // logger.debug(`[PriceWatcher] Data update for ${mintAddress}: Price=${currentPrice.toFixed(6)}, Liq=${tokenData.liquidity?.toFixed(2)}, Change1m=${priceChange1m?.toFixed(2)}%, BuyRatio5m=${buyRatio5m?.toFixed(2)}`);
-            this.emit('marketDataUpdate', updateEventData);
+// TODO: Add volume change calculation if needed for strategy
+// const volumeChange1h = this.calculateVolumeChange(tokenData.volumeHistory, 60 * 60 * 1000); // 1 hour
+const buyRatio5m = this.calculateBuyRatio(pairData, 'm5'); // 5 minutes
+
+const updateEventData: MarketDataUpdateEvent = {
+mint: mintAddress,
+pairAddress: tokenData.pairAddress ?? undefined,
+decimals: tokenData.decimals ?? 0,
+currentPrice: currentPrice ?? 0,
+priceChangePercent: priceChangePercent ?? undefined,
+priceChange1m: priceChange1m ?? undefined,
+volume5m: pairData?.volume?.m5 ?? undefined,
+volumeChangePercent: volumeChangePercent ?? undefined,
+liquidity: tokenData.liquidity ?? 0,
+buyRatio5m: buyRatio5m ?? undefined,
+pairCreatedAt: pairData?.pairCreatedAt ?? undefined,
+signalReason: undefined,
+symbol: undefined,
+volume1h: pairData?.volume?.h1 ?? undefined
+};
 
             // Reset error count on success
             tokenData.errorCount = 0;
@@ -370,6 +389,13 @@ export class PriceWatcher extends EventEmitter {
 
         } catch (error: any) {
             logger.error(`[PriceWatcher] Error polling token ${mintAddress}: ${error.message}`);
+    tradeLogger.logScenario('PRICE_WATCHER_ERROR', {
+      event: 'pollSingleToken',
+      token: mintAddress,
+      error: error?.message || String(error),
+      timestamp: new Date().toISOString()
+    });
+        await sendAlert(`[PriceWatcher] Error polling token ${mintAddress}: ${error.message}`, 'CRITICAL');
             // const tokenData = this.watchedTokens.get(mintAddress); // Already defined above
             // if (tokenData) { // Check if tokenData exists (it should)
                 tokenData.errorCount++;
@@ -428,6 +454,7 @@ export class PriceWatcher extends EventEmitter {
             // Improve error logging
             const errorMessage = error.message || 'Unknown error';
             logger.error(`[PriceWatcher] Jupiter quote failed for ${inputMint} -> ${outputMint}: ${errorMessage}`);
+        await sendAlert(`[PriceWatcher] Jupiter quote failed for ${inputMint} -> ${outputMint}: ${errorMessage}`, 'ERROR');
             
             // Try to use cached price if available
             const tokenData = this.watchedTokens.get(inputMint);

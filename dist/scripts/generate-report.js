@@ -197,7 +197,7 @@ function calculateDailyPerformance(allTrades, date) {
         if (!tradesByPattern[pattern]) {
             tradesByPattern[pattern] = [];
         }
-        tradesByPattern[pattern].push(trade);
+        (tradesByPattern[pattern]).push(trade);
     });
     // Calculate pattern-specific metrics
     Object.entries(tradesByPattern).forEach(([pattern, patternTrades]) => {

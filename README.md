@@ -58,6 +58,24 @@ npm install
 ```
 
 3. Create .env file:
+
+## Free Data Stack
+
+This bot uses only free, public endpoints for all market and blockchain data:
+
+- **Dexscreener** (`https://api.dexscreener.com/latest/dex/tokens/{address}`) — up to 55 req/min
+- **GeckoTerminal** (`https://api.geckoterminal.com/api/v2/networks/solana/tokens/{address}`) — up to 55 req/min
+- **Birdeye Public** (`https://public-api.birdeye.so/public/price?address={address}`) — up to 25 req/min
+- **Solana RPC** (rotates: helio, mainnet-beta, serum) — round-robin, 3-strike timeout ejection
+
+### Rate Limit Notes
+- All sources are throttled internally (see `src/integrations/data-hub/DataBroker.ts`)
+- LRU cache (default 10s TTL) prevents excessive re-queries
+
+### Environment Variables
+- `RPC_URLS` — comma-separated Solana RPC URLs (optional, uses defaults if unset)
+- `CACHE_TTL_MS` — cache TTL for market data (default: 10000)
+
 ```bash
 cp .env.example .env
 ```
@@ -137,10 +155,43 @@ npm run emergency-stop
 
 ### Performance Dashboard
 View real-time trading performance:
-
 ```bash
 npm run dashboard
 ```
+
+- The dashboard runs automatically with the bot and is accessible at [http://localhost:3000](http://localhost:3000) (or the port set by `DASHBOARD_PORT`).
+- It displays live and historical risk metrics, circuit breaker status, emergency stop state, and system health.
+- Use the dashboard to monitor for anomalies, missed heartbeats, or risk triggers in real time.
+
+### Logging, Alerts & Troubleshooting
+
+### Scenario Logging & Alerts
+- All critical events (errors, circuit breakers, emergency stops, trade anomalies) are logged to scenario logs and sent as alerts via Discord and Telegram (if configured).
+- Alerts include detailed context and timestamps for each event.
+
+### Log Files
+- Logs are written to the directory specified by `LOG_DIRECTORY` (default: `./logs`).
+- Scenario logs and trade logs are CSV-safe and timestamped for easy auditing.
+- Log rotation and size are controlled by `LOG_MAX_SIZE` and `LOG_MAX_FILES`.
+
+### Common Startup & Runtime Issues
+- **Missing or invalid environment variables:**
+  - The bot will fail fast and alert if required secrets or config values are missing.
+  - Check `.env` and logs for details on missing/invalid fields.
+- **Pre-flight check failures:**
+  - Startup validation covers wallet, RPC, API keys, and config. Any failure is logged and alerted.
+- **Missed heartbeat alerts:**
+  - If a core service (e.g. PriceWatcher, TradingEngine, NewCoinDetector) fails to send a heartbeat, an alert is sent and the dashboard will show the last-seen timestamp.
+
+### Emergency Stop & Recovery
+- Trigger an emergency stop via command or UI to halt all trading immediately.
+- Emergency stop status is visible on the dashboard and in alerts.
+- To recover, resolve the root cause (see logs/alerts), then reset the emergency stop via command or dashboard if supported.
+
+### Interpreting Alerts & Dashboard Status
+- **CRITICAL** alerts require immediate attention and indicate a failure or risk threshold breach.
+- **Scenario logs** provide a full audit trail for all major events and can be used for troubleshooting and compliance.
+- Use the dashboard to verify system health, risk status, and operational readiness at a glance.
 
 ### Generate Performance Report
 Create a daily summary of trading performance:

@@ -1,7 +1,9 @@
 import { EventEmitter } from 'events';
 import logger from '../utils/logger';
-import { LiveOrderExecution, OrderExecution } from '../orderExecution';
+import { LiveOrderExecution } from '../orderExecution';
+import { OrderExecution } from '../types';
 import { Position, TradeOrder } from '../types'; // Import global Position type and TradeOrder
+import { tradeLogger } from '../utils/tradeLogger';
 import { RiskManager } from '../live/riskManager';
 import { BirdeyeAPI } from '../api/birdeyeAPI'; // Import BirdeyeAPI
 import { sendAlert, AlertLevel } from '../utils/notifications'; // Keep AlertLevel import for type annotation
@@ -111,7 +113,7 @@ export class ExitManager extends EventEmitter {
   private config: ExitManagerConfig;
   private orderExecution: OrderExecution;
   private riskManager: RiskManager;
-  private birdeyeApi: BirdeyeAPI; // Add BirdeyeAPI instance
+  private birdeyeApi?: BirdeyeAPI; // Add BirdeyeAPI instance
   private priceUpdateInterval: NodeJS.Timeout | null = null;
   private analysisInterval: NodeJS.Timeout | null = null;
 
@@ -121,7 +123,7 @@ export class ExitManager extends EventEmitter {
   constructor(
     orderExecution: OrderExecution,
     riskManager: RiskManager,
-    birdeyeApi: BirdeyeAPI, // Add birdeyeApi parameter
+    birdeyeApi?: BirdeyeAPI,
     config?: Partial<ExitManagerConfig>
   ) {
     super();
@@ -338,6 +340,19 @@ export class ExitManager extends EventEmitter {
                     if (price > trailingStop.highestPrice) {
                       trailingStop.highestPrice = price;
                       trailingStop.stopPrice = price * (1 - trailingStop.percent / 100);
+                      logger.info(`[ExitManager] Emergency stop reset by user or system.`);
+                      tradeLogger.logScenario('EMERGENCY_STOP_RESET', {
+                        event: 'emergencyStopReset',
+                        details: 'Emergency stop successfully reset',
+                        timestamp: new Date().toISOString()
+                      });
+                      logger.warn(`[ExitManager] Forced exit triggered for ${position.tokenSymbol}`);
+                      tradeLogger.logScenario('FORCED_EXIT', {
+                        event: 'forcedExit',
+                        token: position.tokenSymbol,
+                        reason: 'forced exit',
+                        timestamp: new Date().toISOString()
+                      });
                       logger.debug(`Trailing stop updated for ${currentPosition.tokenSymbol || position.id}`, { newStopPrice: trailingStop.stopPrice });
                     }
                   }
@@ -363,7 +378,12 @@ export class ExitManager extends EventEmitter {
   private async _fetchPrice(tokenAddress: string): Promise<number | null> {
     try {
       // Corrected method name based on lint feedback
-      const price = await this.birdeyeApi.fetchTokenPrice(tokenAddress);
+      if (!this.birdeyeApi) {
+        logger.warn(`BirdeyeAPI is not available. Cannot fetch price for ${tokenAddress}`);
+        return null;
+      }
+      const priceObj = await this.birdeyeApi.getTokenPrice(tokenAddress);
+      const price = priceObj?.priceUsd;
       if (typeof price !== 'number' || isNaN(price)) {
         logger.warn(`Received invalid price for ${tokenAddress}`, { price });
         return null;
@@ -645,18 +665,20 @@ export class ExitManager extends EventEmitter {
     try {
       // Construct TradeOrder compatible with LiveOrderExecution
       const sellOrder: TradeOrder = {
-        tokenAddress: position.tokenAddress, // Use tokenAddress from base Position
-        side: 'sell', // Use side instead of direction
-        size: position.quantity, // Reverted: Use bigint quantity as required by TradeOrder type
-        price: position.currentPrice, // Use the current fetched price
-        timestamp: Date.now(), // Timestamp of sell decision
+        tokenAddress: position.tokenAddress,
+        side: 'sell',
+        size: position.quantity,
+        price: position.currentPrice
       };
 
       const result = await this.orderExecution.executeOrder(sellOrder);
 
       if (result.success) {
         // Calculate actual PNL if possible
-        let actualSolReceived: bigint | undefined = result.inputAmount; // SOL received from sell
+        let actualSolReceived: bigint | undefined =
+  typeof result.inputAmount === 'number'
+    ? BigInt(result.inputAmount)
+    : result.inputAmount; // SOL received from sell
         let initialSolCost: bigint | undefined = position.initialSolCostLamports;
 
         // Use currentPrice for notification as a fallback or if SOL amounts missing

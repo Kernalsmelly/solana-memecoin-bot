@@ -1,12 +1,12 @@
 import { ExitManager, ManagedPosition } from './exitManager';
 import { RiskManager } from '../live/riskManager';
 import { PatternType, PatternDetection } from '../types';
-import { OrderExecution } from '../orderExecution';
+import { OrderExecution } from '../types';
 import { BirdeyeAPI } from '../api/birdeyeAPI';
 interface PortfolioDependencies {
     orderExecution: OrderExecution;
     riskManager: RiskManager;
-    birdeyeApi: BirdeyeAPI;
+    birdeyeApi?: BirdeyeAPI;
     exitManager: ExitManager;
 }
 interface PortfolioConfig {
@@ -26,6 +26,7 @@ interface PortfolioConfig {
  */
 export declare class PortfolioOptimizer {
     private config;
+    getMinConfidence(): number;
     private activePositions;
     private patternPerformance;
     constructor(config: Partial<PortfolioConfig> & PortfolioDependencies);

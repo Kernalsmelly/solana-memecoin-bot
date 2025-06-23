@@ -17,6 +17,15 @@ export interface AccountBalance {
     allocatedCash: number;
     totalValue: number;
 }
+export interface PositionPnL {
+    tokenMint: string;
+    tokenSymbol: string;
+    quantity: number;
+    entryPrice: number;
+    currentPrice: number;
+    unrealizedPnL: number;
+    unrealizedPnLPercent: number;
+}
 export declare class PositionManager {
     private accountBalance;
     private positions;
@@ -41,12 +50,27 @@ export declare class PositionManager {
      */
     openPosition(tokenMint: string, tokenSymbol: string, tokenDecimals: number, quantity: number, entryPrice: number): Promise<Position>;
     /**
-     * Closes (or partially closes) a position.
-     * @param tokenMint - Token address.
-     * @param quantityToSell - Quantity to sell.
-     * @param sellPrice - Price at which the token is sold.
-     * @returns The updated position or null if fully closed.
+     * Calculates real-time PnL for a single position.
      */
+    getPositionPnL(tokenMint: string): Promise<PositionPnL | null>;
+    /**
+     * Calculates real-time PnL for all open positions.
+     */
+    getAllPositionsPnL(): Promise<PositionPnL[]>;
+    /**
+     * Checks if a position should be exited due to stop-loss, take-profit, trailing stop, or time-based exit.
+     * Returns a reason string if exit is triggered, otherwise null.
+     * (Stub logic, to be filled in with advanced rules)
+     */
+    checkExitTriggers(tokenMint: string): Promise<string | null>;
+    /**
+     * (Stub) Applies trailing stop logic for a position. To be filled in with advanced rules.
+     */
+    applyTrailingStop(tokenMint: string): Promise<void>;
+    /**
+     * (Stub) Applies time-based exit logic for a position. To be filled in with advanced rules.
+     */
+    applyTimeBasedExit(tokenMint: string): Promise<void>;
     closePosition(tokenMint: string, quantityToSell: number, sellPrice: number): Promise<Position | null>;
     /**
      * Updates the current market price for a given token position.

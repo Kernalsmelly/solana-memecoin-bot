@@ -14,6 +14,9 @@ export interface MarketDataUpdateEvent {
     buyRatio5m?: number;
     pairCreatedAt?: number;
     volumeChangePercent?: number;
+    signalReason?: string;
+    symbol?: string;
+    volume1h?: number;
 }
 export declare class PriceWatcher extends EventEmitter {
     private connection;
@@ -24,6 +27,12 @@ export declare class PriceWatcher extends EventEmitter {
     private pollIntervalId;
     private pollIntervalMs;
     private maxPollingErrors;
+    private rpcCallCount;
+    private rpcCallResetTime;
+    private readonly MAX_RPC_CALLS_PER_MINUTE;
+    private jupiterCallCount;
+    private jupiterCallResetTime;
+    private readonly MAX_JUPITER_CALLS_PER_MINUTE;
     constructor(connection: Connection, config: Config);
     private cacheQuoteTokenDecimals;
     private getTokenDecimals;
@@ -31,10 +40,20 @@ export declare class PriceWatcher extends EventEmitter {
     stop(): void;
     watchToken(mintAddress: string, pairAddress?: string): void;
     unwatchToken(mintAddress: string): void;
+    /**
+     * Rate limiter for RPC calls to prevent excessive QuickNode usage
+     * @returns true if the call is allowed, false if it should be throttled
+     */
+    private checkRpcRateLimit;
+    /**
+     * Rate limiter for Jupiter API calls
+     * @returns true if the call is allowed, false if it should be throttled
+     */
+    private checkJupiterRateLimit;
     private pollWatchedTokens;
     private pollSingleToken;
     private fetchJupiterPrice;
-    private fetchDexscreenerData;
+    fetchDexscreenerData(queryAddress: string, type: 'pair' | 'token'): Promise<any>;
     private calculatePriceChange;
     private calculateBuyRatio;
     private calculateVolumeChangePercent;

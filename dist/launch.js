@@ -36,8 +36,9 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.globalRateLimiter = void 0;
 const dotenv = __importStar(require("dotenv"));
-const web3_js_1 = require("@solana/web3.js");
+const web3_js_1 = require("@solana/web3.js"); // Added LAMPORTS_PER_SOL for SOL conversion
 const bs58_1 = __importDefault(require("bs58"));
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
@@ -50,6 +51,47 @@ const config_1 = require("./utils/config");
 const newCoinDetector_1 = require("./services/newCoinDetector");
 const priceWatcher_1 = require("./services/priceWatcher");
 const tradingEngine_1 = require("./services/tradingEngine");
+// Global rate limiter to prevent excessive RPC calls
+class RpcRateLimiter {
+    static instance;
+    rpcCallCount = 0;
+    rpcCallResetTime = Date.now();
+    MAX_RPC_CALLS_PER_MINUTE = 60; // Adjust as needed
+    constructor() {
+        // Private constructor for singleton pattern
+        setInterval(() => {
+            // Reset counter every minute
+            this.rpcCallCount = 0;
+            this.rpcCallResetTime = Date.now();
+            logger_1.default.debug(`[RateLimiter] Reset RPC call counter. Current utilization: ${this.getUtilizationPercent()}%`);
+        }, 60000);
+    }
+    static getInstance() {
+        if (!RpcRateLimiter.instance) {
+            RpcRateLimiter.instance = new RpcRateLimiter();
+        }
+        return RpcRateLimiter.instance;
+    }
+    checkLimit() {
+        if (this.rpcCallCount >= this.MAX_RPC_CALLS_PER_MINUTE) {
+            logger_1.default.warn(`[RateLimiter] RPC call limit reached (${this.MAX_RPC_CALLS_PER_MINUTE}/min). Throttling.`);
+            return false;
+        }
+        this.rpcCallCount++;
+        return true;
+    }
+    getUtilizationPercent() {
+        return Math.round((this.rpcCallCount / this.MAX_RPC_CALLS_PER_MINUTE) * 100);
+    }
+    getCurrentCount() {
+        return this.rpcCallCount;
+    }
+    getMaxCount() {
+        return this.MAX_RPC_CALLS_PER_MINUTE;
+    }
+}
+// Export the rate limiter for use in other modules
+exports.globalRateLimiter = RpcRateLimiter.getInstance();
 // src/launch.ts
 console.log('=== LAUNCH SCRIPT STARTED ===');
 dotenv.config();
@@ -105,6 +147,7 @@ function saveSystemState(riskManager, stateFilePath) {
  * Handles safe initialization and operation of the trading system
  */
 async function launchTradingSystem() {
+    logger_1.default.info('Entered launchTradingSystem()');
     let riskManager = null; // Keep riskManager accessible for shutdown handler
     let saveIntervalId = null; // Keep interval ID accessible
     let newCoinDetector = null; // Keep detector accessible
@@ -117,7 +160,7 @@ async function launchTradingSystem() {
     });
     try {
         // 1. Verify configuration
-        logger_1.default.info('Verifying system configuration...');
+        logger_1.default.info('About to verify system configuration...');
         const configResult = await (0, verifyConfig_1.default)();
         if (!configResult.isValid) {
             logger_1.default.error('Configuration verification failed', configResult);
@@ -125,6 +168,7 @@ async function launchTradingSystem() {
             process.exit(1);
         }
         logger_1.default.info('Configuration validated successfully');
+        logger_1.default.info('About to check data directory...');
         // Define and ensure data directory exists
         // Use absolute path to avoid potential relative path issues
         const dataDir = path.resolve(config_1.config.trading.dataDirectory);
@@ -140,6 +184,7 @@ async function launchTradingSystem() {
             // This is likely fatal if we can't create/access the data directory
             process.exit(1);
         }
+        logger_1.default.info('About to set up core components...');
         // 2. Setup core components
         const privateKeyStr = process.env.SOLANA_PRIVATE_KEY;
         if (!privateKeyStr) {
@@ -149,21 +194,41 @@ async function launchTradingSystem() {
         }
         const privateKey = bs58_1.default.decode(privateKeyStr);
         const wallet = web3_js_1.Keypair.fromSecretKey(privateKey);
+        // Use QuickNode for optimal performance with memecoin trading
         const rpcEndpoint = config_1.config.solana.rpcEndpoint;
+        const wssEndpoint = config_1.config.solana.wssEndpoint;
         if (!rpcEndpoint || typeof rpcEndpoint !== 'string') {
             logger_1.default.error(`FATAL: Invalid Solana RPC endpoint configured: ${rpcEndpoint}`);
             process.exit(1);
         }
-        logger_1.default.info(`Connecting with RPC: ${rpcEndpoint}`); // Log endpoint being used
-        const connection = new web3_js_1.Connection(rpcEndpoint, 'confirmed');
+        if (!wssEndpoint || typeof wssEndpoint !== 'string') {
+            logger_1.default.warn(`WARNING: Missing WebSocket endpoint. WebSocket-based detection will not work.`);
+        }
+        logger_1.default.info(`Connecting with QuickNode RPC: ${rpcEndpoint}`);
+        if (wssEndpoint)
+            logger_1.default.info(`Using QuickNode WebSocket: ${wssEndpoint}`);
+        // Create a rate-limited connection to prevent excessive RPC calls
+        const connection = new web3_js_1.Connection(rpcEndpoint, {
+            commitment: 'confirmed',
+            wsEndpoint: wssEndpoint,
+            // Use these options to optimize RPC usage
+            disableRetryOnRateLimit: true, // Don't retry automatically on rate limits
+            confirmTransactionInitialTimeout: 60000 // 60 seconds timeout for confirmations
+        });
+        // Add a warning about QuickNode limits
+        logger_1.default.info(`[RateLimiter] Using global rate limiter with max ${exports.globalRateLimiter.getMaxCount()} RPC calls per minute`);
+        logger_1.default.warn('IMPORTANT: Monitor QuickNode usage carefully to avoid exceeding your plan limits.');
+        logger_1.default.info('About to initialize PriceWatcher...');
         // 2.5 Initialize PriceWatcher
         logger_1.default.info('Initializing price watcher system...');
         priceWatcher = new priceWatcher_1.PriceWatcher(connection, config_1.config); // Instantiate PriceWatcher
+        logger_1.default.info('About to initialize TradingEngine...');
         // 2.6 Initialize TradingEngine
         if (!wallet) { // Ensure wallet is loaded before passing
             throw new Error('Wallet Keypair not loaded, cannot initialize TradingEngine.');
         }
         tradingEngine = new tradingEngine_1.TradingEngine(connection, config_1.config, wallet);
+        logger_1.default.info('About to check wallet balances...');
         // 3. Check wallet balances
         logger_1.default.info('Checking wallet balances...');
         // const walletReport = await manageFunds({ action: 'check', saveReport: true, connection, wallet });
@@ -186,8 +251,10 @@ async function launchTradingSystem() {
         //      logger.warn('SOL balance is low, may run out paying fees', { solBalance: walletReport.solBalance });
         //      await sendAlert(`Low SOL balance: ${walletReport.solBalance} SOL`, 'WARNING');
         // }
+        logger_1.default.info('About to load state before initializing Risk Manager...');
         // --- Load State BEFORE Initializing Risk Manager ---
         const loadedState = loadSystemState(stateFilePath);
+        logger_1.default.info('About to initialize Risk Manager...');
         // 4. Initialize Risk Manager
         logger_1.default.info('Initializing risk management system...');
         riskManager = new riskManager_1.RiskManager({
@@ -198,6 +265,7 @@ async function launchTradingSystem() {
             // Add other RiskManagerConfig properties from .env if needed
             // maxVolatility: ... , maxPriceDeviation: ... etc.
         }, loadedState); // <-- Pass loaded state here
+        logger_1.default.info('About to set up circuit breaker event handler...');
         // Setup circuit breaker event handler
         riskManager.on('circuitBreaker', async (data) => {
             const { reason, message, timestamp } = data;
@@ -205,6 +273,7 @@ async function launchTradingSystem() {
             await (0, notifications_1.sendAlert)(`Circuit breaker triggered: ${reason} - ${message ?? 'No details'}`, 'WARNING'); // Added nullish coalescing for message
             saveSystemState(riskManager, stateFilePath); // Save state when breaker triggers
         });
+        logger_1.default.info('About to set up emergency stop event handler...');
         // Setup emergency stop event handler
         riskManager.on('emergencyStop', async (data) => {
             const { reason, message, timestamp } = data;
@@ -222,15 +291,18 @@ async function launchTradingSystem() {
                 setTimeout(() => process.exit(1), 5000);
             }
         });
+        logger_1.default.info('About to initialize Order Execution...');
         // 5. Initialize Order Execution
         logger_1.default.info('Initializing order execution system...');
         const orderExecutionConfig = { slippageBps: config_1.config.trading.jupiterSlippageBps };
         const orderExecution = new orderExecution_1.LiveOrderExecution(connection, wallet, orderExecutionConfig);
         // No initialize needed for the new class structure
+        logger_1.default.info('About to initialize New Coin Detector...');
         // 7. Initialize New Coin Detector
         logger_1.default.info('Initializing new coin detection system...');
         // Revert diagnostic assertion - type should now be correctly inferred
         newCoinDetector = new newCoinDetector_1.NewCoinDetector(connection, config_1.config);
+        logger_1.default.info('About to set up New Pool Detected Event Listener...');
         // --- Setup New Pool Detected Event Listener --- 
         newCoinDetector.on('newPoolDetected', (eventData) => {
             logger_1.default.info(`[Launch] Detected new pool via event: Base Mint ${eventData.baseMint}, Pool ${eventData.poolAddress}, Quote ${eventData.quoteMint}`);
@@ -245,6 +317,7 @@ async function launchTradingSystem() {
             // TODO: Potentially trigger initial evaluation by TradingEngine immediately?
             // tradingEngine.evaluateToken(tokenMint);
         });
+        logger_1.default.info('About to connect PriceWatcher to Trading Engine...');
         // --- Connect PriceWatcher to Trading Engine --- 
         if (priceWatcher && tradingEngine) {
             logger_1.default.info('[Launch] Connecting PriceWatcher marketDataUpdate events to TradingEngine...');
@@ -255,6 +328,7 @@ async function launchTradingSystem() {
         else {
             logger_1.default.error('[Launch] Failed to connect PriceWatcher and TradingEngine. One or both are not initialized.');
         }
+        logger_1.default.info('About to set up State Persistence & Shutdown Hooks...');
         // --- Setup State Persistence & Shutdown Hooks ---
         logger_1.default.info(`Setting up periodic state save every ${SAVE_INTERVAL_MS / 60000} minutes.`);
         saveSystemState(riskManager, stateFilePath); // Initial save after setup
@@ -297,6 +371,7 @@ async function launchTradingSystem() {
             // Cannot save here, riskManager/stateFilePath likely out of scope
             setTimeout(() => process.exit(1), 3000); // Exit after attempting save
         });
+        logger_1.default.info('About to start systems (Dry Run or Production)...');
         // 8. Start Systems (Dry Run or Production)
         if (DRY_RUN_MODE) {
             logger_1.default.info('Starting in DRY RUN mode - no trades will be executed');
@@ -313,15 +388,51 @@ async function launchTradingSystem() {
         }
         else if (PRODUCTION_MODE) {
             logger_1.default.info('Starting in PRODUCTION mode');
-            // ... (existing production logic)
-            // Ensure RiskManager and OrderExecution are properly connected/used by downstream components
-            if (newCoinDetector)
+            // Set up health check for production
+            const healthCheckIntervalId = setInterval(async () => {
+                try {
+                    // Check rate limiter before making RPC calls
+                    if (!exports.globalRateLimiter.checkLimit()) {
+                        logger_1.default.warn('[HealthCheck] Skipping health check due to rate limiting');
+                        return;
+                    }
+                    // Check connection health
+                    const slot = await connection.getSlot();
+                    logger_1.default.info(`Health check: Current slot ${slot}`);
+                    // Check rate limiter again before making another RPC call
+                    if (!exports.globalRateLimiter.checkLimit()) {
+                        logger_1.default.warn('[HealthCheck] Skipping wallet balance check due to rate limiting');
+                        return;
+                    }
+                    // Check wallet balance
+                    const walletBalance = await connection.getBalance(wallet.publicKey);
+                    const solBalance = walletBalance / web3_js_1.LAMPORTS_PER_SOL;
+                    logger_1.default.info(`Wallet balance: ${solBalance.toFixed(4)} SOL`);
+                    // Check for active positions
+                    if (tradingEngine) {
+                        const activePositions = tradingEngine.getPositions();
+                        logger_1.default.info(`Active positions: ${activePositions.length}`);
+                    }
+                    else {
+                        logger_1.default.warn('tradingEngine is not defined. Skipping active positions check.');
+                    }
+                    // Log RPC usage stats
+                    logger_1.default.info(`[RateLimiter] Current RPC utilization: ${exports.globalRateLimiter.getUtilizationPercent()}% (${exports.globalRateLimiter.getCurrentCount()}/${exports.globalRateLimiter.getMaxCount()} calls)`);
+                }
+                catch (error) {
+                    logger_1.default.error('Health check failed:', error);
+                }
+            }, 5 * 60 * 1000); // Every 5 minutes
+            // Start all components
+            if (newCoinDetector) {
+                logger_1.default.info('Starting NewCoinDetector in PRODUCTION mode...');
                 newCoinDetector.start();
-            if (priceWatcher) {
-                logger_1.default.info('Starting Price Watcher...');
-                priceWatcher.start(); // Start PriceWatcher polling
             }
-            await (0, notifications_1.sendAlert)('Trading system started in PRODUCTION mode', 'INFO');
+            if (priceWatcher) {
+                logger_1.default.info('Starting PriceWatcher in PRODUCTION mode...');
+                priceWatcher.start();
+            }
+            await (0, notifications_1.sendAlert)('Trading system started in PRODUCTION mode with QuickNode', 'INFO');
             logger_1.default.info('Production mode active. Monitoring for trading opportunities...');
         }
         else {

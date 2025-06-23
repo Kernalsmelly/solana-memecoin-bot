@@ -1,5 +1,6 @@
 // scripts/scheduler.js
 // Runs analytics and parameter optimization on a schedule for continuous improvement
+// @ts-ignore
 const cron = require('node-cron');
 const { exec } = require('child_process');
 

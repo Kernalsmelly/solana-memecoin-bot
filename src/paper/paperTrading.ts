@@ -124,7 +124,7 @@ export class PaperTradingEngine extends EventEmitter {
     public getRiskMetrics(): RiskMetrics {
         const drawdown = ((this.highWaterMark - this.currentBalance) / this.highWaterMark) * 100;
         const totalTrades = this.positions.size;
-        const profitableTrades = Array.from(this.positions.values()).filter(p => p.pnl > 0).length;
+        const profitableTrades = Array.from(this.positions.values()).filter(p => typeof p.pnl === 'number' && p.pnl > 0).length;
         const winRate = totalTrades > 0 ? (profitableTrades / totalTrades) * 100 : 0;
 
         return {

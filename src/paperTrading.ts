@@ -56,14 +56,22 @@ export async function runPaperTrading(): Promise<void> {
     logger.info("Placeholder: Shutting down trading system."); // Placeholder
     logger.info("Paper trading system shutdown complete.");
   } catch (error) {
-    logger.error("Paper trading encountered an error:", error);
+    if (error instanceof Error) {
+      logger.error("Paper trading encountered an error:", error);
+    } else {
+      logger.error("Paper trading encountered an unknown error:", String(error));
+    }
   }
 }
 
 // If this file is executed directly, run the paper trading module.
 if (require.main === module) {
   runPaperTrading().catch(err => {
-    logger.error("Fatal error during paper trading:", err);
+    if (err instanceof Error) {
+      logger.error("Fatal error during paper trading:", err);
+    } else {
+      logger.error("Fatal error during paper trading (unknown error):", String(err));
+    }
     process.exit(1);
   });
 }

@@ -1,52 +1,51 @@
-import { EventEmitter } from 'events';
-import { BirdeyeTokenData } from '../analysis/tokenAnalyzer';
-interface RateLimiter {
-    checkLimit(key: string): boolean;
-    incrementCount(key: string): void;
-}
-declare class SimpleRateLimiter implements RateLimiter {
-    private limits;
-    private maxRequests;
-    private windowMs;
-    constructor(maxRequests?: number, windowMs?: number);
-    checkLimit(key: string): boolean;
-    incrementCount(key: string): void;
-}
-export declare const globalRateLimiter: SimpleRateLimiter;
-export interface TokenEvent {
-    type: string;
-    data: BirdeyeTokenData;
-}
+import EventEmitter from 'events';
+/**
+ * BirdeyeAPI provides REST access to Birdeye premium endpoints for token metadata and price.
+ * All usage is gated behind the USE_PREMIUM_DATA environment variable.
+ * When premium data is disabled, mock data is returned for interface compatibility.
+ */
 export declare class BirdeyeAPI extends EventEmitter {
-    private wsUrl;
-    private apiKey;
-    private wsClient;
-    private reconnectAttempts;
-    private maxReconnectAttempts;
-    private reconnectTimeoutMs;
-    private reconnectTimer;
-    private pingInterval;
-    private metadataCache;
-    private rateLimiter;
-    private isReconnecting;
-    private lastCleanupTime;
-    private cleanupIntervalMs;
-    private solPriceCache;
-    private readonly SOL_PRICE_CACHE_DURATION;
-    constructor(apiKey: string, wsUrl?: string, rateLimiter?: RateLimiter);
-    connectWebSocket(subscriptions?: string[]): Promise<boolean>;
-    private handleWsOpen;
-    private handleWsMessage;
-    private handleWsError;
-    private handleWsClose;
-    private attemptReconnect;
-    disconnect(): void;
-    private cleanup;
-    getTokenMetadata(address: string): Promise<BirdeyeTokenData | null>;
-    fetchTokenPrice(tokenAddress: string): Promise<number | null>;
+    /**
+     * Connect to Birdeye WebSocket (stub).
+     */
+    connectWebSocket(_channels: string[]): Promise<boolean>;
+    key: string;
+    private usePremium;
+    private _pingId?;
+    constructor(apiKey: string);
+    /**
+     * Fetch token metadata from Birdeye. Returns mock data if premium is disabled.
+     */
+    getTokenMetadata(address: string): Promise<{
+        address: string;
+        name: string;
+        symbol: string;
+        liquidity?: number;
+    }>;
+    /**
+     * Fetch token price from Birdeye. Returns mock data if premium is disabled.
+     */
+    getTokenPrice(address: string): Promise<{
+        address: string;
+        priceUsd: number;
+    }>;
+    /**
+     * Fetch the current SOL price in USD from Birdeye (or mock if premium is disabled).
+     * Returns a number (price in USD).
+     * When premium is off, returns a deterministic mock value for CI/test stability.
+     */
     getSolPrice(): Promise<number>;
-    private scheduleCleanup;
-    private performCleanup;
+    /**
+     * Clean up any resources. No-op if premium data is disabled.
+     */
+    close(): void;
+    /**
+     * Disconnect from Birdeye WebSocket or clean up resources (no-op for now).
+     */
+    disconnect(): void;
 }
-export {};
+/**
+ * Optionally, export a default instance or factory if needed by the rest of the codebase.
+ */
+export default BirdeyeAPI;
 //# sourceMappingURL=birdeyeAPI.d.ts.map

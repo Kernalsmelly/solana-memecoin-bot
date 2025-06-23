@@ -68,7 +68,7 @@ class MemoryManager {
                 memoryUsage: this.formatMemoryUsage(usage)
             });
             // Suggest forced garbage collection if available
-            if (global.gc) {
+            if (typeof global.gc === 'function') {
                 logger_1.default.info('Triggering garbage collection');
                 this.triggerGarbageCollection();
             }
@@ -284,7 +284,7 @@ function diagnoseMemory() {
     logger_1.default.info(`Total process memory: ${exports.memoryManager.formatBytes(usage.rss)}`);
     logger_1.default.info(`Heap usage: ${exports.memoryManager.formatBytes(usage.heapUsed)} / ${exports.memoryManager.formatBytes(usage.heapTotal)}`);
     // Try to run garbage collection
-    if (global.gc) {
+    if (typeof global.gc === 'function') {
         logger_1.default.info('Running garbage collection...');
         exports.memoryManager.triggerGarbageCollection();
     }

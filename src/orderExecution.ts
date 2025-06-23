@@ -4,7 +4,8 @@ import fetch from 'cross-fetch'; // Required for Jupiter API client in Node.js
 import bs58 from 'bs58';
 import logger from './utils/logger';
 import dotenv from 'dotenv';
-import { TradeOrder } from './types'; // Import from centralized types
+import { TradeOrder, OrderExecutionResult, OrderExecution } from './types';
+import { config } from './utils/config';
 
 dotenv.config(); // Load environment variables from .env file
 
@@ -16,21 +17,6 @@ export interface OrderExecutionConfig {
   slippageBps?: number;
 }
 
-export interface OrderExecutionResult {
-  success: boolean;
-  inputAmount?: bigint;
-  outputAmount?: bigint;
-  txSignature?: string;
-  error?: string;
-  actualExecutionPrice?: number;
-  timestamp?: number;
-  details?: any;
-}
-
-export interface OrderExecution {
-  executeOrder(order: TradeOrder): Promise<OrderExecutionResult>;
-  getTokenDecimals(tokenAddress: string): Promise<number>;
-}
 
 /**
  * Utility function to pause execution for a specified duration.
@@ -42,6 +28,13 @@ const sleep = (ms: number): Promise<void> => {
 };
 
 export class LiveOrderExecution implements OrderExecution {
+  /**
+   * Stop/cleanup method for tests and integration
+   */
+  public stop(): void {
+    // Add any interval cleanup or resource release here if needed
+    logger.info('LiveOrderExecution stopped');
+  }
   private connection: Connection;
   private wallet: Keypair;
   private jupiterApi; // Type will be inferred from createJupiterApiClient
@@ -130,6 +123,44 @@ export class LiveOrderExecution implements OrderExecution {
     } catch (error: any) {
       logger.error('Error fetching Jupiter swap quote:', error?.message || error);
       return null;
+    }
+  }
+
+  /**
+   * Simulates a swap transaction using Jupiter's quote (preflight check).
+   * Returns true if simulation passes, false otherwise.
+   */
+  private async simulateSwap(quoteResponse: QuoteResponse): Promise<boolean> {
+    try {
+      // Get the serialized transaction from Jupiter API (same as in executeSwapTransaction)
+      const { swapTransaction } = await this.jupiterApi.swapPost({
+        swapRequest: {
+          quoteResponse,
+          userPublicKey: this.wallet.publicKey.toBase58(),
+          wrapAndUnwrapSol: true,
+          dynamicComputeUnitLimit: true,
+          prioritizationFeeLamports: {
+            priorityLevelWithMaxLamports: {
+              maxLamports: 1000000,
+              priorityLevel: "high"
+            }
+          }
+        }
+      });
+      const swapTransactionBuf = Buffer.from(swapTransaction, 'base64');
+      const transaction = VersionedTransaction.deserialize(swapTransactionBuf);
+      transaction.sign([this.wallet]);
+      // Simulate
+      const simResult = await this.connection.simulateTransaction(transaction);
+      if (simResult.value.err) {
+        logger.warn('Swap simulation failed:', simResult.value.err);
+        return false;
+      }
+      logger.info('Swap simulation passed.');
+      return true;
+    } catch (error: any) {
+      logger.error('Error simulating swap transaction:', error?.message || error);
+      return false;
     }
   }
 
@@ -226,59 +257,62 @@ export class LiveOrderExecution implements OrderExecution {
    * @param amountInSolLamports The amount of SOL (in lamports) to spend.
    * @returns OrderExecutionResult
    */
+  /**
+   * Attempts a buy with retry and simulation logic.
+   */
   private async buyTokenWithSol(tokenAddress: string, amountInSolLamports: bigint): Promise<OrderExecutionResult> {
     const solDecimalAmount = Number(amountInSolLamports) / LAMPORTS_PER_SOL; // For logging
     logger.info(`Attempting to buy token ${tokenAddress} with ${solDecimalAmount} SOL (${amountInSolLamports} lamports)...`);
     const inputMint = SOL_MINT_ADDRESS;
     const outputMint = tokenAddress;
 
-    try {
-      // Fetch decimals (will use cache if available)
-      const solDecimals = await this.getTokenDecimals(inputMint);
-      const outputTokenDecimals = await this.getTokenDecimals(outputMint);
+    let lastError: any = null;
+    let quoteResponse: QuoteResponse | null = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        // Fetch decimals (will use cache if available)
+        const solDecimals = await this.getTokenDecimals(inputMint);
+        const outputTokenDecimals = await this.getTokenDecimals(outputMint);
 
-      // 1. Get Jupiter Quote
-      // Pass amount as number to Jupiter API (it expects number, potential precision loss only on astronomical values)
-      logger.debug(`Getting swap quote: Spending ${solDecimalAmount} SOL (${amountInSolLamports} lamports) -> ${outputMint}`);
-      const quoteResponse = await this.getSwapQuote(inputMint, outputMint, Number(amountInSolLamports), this.slippageBps);
+        // 1. Get Jupiter Quote
+        logger.debug(`Getting swap quote: Spending ${solDecimalAmount} SOL (${amountInSolLamports} lamports) -> ${outputMint}`);
+        quoteResponse = await this.getSwapQuote(inputMint, outputMint, Number(amountInSolLamports), this.slippageBps);
+        if (!quoteResponse) throw new Error('Failed to get swap quote from Jupiter API');
 
-      if (!quoteResponse) {
-        return { success: false, error: 'Failed to get swap quote from Jupiter API', timestamp: Date.now() };
+        // 2. Simulate Transaction
+        const simOk = await this.simulateSwap(quoteResponse);
+        if (!simOk) throw new Error('Swap simulation failed');
+
+        // 3. Execute Swap Transaction
+        const txid = await this.executeSwapTransaction(quoteResponse);
+        if (!txid) throw new Error('Failed to execute swap transaction');
+
+        const minAmountOut = quoteResponse.outAmount;
+        const estimatedTokenAmountSmallestUnit = BigInt(minAmountOut);
+        const estimatedTokenAmountDecimal = Number(estimatedTokenAmountSmallestUnit) / Math.pow(10, outputTokenDecimals);
+        const actualExecutionPrice = amountInSolLamports > 0n && estimatedTokenAmountSmallestUnit > 0n
+          ? (Number(amountInSolLamports) / LAMPORTS_PER_SOL) / (Number(estimatedTokenAmountSmallestUnit) / Math.pow(10, outputTokenDecimals))
+          : 0;
+        logger.info(`Successfully executed BUY for token ${tokenAddress}. Tx: ${txid}. Estimated received: ~${estimatedTokenAmountDecimal} tokens (${estimatedTokenAmountSmallestUnit} smallest units).`);
+        return {
+          success: true,
+          txSignature: txid,
+          inputAmount: amountInSolLamports,
+          outputAmount: estimatedTokenAmountSmallestUnit,
+          actualExecutionPrice: actualExecutionPrice,
+          timestamp: Date.now()
+        };
+      } catch (error: any) {
+        lastError = error;
+        logger.error(`BUY attempt ${attempt} failed: ${error.message}`);
+        if (attempt < 3) await sleep(1000 * attempt); // Exponential backoff
       }
-
-      // 2. Execute Swap Transaction
-      const txid = await this.executeSwapTransaction(quoteResponse);
-
-      if (!txid) {
-        return { success: false, error: 'Failed to execute swap transaction', timestamp: Date.now() };
-      }
-
-      const minAmountOut = quoteResponse.outAmount; // Smallest units of output token
-      // Ensure outputAmount is BigInt representing the smallest unit of the output token
-      const estimatedTokenAmountSmallestUnit = BigInt(minAmountOut);
-      const estimatedTokenAmountDecimal = Number(estimatedTokenAmountSmallestUnit) / Math.pow(10, outputTokenDecimals); // For logging
-
-      // Calculate estimated execution price (SOL per Token)
-      const actualExecutionPrice = amountInSolLamports > 0n && estimatedTokenAmountSmallestUnit > 0n
-        ? (Number(amountInSolLamports) / LAMPORTS_PER_SOL) / (Number(estimatedTokenAmountSmallestUnit) / Math.pow(10, outputTokenDecimals))
-        : 0;
-
-      logger.info(`Successfully executed BUY for token ${tokenAddress}. Tx: ${txid}. Estimated received: ~${estimatedTokenAmountDecimal} tokens (${estimatedTokenAmountSmallestUnit} smallest units).`);
-
-      return {
-        success: true,
-        txSignature: txid,
-        inputAmount: amountInSolLamports, // SOL lamports spent
-        outputAmount: estimatedTokenAmountSmallestUnit, // Estimated token smallest units received
-        actualExecutionPrice: actualExecutionPrice,
-        timestamp: Date.now()
-      };
-
-    } catch (error: any) {
-      logger.error(`Error buying token ${tokenAddress} with SOL: ${error.message}`, { error });
-      const errorType = error.message.includes('Slippage tolerance exceeded') ? 'SLIPPAGE' : 'UNKNOWN';
-      return { success: false, error: `Failed to buy token with SOL: ${error.message}`, timestamp: Date.now() };
     }
+    // Alert after 3 failed attempts
+    logger.error(`Failed to buy token ${tokenAddress} with SOL after 3 attempts.`);
+    // If you have an alert system, call it here
+    // await sendAlert(`Failed to buy token ${tokenAddress} after 3 attempts: ${lastError?.message}`,'ERROR');
+    return { success: false, error: `Failed to buy token with SOL after 3 attempts: ${lastError?.message}`, timestamp: Date.now() };
   }
 
   /**
@@ -287,60 +321,14 @@ export class LiveOrderExecution implements OrderExecution {
    * @param amountToSellInSmallestUnit The amount of the token (in its smallest unit) to sell.
    * @returns OrderExecutionResult
    */
-  private async sellTokenForSol(tokenAddress: string, amountToSellInSmallestUnit: bigint): Promise<OrderExecutionResult> {
-    // Fetch decimals
-    const inputTokenDecimals = await this.getTokenDecimals(tokenAddress);
-    const solDecimals = await this.getTokenDecimals(SOL_MINT_ADDRESS);
+  /**
+   * Attempts a sell with retry and simulation logic.
+   */
 
-    const amountToSellDecimal = Number(amountToSellInSmallestUnit) / Math.pow(10, inputTokenDecimals);
-    logger.info(`Attempting to sell ${amountToSellDecimal} (${amountToSellInSmallestUnit} smallest units) of token ${tokenAddress} for SOL...`);
-
-    const inputMint = tokenAddress;
-    const outputMint = SOL_MINT_ADDRESS;
-
-    try {
-      // 1. Get Jupiter Quote
-      logger.debug(`Getting swap quote: Selling ${amountToSellDecimal} tokens (${amountToSellInSmallestUnit} smallest units) ${inputMint} -> ${outputMint}`);
-      // Convert BigInt to number for API call - potential precision loss for huge amounts, but Jupiter likely handles this range.
-      const quoteResponse = await this.getSwapQuote(inputMint, outputMint, Number(amountToSellInSmallestUnit), this.slippageBps);
-
-      if (!quoteResponse) {
-        return { success: false, error: 'Failed to get swap quote from Jupiter API', timestamp: Date.now() };
-      }
-
-      // 2. Execute Swap Transaction
-      const txid = await this.executeSwapTransaction(quoteResponse);
-
-      if (!txid) {
-        return { success: false, error: 'Failed to execute swap transaction', timestamp: Date.now() };
-      }
-
-      const minAmountOut = quoteResponse.outAmount;
-      const estimatedAmountReceivedLamports = BigInt(minAmountOut);
-
-      // Calculate estimated execution price (SOL per Token)
-      const actualExecutionPrice = estimatedAmountReceivedLamports > 0n && amountToSellInSmallestUnit > 0n
-        ? (Number(estimatedAmountReceivedLamports) / LAMPORTS_PER_SOL) / (Number(amountToSellInSmallestUnit) / Math.pow(10, inputTokenDecimals))
-        : 0;
-
-      logger.info(`Successfully executed SELL for token ${tokenAddress}. Tx: ${txid}. Estimated received: ${Number(estimatedAmountReceivedLamports) / Math.pow(10, solDecimals)} SOL (${estimatedAmountReceivedLamports} lamports, ${solDecimals} decimals).`);
-
-      return {
-        success: true,
-        txSignature: txid,
-        inputAmount: amountToSellInSmallestUnit,
-        outputAmount: estimatedAmountReceivedLamports,
-        actualExecutionPrice: actualExecutionPrice,
-        timestamp: Date.now()
-      };
-
-    } catch (error: any) {
-      logger.error(`Error selling token ${tokenAddress} for SOL: ${error.message}`, { error });
-      const errorType = error.message.includes('Slippage tolerance exceeded') ? 'SLIPPAGE' : 'UNKNOWN';
-      return { success: false, error: `Failed to sell token for SOL: ${error.message}`, timestamp: Date.now() };
-    }
-  }
-
+  /**
+   * Executes a trade order (buy or sell) and returns the result.
+   * Implements OrderExecution interface.
+   */
   public async executeOrder(order: TradeOrder): Promise<OrderExecutionResult> {
     try {
       if (order.side === 'buy') {
@@ -363,6 +351,55 @@ export class LiveOrderExecution implements OrderExecution {
       };
     }
   }
+
+  private async sellTokenForSol(tokenAddress: string, amountToSellInSmallestUnit: bigint): Promise<OrderExecutionResult> {
+    let lastError: any = null;
+    let quoteResponse: QuoteResponse | null = null;
+    const inputTokenDecimals = await this.getTokenDecimals(tokenAddress);
+    const solDecimals = await this.getTokenDecimals(SOL_MINT_ADDRESS);
+    const amountToSellDecimal = Number(amountToSellInSmallestUnit) / Math.pow(10, inputTokenDecimals);
+    logger.info(`Attempting to sell ${amountToSellDecimal} (${amountToSellInSmallestUnit} smallest units) of token ${tokenAddress} for SOL...`);
+    const inputMint = tokenAddress;
+    const outputMint = SOL_MINT_ADDRESS;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        // 1. Get Jupiter Quote
+        logger.debug(`Getting swap quote: Selling ${amountToSellDecimal} tokens (${amountToSellInSmallestUnit} smallest units) ${inputMint} -> ${outputMint}`);
+        quoteResponse = await this.getSwapQuote(inputMint, outputMint, Number(amountToSellInSmallestUnit), this.slippageBps);
+        if (!quoteResponse) throw new Error('Failed to get swap quote from Jupiter API');
+        // 2. Simulate Transaction
+        const simOk = await this.simulateSwap(quoteResponse);
+        if (!simOk) throw new Error('Swap simulation failed');
+        // 3. Execute Swap Transaction
+        const txid = await this.executeSwapTransaction(quoteResponse);
+        if (!txid) throw new Error('Failed to execute swap transaction');
+        const minAmountOut = quoteResponse.outAmount;
+        const estimatedAmountReceivedLamports = BigInt(minAmountOut);
+        const actualExecutionPrice = estimatedAmountReceivedLamports > 0n && amountToSellInSmallestUnit > 0n
+          ? (Number(estimatedAmountReceivedLamports) / LAMPORTS_PER_SOL) / (Number(amountToSellInSmallestUnit) / Math.pow(10, inputTokenDecimals))
+          : 0;
+        logger.info(`Successfully executed SELL for token ${tokenAddress}. Tx: ${txid}. Estimated received: ${Number(estimatedAmountReceivedLamports) / Math.pow(10, solDecimals)} SOL (${estimatedAmountReceivedLamports} lamports, ${solDecimals} decimals).`);
+        return {
+          success: true,
+          txSignature: txid,
+          inputAmount: amountToSellInSmallestUnit,
+          outputAmount: estimatedAmountReceivedLamports,
+          actualExecutionPrice: actualExecutionPrice,
+          timestamp: Date.now()
+        };
+      } catch (error: any) {
+        lastError = error;
+        logger.error(`SELL attempt ${attempt} failed: ${error.message}`);
+        if (attempt < 3) await sleep(1000 * attempt);
+      }
+    }
+    logger.error(`Failed to sell token ${tokenAddress} for SOL after 3 attempts.`);
+    // If you have an alert system, call it here
+    // await sendAlert(`Failed to sell token ${tokenAddress} after 3 attempts: ${lastError?.message}`,'ERROR');
+    return { success: false, error: `Failed to sell token for SOL after 3 attempts: ${lastError?.message}`, timestamp: Date.now() };
+  }
+
+  // END OF LiveOrderExecution class
 }
 
 export function createOrderExecution(
@@ -378,6 +415,7 @@ export function createOrderExecution(
     ]);
 
     return {
+
       async executeOrder(order: TradeOrder): Promise<OrderExecutionResult> {
         try {
           const tokenPubkey = new PublicKey(order.tokenAddress);

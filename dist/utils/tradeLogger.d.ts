@@ -17,6 +17,12 @@ export declare class TradeLogger {
     private logDir;
     constructor(logDir?: string);
     log(entry: TradeLogEntry): void;
+    /**
+     * Logs a scenario event (e.g., circuit breaker, emergency stop, pattern trigger, error).
+     * @param scenarioName Name of the scenario or event
+     * @param details      Details or metadata (object or string)
+     */
+    logScenario(scenarioName: string, details: Record<string, any> | string): void;
 }
 export declare const tradeLogger: TradeLogger;
 //# sourceMappingURL=tradeLogger.d.ts.map

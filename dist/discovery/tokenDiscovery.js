@@ -5,15 +5,18 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TokenDiscovery = void 0;
 const events_1 = require("events");
+const DataBroker_1 = require("../integrations/data-hub/DataBroker");
+const RpcRotator_1 = require("../integrations/data-hub/RpcRotator");
 const tokenAnalyzer_1 = require("../analysis/tokenAnalyzer");
 const logger_1 = __importDefault(require("../utils/logger")); // Correct default import
 const memoryManager_1 = require("../utils/memoryManager"); // Correct class import
 // Token discovery class for processing token events
 class TokenDiscovery extends events_1.EventEmitter {
-    birdeyeAPI;
+    rpcRotator;
     tokenAnalyzer;
     riskManager;
     tokensDiscovered = new Map();
+    dataBroker;
     tokenProcessQueue = new Map();
     tokenExpiryTimes = new Map();
     cleanupInterval = null;
@@ -25,9 +28,10 @@ class TokenDiscovery extends events_1.EventEmitter {
     CLEANUP_INTERVAL_MS;
     TOKEN_MAX_AGE_MS;
     ANALYSIS_THROTTLE_MS;
-    constructor(birdeyeAPI, options = {}, riskManager) {
+    constructor(options = {}, riskManager) {
         super();
-        this.birdeyeAPI = birdeyeAPI;
+        this.rpcRotator = new RpcRotator_1.RpcRotator();
+        this.dataBroker = new DataBroker_1.DataBroker();
         this.riskManager = riskManager;
         // Initialize token analyzer
         this.tokenAnalyzer = new tokenAnalyzer_1.TokenAnalyzer({
@@ -47,26 +51,27 @@ class TokenDiscovery extends events_1.EventEmitter {
     }
     // Set up event listeners
     setupEventListeners() {
-        this.birdeyeAPI.on('tokenEvent', async (event) => {
+        // TODO: Replace 'any' with a proper TokenEvent type if/when defined
+        this.dataBroker.on('tokenEvent', async (event) => {
             await this.handleTokenEvent(event);
         });
-        this.birdeyeAPI.on('error', (error) => {
-            logger_1.default.error('BirdeyeAPI error', {
+        this.dataBroker.on('error', (error) => {
+            logger_1.default.error('DataBroker error', {
                 error: error.message
             });
         });
-        this.birdeyeAPI.on('disconnected', () => {
-            logger_1.default.warn('BirdeyeAPI disconnected');
+        this.dataBroker.on('disconnected', () => {
+            logger_1.default.warn('DataBroker disconnected');
         });
-        this.birdeyeAPI.on('reconnectFailed', () => {
-            logger_1.default.error('BirdeyeAPI reconnection failed');
-            this.emit('error', new Error('BirdeyeAPI reconnection failed'));
+        this.dataBroker.on('reconnectFailed', () => {
+            logger_1.default.error('DataBroker reconnection failed');
+            this.emit('error', new Error('DataBroker reconnection failed'));
         });
     }
     // Start token discovery
     async start() {
         try {
-            const connected = await this.birdeyeAPI.connectWebSocket(['newTokens', 'volumeSpikes']);
+            const connected = await this.dataBroker.connectWebSocket(['newTokens', 'volumeSpikes']);
             if (connected) {
                 logger_1.default.info('TokenDiscovery started');
                 return true;
@@ -85,7 +90,8 @@ class TokenDiscovery extends events_1.EventEmitter {
     }
     // Stop token discovery
     stop() {
-        this.birdeyeAPI.disconnect();
+        // [BirdeyeAPI] replaced by DataBroker
+        disconnect();
         if (this.cleanupInterval) {
             clearInterval(this.cleanupInterval);
             this.cleanupInterval = null;
@@ -93,6 +99,7 @@ class TokenDiscovery extends events_1.EventEmitter {
         logger_1.default.info('TokenDiscovery stopped');
     }
     // Handle token events
+    // TODO: Replace 'any' with a proper TokenEvent type if/when defined
     async handleTokenEvent(event) {
         // Early return for empty or invalid data
         if (!event.data || !event.data.address) {

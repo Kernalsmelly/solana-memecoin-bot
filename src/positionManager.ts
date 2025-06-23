@@ -25,6 +25,16 @@ export interface AccountBalance {
   totalValue: number;
 }
 
+export interface PositionPnL {
+  tokenMint: string;
+  tokenSymbol: string;
+  quantity: number;
+  entryPrice: number;
+  currentPrice: number;
+  unrealizedPnL: number; // USD
+  unrealizedPnLPercent: number;
+}
+
 export class PositionManager {
   private accountBalance: AccountBalance;
   private positions: Map<string, Position>;
@@ -99,12 +109,67 @@ export class PositionManager {
   }
 
   /**
-   * Closes (or partially closes) a position.
-   * @param tokenMint - Token address.
-   * @param quantityToSell - Quantity to sell.
-   * @param sellPrice - Price at which the token is sold.
-   * @returns The updated position or null if fully closed.
+   * Calculates real-time PnL for a single position.
    */
+  public async getPositionPnL(tokenMint: string): Promise<PositionPnL | null> {
+    const position = this.positions.get(tokenMint);
+    if (!position) return null;
+    const currentPrice = await this.fetchTokenPrice(tokenMint);
+    const unrealizedPnL = (currentPrice - position.entryPrice) * position.quantity;
+    const unrealizedPnLPercent = position.entryPrice > 0 ? (unrealizedPnL / (position.entryPrice * position.quantity)) * 100 : 0;
+    return {
+      tokenMint,
+      tokenSymbol: position.tokenSymbol,
+      quantity: position.quantity,
+      entryPrice: position.entryPrice,
+      currentPrice,
+      unrealizedPnL,
+      unrealizedPnLPercent
+    };
+  }
+
+  /**
+   * Calculates real-time PnL for all open positions.
+   */
+  public async getAllPositionsPnL(): Promise<PositionPnL[]> {
+    const results: PositionPnL[] = [];
+    for (const position of this.positions.values()) {
+      const pnl = await this.getPositionPnL(position.tokenMint);
+      if (pnl) results.push(pnl);
+    }
+    return results;
+  }
+
+  /**
+   * Checks if a position should be exited due to stop-loss, take-profit, trailing stop, or time-based exit.
+   * Returns a reason string if exit is triggered, otherwise null.
+   * (Stub logic, to be filled in with advanced rules)
+   */
+  public async checkExitTriggers(tokenMint: string): Promise<string | null> {
+    // TODO: Integrate with advanced logic (momentum, trailing stops, pattern triggers, etc.)
+    // Example stub: exit if loss > 20% or gain > 50%
+    const pnl = await this.getPositionPnL(tokenMint);
+    if (!pnl) return null;
+    if (pnl.unrealizedPnLPercent <= -20) return 'stop-loss';
+    if (pnl.unrealizedPnLPercent >= 50) return 'take-profit';
+    // TODO: Add trailing stop, time-based, and pattern-based exits
+    return null;
+  }
+
+  /**
+   * (Stub) Applies trailing stop logic for a position. To be filled in with advanced rules.
+   */
+  public async applyTrailingStop(tokenMint: string): Promise<void> {
+    // TODO: Implement trailing stop logic (momentum, volatility, etc.)
+  }
+
+  /**
+   * (Stub) Applies time-based exit logic for a position. To be filled in with advanced rules.
+   */
+  public async applyTimeBasedExit(tokenMint: string): Promise<void> {
+    // TODO: Implement max holding period logic
+  }
+
   public async closePosition(
     tokenMint: string,
     quantityToSell: number,

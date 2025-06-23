@@ -38,6 +38,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PerformanceDashboard = void 0;
 const express_1 = __importDefault(require("express"));
+const http = __importStar(require("http"));
 const path = __importStar(require("path"));
 const fs = __importStar(require("fs"));
 const logger_1 = __importDefault(require("./logger"));
@@ -62,17 +63,18 @@ class PerformanceDashboard {
         this.setupRoutes();
     }
     setupRoutes() {
+        const app = this.app;
         // Serve static assets
-        this.app.use(express_1.default.static(path.join(__dirname, '../../public')));
+        app.use(express_1.default.static(path.join(__dirname, '../../public')));
         // API routes
-        this.app.get('/api/metrics', (req, res) => {
+        app.get('/api/metrics', (req, res) => {
             const metrics = this.riskManager.getMetrics();
             res.json(metrics);
         });
-        this.app.get('/api/performance', (req, res) => {
+        app.get('/api/performance', (req, res) => {
             res.json(this.performanceHistory.slice(-100)); // Return last 100 data points
         });
-        this.app.get('/api/status', (req, res) => {
+        app.get('/api/status', (req, res) => {
             const metrics = this.riskManager.getMetrics();
             const circuitBreakers = metrics.circuitBreakers;
             const emergencyStop = metrics.emergencyStopActive;
@@ -84,13 +86,13 @@ class PerformanceDashboard {
             });
         });
         // Main dashboard HTML
-        this.app.get('/', (req, res) => {
+        app.get('/', (req, res) => {
             res.sendFile(path.join(__dirname, '../../public/dashboard.html'));
         });
     }
     start() {
         return new Promise((resolve) => {
-            this.server = this.app.listen(this.port, () => {
+            this.server = http.createServer(this.app).listen(this.port, () => {
                 logger_1.default.info(`Performance dashboard running on port ${this.port}`);
                 // Start metrics collection
                 this.startMetricsCollection();

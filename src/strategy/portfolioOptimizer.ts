@@ -1,16 +1,17 @@
 import { PatternDetector, PatternMatch } from './patternDetector';
 import { ExitManager, ManagedPosition } from './exitManager'; // Correct path
 import { RiskManager } from '../live/riskManager';
-import { PatternType, PatternDetection, TokenMetrics, TradeOrder, OrderExecutionResult, Position } from '../types'; // Removed Position import
+import { PatternType, PatternDetection, TokenMetrics, TradeOrder, OrderExecutionResult, Position } from '../types';
 import { PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import logger from '../utils/logger';
-import { OrderExecution } from '../orderExecution'; // Removed OrderExecutionResult import
+import { tradeLogger } from '../utils/tradeLogger';
+import { OrderExecution } from '../types';
 import { BirdeyeAPI } from '../api/birdeyeAPI';
 
 interface PortfolioDependencies {
   orderExecution: OrderExecution;
   riskManager: RiskManager;
-  birdeyeApi: BirdeyeAPI;
+  birdeyeApi?: BirdeyeAPI;
   exitManager: ExitManager;
 }
 
@@ -32,18 +33,40 @@ interface PortfolioConfig {
  */
 export class PortfolioOptimizer {
   private config: PortfolioConfig & PortfolioDependencies;
+
+  public getMinConfidence(): number {
+    return this.config.minConfidence;
+  }
   private activePositions: Map<string, ManagedPosition> = new Map();
   private patternPerformance: Record<PatternType, {
     successRate: number;
     avgReturn: number;
     recentTrades: number;
-  }> = {} as Record<PatternType, any>;
+  }> = {} as Record<PatternType, { successRate: number; avgReturn: number; recentTrades: number }>;
 
   constructor(
     config: Partial<PortfolioConfig> & PortfolioDependencies
   ) {
     // Default configuration
-    this.config = {
+    // Utility to initialize all PatternType keys
+function createDefaultPatternAllocation(): Record<PatternType, number> {
+  return {
+    'Mega Pump and Dump': 0,
+    'Volatility Squeeze': 0,
+    'Smart Money Trap': 0,
+    'Algorithmic Stop Hunt': 0,
+    'Smart Money Reversal': 0,
+    'Volume Divergence': 0,
+    'Hidden Accumulation': 0,
+    'Wyckoff Spring': 0,
+    'Liquidity Grab': 0,
+    'FOMO Cycle': 0,
+    'Volatility Breakout': 0,
+    'Mean Reversion': 0,
+  };
+}
+
+this.config = {
       // Merge dependencies into the config object
       orderExecution: config.orderExecution,
       riskManager: config.riskManager,
@@ -54,7 +77,7 @@ export class PortfolioOptimizer {
       maxExposurePercent: config.maxExposurePercent ?? 100, // Default 100%
       targetPositionValueUsd: config.targetPositionValueUsd ?? 50, // Default $50
       minPositionValueUsd: config.minPositionValueUsd ?? 10, // Default $10
-      patternAllocation: config.patternAllocation ?? this.initializePatternAllocation(), // Default allocation
+      patternAllocation: config.patternAllocation ?? createDefaultPatternAllocation(), // Default allocation
       minConfidence: config.minConfidence ?? 0.7, // Default 70% confidence
       preferNewTokens: config.preferNewTokens ?? true, // Default true
       maxPortfolioAllocationPercent: config.maxPortfolioAllocationPercent ?? 100, // Default 100%
@@ -125,6 +148,10 @@ export class PortfolioOptimizer {
       const minUsd = this.config.minPositionValueUsd ?? 10; // Default $10
 
       // Fetch current SOL price
+      if (!this.config.birdeyeApi) {
+        logger.error('BirdeyeAPI instance not provided. Cannot fetch SOL price for position sizing.');
+        return 0n;
+      }
       const solPriceUsd = await this.config.birdeyeApi.getSolPrice();
       if (!solPriceUsd) { // getSolPrice returns number or throws
         logger.error('Failed to fetch SOL price for position sizing.');
@@ -200,8 +227,7 @@ export class PortfolioOptimizer {
         side: 'buy',
         tokenAddress: patternDetection.tokenAddress,
         size: positionSizeLamports, // Size is in SOL lamports for buys
-        price: patternDetection.metrics.priceUsd, // Use priceUsd (Current price observed)
-        timestamp: Date.now(), // Timestamp of order creation
+        price: patternDetection.metrics.priceUsd // Use priceUsd (Current price observed)
       };
 
       // Execute Buy Order
@@ -215,7 +241,7 @@ export class PortfolioOptimizer {
       if (!executionResult || !executionResult.success) {
         logger.error(`Buy order execution failed for ${patternDetection.metrics.symbol}`, {
           error: executionResult?.error || 'Unknown execution error',
-          details: executionResult?.details
+          details: (executionResult as any)?.details
         });
         return null; // Stop processing if buy fails
       }
@@ -229,7 +255,7 @@ export class PortfolioOptimizer {
       // --- Position Creation (Only after successful buy) ---
 
       // Fetch actual decimals (might be cached by orderExecution)
-      const tokenDecimals = await this.config.orderExecution.getTokenDecimals(patternDetection.tokenAddress);
+      const tokenDecimals = (await this.config.orderExecution.getTokenDecimals?.(patternDetection.tokenAddress)) ?? 0;
 
       // Ensure we have the executed quantity
       const executedQuantitySmallestUnit = executionResult.outputAmount;
@@ -255,7 +281,7 @@ export class PortfolioOptimizer {
         // entryPrice: calculateEntryPrice(executionResult, solPriceUsd), // Placeholder for calculation
         entryPrice: executionResult.actualExecutionPrice || patternDetection.metrics.priceUsd, // Use actual if available, fallback to priceUsd
         entryTimestamp: executionResult.timestamp || Date.now(),
-        initialSolCostLamports: executionResult.inputAmount || positionSizeLamports, // SOL spent
+        initialSolCostLamports: (typeof executionResult.inputAmount === 'bigint' ? executionResult.inputAmount : executionResult.inputAmount !== undefined ? BigInt(executionResult.inputAmount) : BigInt(positionSizeLamports)), // SOL spent
         quantity: BigInt(executedQuantitySmallestUnit), // Token quantity in smallest unit (BigInt)
 
         currentPrice: executionResult.actualExecutionPrice || patternDetection.metrics.priceUsd, // Initial current price, fallback to priceUsd
@@ -295,6 +321,13 @@ export class PortfolioOptimizer {
       }
     } catch (error: any) {
       logger.error('Error handling position exit', error);
+      tradeLogger.logScenario('OPTIMIZATION_FAILURE', {
+        event: 'optimizationFailure',
+        token: positionId,
+        reason: error.message,
+        details: error,
+        timestamp: new Date().toISOString()
+      });
     }
   }
 
@@ -373,7 +406,8 @@ export class PortfolioOptimizer {
    * Get all active positions
    */
   public getActivePositions(): ManagedPosition[] {
-    return Array.from(this.activePositions.values());
+    const openPositions = Array.from(this.activePositions.values()).filter((p: ManagedPosition) => p.status === 'open');
+    return openPositions;
   }
 
   /**
@@ -456,6 +490,8 @@ export class PortfolioOptimizer {
       "Wyckoff Spring": defaultAllocation,
       "Liquidity Grab": defaultAllocation,
       "FOMO Cycle": defaultAllocation,
-    };
+      "Volatility Breakout": defaultAllocation,
+      "Mean Reversion": defaultAllocation
+    } as Record<PatternType, number>;
   }
 }

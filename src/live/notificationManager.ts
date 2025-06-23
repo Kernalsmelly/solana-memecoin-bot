@@ -1,5 +1,6 @@
 import { PatternDetection, Position, RiskMetrics } from '../types';
 import logger from '../utils/logger';
+import { persistTrade } from '../utils/persistence';
 
 interface DiscordConfig {
     webhookUrl: string;
@@ -50,6 +51,8 @@ export class NotificationManager {
             `Stop Loss: $${position.stopLoss.toFixed(8)}`;
 
         await this.notify(message, 'trades');
+        // Persist trade event for analytics
+        await persistTrade({ type, ...position, timestamp: new Date().getTime() });
     }
 
     public async notifyRisk(metrics: RiskMetrics): Promise<void> {
@@ -73,7 +76,7 @@ export class NotificationManager {
         await this.notify(message, level);
     }
 
-    private async notify(message: string, level: 'all' | 'trades' | 'errors' | 'patterns'): Promise<void> {
+    public async notify(message: string, level: 'all' | 'trades' | 'errors' | 'patterns'): Promise<void> {
         const shouldNotify = (
             this.notifyLevel === 'all' ||
             (this.notifyLevel === 'patterns' && (level === 'patterns' || level === 'errors')) ||

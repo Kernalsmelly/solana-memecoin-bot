@@ -1,5 +1,5 @@
 import * as dotenv from 'dotenv';
-import { Connection, Keypair } from '@solana/web3.js';
+import { Connection, Keypair, LAMPORTS_PER_SOL } from '@solana/web3.js'; // Added LAMPORTS_PER_SOL for SOL conversion
 import bs58 from 'bs58';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -422,17 +422,15 @@ async function launchTradingSystem() {
                     const walletBalance = await connection.getBalance(wallet.publicKey);
                     const solBalance = walletBalance / LAMPORTS_PER_SOL;
                     logger.info(`Wallet balance: ${solBalance.toFixed(4)} SOL`);
-                    
-                    if (solBalance < 0.05) {
-                        await sendAlert(`LOW BALANCE ALERT: Wallet balance is ${solBalance.toFixed(4)} SOL`, 'WARNING');
-                    }
-                    
+
                     // Check for active positions
                     if (tradingEngine) {
-                        const activePositions = tradingEngine.getActivePositions();
+                        const activePositions = tradingEngine.getPositions();
                         logger.info(`Active positions: ${activePositions.length}`);
+                    } else {
+                        logger.warn('tradingEngine is not defined. Skipping active positions check.');
                     }
-                    
+
                     // Log RPC usage stats
                     logger.info(`[RateLimiter] Current RPC utilization: ${globalRateLimiter.getUtilizationPercent()}% (${globalRateLimiter.getCurrentCount()}/${globalRateLimiter.getMaxCount()} calls)`);
                 } catch (error) {

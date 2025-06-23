@@ -1,7 +1,16 @@
 import { Connection, PublicKey, Keypair } from '@solana/web3.js';
 import { Config } from '../utils/config';
-import { MarketDataUpdateEvent } from './priceWatcher';
+interface PositionInfo {
+    entryPrice: number;
+    entryTimestamp: number;
+    amountBoughtUi: number | undefined;
+    pairAddress: string;
+}
 export declare class TradingEngine {
+    /**
+     * Returns all current positions as an array
+     */
+    getPositions(): PositionInfo[];
     private connection;
     private config;
     private wallet;
@@ -10,6 +19,7 @@ export declare class TradingEngine {
     private usdcMint;
     private positionsFilePath;
     private usdcDecimals;
+    private maxPositions;
     constructor(connection: Connection, config: Config, wallet: Keypair);
     /**
      * Fetches and caches the decimals for the configured USDC mint.
@@ -28,7 +38,7 @@ export declare class TradingEngine {
      * This method is intended to be called when PriceWatcher emits marketDataUpdate.
      * @param marketData The latest market data for the token.
      */
-    evaluateToken(marketData: MarketDataUpdateEvent): void;
+    evaluateToken(marketData: any): void;
     private checkBuyCriteria;
     private checkSellCriteria;
     /**
@@ -45,13 +55,14 @@ export declare class TradingEngine {
      * @param marketData The latest market data for the token (optional, for logging/PL).
      * @returns True if the buy operation succeeded, false otherwise.
      */
-    buyToken(outputMint: PublicKey, pairAddress?: string, marketData?: MarketDataUpdateEvent): Promise<boolean>;
+    buyToken(outputMint: PublicKey, pairAddress?: string, marketData?: any): Promise<boolean>;
     /**
      * Executes a sell order for a specified token.
      * @param tokenMint The mint address of the token to sell.
      * @param pairAddress The AMM pool address for the token (optional, for logging/PL).
      * @returns True if the sell operation succeeded, false otherwise.
      */
-    sellToken(tokenMint: PublicKey, pairAddress?: string): Promise<boolean>;
+    sellToken(tokenMint: PublicKey, pairAddress?: string, marketData?: any): Promise<boolean>;
 }
+export {};
 //# sourceMappingURL=tradingEngine.d.ts.map

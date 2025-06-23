@@ -59,11 +59,18 @@ export declare class RiskManager extends EventEmitter {
      */
     getMaxPositionValueUsd(): number;
     /**
+     * Returns the current account balance (USD).
+     * This method is provided for compatibility with code expecting getAccountBalance().
+     */
+    getAccountBalance(): number;
+    /**
      * Returns the current balance.
      */
     getCurrentBalance(): number;
     canOpenPosition(size: number, tokenSymbol: string, currentPrice: number): boolean;
-    getMetrics(): RiskMetrics;
+    getMetrics(): RiskMetrics & {
+        pnl: number;
+    };
     updateBalance(newBalance: number): void;
     recordTrade(pnl: number): void;
     incrementActivePositions(): void;

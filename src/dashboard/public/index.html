@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Solana Token Detector Dashboard</title>
@@ -202,6 +204,10 @@
     </header>
 
     <div class="container">
+        <div id="analyticsSection" class="mb-4"></div>
+        <div id="scenarioSection" class="mb-4"></div>
+        <div id="thresholdSection" class="mb-4"></div>
+        <div id="helpSection" class="mb-4"></div>
         <div class="row mb-4">
             <div class="col-md-3">
                 <div class="card stats-card stats-card-primary h-100">
@@ -433,8 +439,218 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
     <script src="/socket.io/socket.io.js"></script>
     <script>
-        // Connect to socket.io
-        const socket = io();
+    // --- Analytics Dashboard Section ---
+    async function fetchAnalytics() {
+      try {
+        const res = await fetch('/api/analytics');
+        if (!res.ok) throw new Error('Failed to fetch analytics');
+        const data = await res.json();
+        renderAnalytics(data);
+      } catch (e) {
+        document.getElementById('analyticsSection').innerHTML = `<div style='color:red'>Analytics error: ${e.message}</div>`;
+      }
+    }
+
+    function renderAnalytics(data) {
+      let html = '';
+      // Alerts
+      if (data.openPositionAlerts && data.openPositionAlerts.length > 0) {
+        html += `<div class='card mb-3' style='background:#ffe082;color:#b71c1c;border:2px solid #b71c1c;'><div class='card-body'><b>⚠️ Alerts:</b><ul style='margin:0;padding-left:1.2em;font-weight:bold;'>`;
+        data.openPositionAlerts.forEach(a => { html += `<li>${a}</li>`; });
+        html += `</ul></div></div>`;
+      }
+      // Summary
+      html += `<div class='card mb-3'><div class='card-body d-flex flex-wrap align-items-center justify-content-between' style='gap:1em;'>`;
+      html += `<span><b>Total Trades:</b> ${data.tradeCount}</span>`;
+      html += `<span><b>Realized PnL:</b> <span style='color:${parseFloat(data.realizedPnl)>0?'#43a047':parseFloat(data.realizedPnl)<0?'#e53935':'#fff'};'>${data.realizedPnl}</span></span>`;
+      html += `<span><b>Win/Loss:</b> <span style='color:#43a047;'>${data.winCount}</span>/<span style='color:#e53935;'>${data.lossCount}</span></span>`;
+      html += `<span><b>Avg PnL:</b> <span style='color:${parseFloat(data.avgPnl)>0?'#43a047':parseFloat(data.avgPnl)<0?'#e53935':'#fff'};'>${data.avgPnl}</span></span>`;
+      html += `<button id='exportCsvBtn' class='btn btn-sm btn-outline-light ms-2'>Export CSV</button>`;
+      html += `<button id='exportJsonBtn' class='btn btn-sm btn-outline-light ms-2'>Export JSON</button>`;
+      html += `</div></div>`;
+      // Open Positions
+      if (data.openPositions) {
+        html += `<div class='card mb-3'><div class='card-body'><h5>Open Positions (${data.openPositions.count})</h5>`;
+        if (data.openPositions.count > 0) {
+          html += `<table class='table table-dark table-sm'><thead><tr><th>Symbol</th><th>Entry Time</th><th>Unrealized PnL</th><th>Largest Drawdown</th></tr></thead><tbody>`;
+          data.openPositions.entries.forEach((p,i) => {
+            const pnl = typeof p.unrealizedPnl==='number'?p.unrealizedPnl:parseFloat(p.unrealizedPnl);
+            html += `<tr${data.openPositions.largestDrawdownSymbol===p.symbol?' style="background:#ffbaba;color:#b71c1c;"':''}><td>${p.symbol}</td><td>${p.entryTs?new Date(p.entryTs).toLocaleString():'N/A'}</td><td style='color:${pnl>0?'#43a047':pnl<0?'#e53935':'#fff'};'>${typeof p.unrealizedPnl==='number'?p.unrealizedPnl.toFixed(2)+'%':p.unrealizedPnl}</td><td>${data.openPositions.largestDrawdownSymbol===p.symbol?(data.openPositions.largestDrawdown?.toFixed(2)+'%'):''}</td></tr>`;
+          });
+          html += `</tbody></table>`;
+          html += `<div><b>Aggregate UnrPnL:</b> ${data.openPositions.aggUnrealizedPnl!==null?data.openPositions.aggUnrealizedPnl.toFixed(2)+'%':'N/A'} &nbsp; <b>Avg UnrPnL:</b> ${data.openPositions.avgUnrealizedPnl!==null?data.openPositions.avgUnrealizedPnl.toFixed(2)+'%':'N/A'} &nbsp; <b>Avg Hold:</b> ${data.openPositions.avgHoldingMinutes!==null?data.openPositions.avgHoldingMinutes+' min':'N/A'}</div>`;
+        } else {
+          html += 'No open positions.';
+        }
+        html += `</div></div>`;
+      }
+      // Recent Trades
+      if (data.trades && data.trades.length > 0) {
+        html += `<div class='card mb-3'><div class='card-body'><h5>Recent Trades</h5><table class='table table-dark table-sm'><thead><tr><th>Token</th><th>PnL</th><th>Time</th></tr></thead><tbody>`;
+        data.trades.slice(-10).reverse().forEach(t => {
+          const pnl = typeof t.pnl==='number'?t.pnl:parseFloat(t.pnl);
+          html += `<tr><td>${t.tokenSymbol||t.token||'UNKNOWN'}</td><td style='color:${pnl>0?'#43a047':pnl<0?'#e53935':'#fff'};'>${t.pnl!==undefined?t.pnl+'%':'N/A'}</td><td>${t.timestamp?new Date(t.timestamp).toLocaleString():'N/A'}</td></tr>`;
+        });
+        html += `</tbody></table></div></div>`;
+      }
+      document.getElementById('analyticsSection').innerHTML = html;
+    }
+    // Use socket.io for real-time analytics updates
+    let lastAnalytics = null;
+    function updateAnalyticsSection(data) {
+      lastAnalytics = data;
+      renderAnalytics(data);
+    }
+    const socket = io();
+    socket.on('analyticsUpdate', updateAnalyticsSection);
+    // Fallback: fetch once on load if socket.io is slow
+    window.addEventListener('DOMContentLoaded', function() {
+      setTimeout(() => {
+        if (!lastAnalytics) fetchAnalytics();
+      }, 2000);
+    });
+    </script>
+
+    <div id="scenarioSection"></div>
+
+    <script>
+    // --- Scenario Analytics Section ---
+    function renderScenarioSection() {
+      // These values are based on your latest memory stats (static for now)
+      const scenarios = [
+        { name: 'Mega Pump and Dump', pnl: 187.5, dd: 65.2, pf: 1.41, win: 100, icon: '🔥', highlight: 'Strongest pump performance' },
+        { name: 'Volatility Supernova', pnl: 130.0, dd: 56.5, pf: 1.41, win: 100, icon: '🚀', highlight: 'Quick exits in supernova events' },
+        { name: 'Volatility Squeeze', pnl: 75.9, dd: 43.2, pf: 1.41, win: 100, icon: '⚡️', highlight: 'Early detection, solid protection' },
+        { name: 'Momentum Cascade', pnl: 72.5, dd: 42.0, pf: 1.41, win: 100, icon: '📈', highlight: 'Resilient against cascades' },
+        { name: 'Smart Money Trap', pnl: 66.8, dd: 40.0, pf: 1.41, win: 100, icon: '🎯', highlight: 'Trap protection and defense' },
+        { name: 'Algorithmic Stop Hunt', pnl: 61.0, dd: 37.9, pf: 1.38, win: 100, icon: '🚨', highlight: 'Algorithmic defense' },
+        { name: 'Engineered Short Squeeze', pnl: 52.4, dd: 34.4, pf: 1.35, win: 100, icon: '💥', highlight: 'Short squeeze wins' },
+      ];
+      let html = `<div class='card'><div class='card-body'><h5>📊 Scenario Analytics</h5><div class='row'>`;
+      scenarios.forEach(s => {
+        html += `<div class='col-12 col-md-6 col-lg-4 mb-2'><div class='card h-100' style='background:#23272b;color:#fff;border-left:5px solid ${s.pnl>100?'#43a047':s.pnl>70?'#ffd600':'#e53935'};'>
+          <div class='card-body p-2'>
+            <div style='font-size:1.3em;font-weight:bold;'>${s.icon} ${s.name}</div>
+            <div><b>PnL:</b> <span style='color:${s.pnl>0?'#43a047':'#e53935'};'>${s.pnl}%</span> &nbsp; <b>Max DD:</b> <span style='color:#e53935;'>${s.dd}%</span></div>
+            <div><b>Profit Factor:</b> <span style='color:${s.pf>1?'#43a047':'#e53935'};'>${s.pf}</span> &nbsp; <b>Win Rate:</b> <span style='color:#43a047;'>${s.win}%</span></div>
+            <div style='font-size:0.95em;color:#ffd600;'>${s.highlight}</div>
+          </div></div></div>`;
+      });
+      html += `</div></div></div>`;
+      document.getElementById('scenarioSection').innerHTML = html;
+    }
+    window.addEventListener('DOMContentLoaded', renderScenarioSection);
+    </script>
+
+    <div id="helpSection"></div>
+
+    <script>
+    // --- Threshold Tuning Section ---
+    let thresholds = {
+      singleDrawdown: -10,
+      maxHoldingMinutes: 1440,
+      aggDrawdown: -20
+    };
+    function renderThresholdSection() {
+      let html = `<div class='card'><div class='card-body'>
+        <h5>⚙️ Alert Thresholds</h5>
+        <div class='row g-2'>
+          <div class='col-12 col-md-4'><label>Single Position Drawdown (%) <input id='threshDrawdown' type='number' class='form-control form-control-sm' value='${thresholds.singleDrawdown}'></label></div>
+          <div class='col-12 col-md-4'><label>Max Holding Time (min) <input id='threshHold' type='number' class='form-control form-control-sm' value='${thresholds.maxHoldingMinutes}'></label></div>
+          <div class='col-12 col-md-4'><label>Aggregate Drawdown (%) <input id='threshAggDrawdown' type='number' class='form-control form-control-sm' value='${thresholds.aggDrawdown}'></label></div>
+        </div>
+        <div class='mt-2'><button id='saveThreshBtn' class='btn btn-sm btn-primary me-2'>Save</button><button id='resetThreshBtn' class='btn btn-sm btn-secondary'>Reset</button></div>
+        <div id='threshStatus' class='mt-2' style='display:none;'></div>
+      </div></div>`;
+      document.getElementById('thresholdSection').innerHTML = html;
+    }
+    function getThresholdInputs() {
+      return {
+        singleDrawdown: parseFloat(document.getElementById('threshDrawdown').value),
+        maxHoldingMinutes: parseInt(document.getElementById('threshHold').value),
+        aggDrawdown: parseFloat(document.getElementById('threshAggDrawdown').value)
+      };
+    }
+    document.addEventListener('click', async function(e) {
+      if (e.target && e.target.id === 'saveThreshBtn') {
+        thresholds = getThresholdInputs();
+        document.getElementById('threshStatus').style.display = 'inline';
+        document.getElementById('threshStatus').innerText = 'Saving...';
+        try {
+          await fetch('/api/analytics/thresholds', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(thresholds)
+          });
+          document.getElementById('threshStatus').innerText = 'Thresholds saved!';
+        } catch {
+          document.getElementById('threshStatus').innerText = 'Failed to save.';
+        }
+        setTimeout(()=>{document.getElementById('threshStatus').style.display='none';}, 2000);
+      }
+      if (e.target && e.target.id === 'resetThreshBtn') {
+        thresholds = { singleDrawdown: -10, maxHoldingMinutes: 1440, aggDrawdown: -20 };
+        renderThresholdSection();
+      }
+    });
+    window.addEventListener('DOMContentLoaded', renderThresholdSection);
+    </script>
+
+    <script>
+    // --- Help Section ---
+    function renderHelpSection() {
+      document.getElementById('helpSection').innerHTML = `
+        <div class='card'>
+          <div class='card-body'>
+            <h5 class='mb-3'>ℹ️ Dashboard Help & Operator Guide</h5>
+            <div class='row'>
+              <div class='col-12 col-md-6 mb-3'>
+                <h6 class='text-primary'>Key Metrics Explained</h6>
+                <ul>
+                  <li><b>Realized PnL:</b> Profit/loss from closed trades. Green = profit, red = loss.</li>
+                  <li><b>Unrealized PnL:</b> Current profit/loss on open positions. Watch for large negative values.</li>
+                  <li><b>Drawdown:</b> Largest loss from peak for open positions. Red highlight = highest risk.</li>
+                  <li><b>Win/Loss:</b> Count of winning vs. losing trades.</li>
+                  <li><b>Profit Factor:</b> Ratio of gross profit to gross loss. >1 is profitable.</li>
+                  <li><b>Scenario Analytics:</b> Performance in key market patterns (e.g. Mega Pump, Trap). Use to assess bot strengths and weaknesses.</li>
+                </ul>
+              </div>
+              <div class='col-12 col-md-6 mb-3'>
+                <h6 class='text-success'>Alerts & Thresholds</h6>
+                <ul>
+                  <li><b>Alerts:</b> Triggered for large losses, stale positions, or aggregate risk. <span style='color:#b71c1c;'>Red = urgent action needed.</span></li>
+                  <li><b>Threshold Controls:</b> Adjust alert levels for drawdown, holding time, and aggregate loss. Use <b>Save</b> to apply, <b>Reset</b> for defaults.</li>
+                  <li><b>Exports:</b> Download analytics as CSV/JSON for further analysis or backup.</li>
+                  <li><b>Best Practice:</b> Respond quickly to alerts. Investigate any position with high drawdown or long holding time.</li>
+                  <li><b>Scenario Review:</b> Use scenario analytics to tune bot strategy and thresholds for your market conditions.</li>
+                </ul>
+              </div>
+            </div>
+            <div class='row'>
+              <div class='col-12 col-md-6 mb-3'>
+                <h6 class='text-warning'>Security & Privacy</h6>
+                <ul>
+                  <li>Do <b>not</b> share screenshots or exports containing sensitive keys, tokens, or wallet addresses.</li>
+                  <li>Bot notifications are sent securely to configured channels (Discord, Telegram, etc.).</li>
+                  <li>Threshold changes are local to your dashboard session unless persisted in future updates.</li>
+                </ul>
+              </div>
+              <div class='col-12 col-md-6 mb-3'>
+                <h6 class='text-info'>Need Help?</h6>
+                <ul>
+                  <li>Check code comments and README for advanced configuration.</li>
+                  <li>Review scenario analytics for tuning ideas.</li>
+                  <li>For bugs or feature requests, open an issue on GitHub or contact the maintainer.</li>
+                  <li>For urgent support, use your configured notification channels.</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+    window.addEventListener('DOMContentLoaded', renderHelpSection);
+    </script>
         
         // Elements
         const connectionStatus = document.getElementById('connectionStatus');

@@ -4,9 +4,10 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PriceWatcher = void 0;
-// src/services/priceWatcher.ts
+const tradeLogger_1 = require("../utils/tradeLogger");
 const web3_js_1 = require("@solana/web3.js");
 const logger_1 = __importDefault(require("../utils/logger"));
+const notifications_1 = require("../utils/notifications");
 const events_1 = require("events");
 const api_1 = require("@jup-ag/api");
 const axios_1 = __importDefault(require("axios"));
@@ -20,6 +21,13 @@ class PriceWatcher extends events_1.EventEmitter {
     pollIntervalId = null;
     pollIntervalMs = 5000;
     maxPollingErrors = 5;
+    // Rate limiting properties
+    rpcCallCount = 0;
+    rpcCallResetTime = Date.now();
+    MAX_RPC_CALLS_PER_MINUTE = 60; // Adjust as needed
+    jupiterCallCount = 0;
+    jupiterCallResetTime = Date.now();
+    MAX_JUPITER_CALLS_PER_MINUTE = 30; // Jupiter has its own rate limits
     constructor(connection, config) {
         super();
         this.connection = connection;
@@ -53,6 +61,13 @@ class PriceWatcher extends events_1.EventEmitter {
         if (this.tokenDecimalsCache.has(mintAddress)) {
             return this.tokenDecimalsCache.get(mintAddress);
         }
+        // Check rate limit before making RPC call
+        if (!this.checkRpcRateLimit()) {
+            logger_1.default.warn(`[PriceWatcher] RPC rate limit reached, using default decimals for ${mintAddress}`);
+            // Use a default of 9 decimals if we can't fetch (common for SPL tokens)
+            // This is better than failing completely
+            return 9;
+        }
         logger_1.default.debug(`[PriceWatcher] Fetching decimals for mint: ${mintAddress}`);
         try {
             const mintPublicKey = new web3_js_1.PublicKey(mintAddress);
@@ -82,9 +97,19 @@ class PriceWatcher extends events_1.EventEmitter {
             logger_1.default.warn('PriceWatcher polling already active.');
             return;
         }
-        logger_1.default.info(`Starting PriceWatcher polling every ${this.pollIntervalMs}ms.`);
+        // Use a longer polling interval to reduce API calls
+        this.pollIntervalMs = 15000; // 15 seconds instead of 5 seconds
+        logger_1.default.info(`Starting PriceWatcher polling every ${this.pollIntervalMs}ms with rate limiting.`);
+        logger_1.default.info(`Max RPC calls: ${this.MAX_RPC_CALLS_PER_MINUTE}/min, Max Jupiter calls: ${this.MAX_JUPITER_CALLS_PER_MINUTE}/min`);
         // Use setInterval to repeatedly call pollWatchedTokens
         this.pollIntervalId = setInterval(() => {
+            // Check if we're close to rate limits and potentially skip this cycle
+            const rpcUtilization = this.rpcCallCount / this.MAX_RPC_CALLS_PER_MINUTE;
+            const jupiterUtilization = this.jupiterCallCount / this.MAX_JUPITER_CALLS_PER_MINUTE;
+            if (rpcUtilization > 0.9 || jupiterUtilization > 0.9) {
+                logger_1.default.warn(`[RateLimit] Skipping poll cycle due to high API utilization - RPC: ${(rpcUtilization * 100).toFixed(0)}%, Jupiter: ${(jupiterUtilization * 100).toFixed(0)}%`);
+                return;
+            }
             this.pollWatchedTokens().catch(error => {
                 // Catch errors from the async pollWatchedTokens to prevent interval from stopping
                 logger_1.default.error(`[PriceWatcher] Uncaught error during pollWatchedTokens execution: ${error.message}`);
@@ -134,21 +159,86 @@ class PriceWatcher extends events_1.EventEmitter {
             this.watchedTokens.delete(mintAddress);
         }
     }
+    /**
+     * Rate limiter for RPC calls to prevent excessive QuickNode usage
+     * @returns true if the call is allowed, false if it should be throttled
+     */
+    checkRpcRateLimit() {
+        const now = Date.now();
+        // Reset counter if a minute has passed
+        if (now - this.rpcCallResetTime > 60000) {
+            this.rpcCallCount = 0;
+            this.rpcCallResetTime = now;
+            return true;
+        }
+        // Check if we're over the limit
+        if (this.rpcCallCount >= this.MAX_RPC_CALLS_PER_MINUTE) {
+            logger_1.default.warn(`[RateLimit] RPC call limit reached (${this.MAX_RPC_CALLS_PER_MINUTE}/min). Throttling.`);
+            return false;
+        }
+        // Increment counter and allow the call
+        this.rpcCallCount++;
+        return true;
+    }
+    /**
+     * Rate limiter for Jupiter API calls
+     * @returns true if the call is allowed, false if it should be throttled
+     */
+    checkJupiterRateLimit() {
+        const now = Date.now();
+        // Reset counter if a minute has passed
+        if (now - this.jupiterCallResetTime > 60000) {
+            this.jupiterCallCount = 0;
+            this.jupiterCallResetTime = now;
+            return true;
+        }
+        // Check if we're over the limit
+        if (this.jupiterCallCount >= this.MAX_JUPITER_CALLS_PER_MINUTE) {
+            logger_1.default.warn(`[RateLimit] Jupiter API call limit reached (${this.MAX_JUPITER_CALLS_PER_MINUTE}/min). Throttling.`);
+            return false;
+        }
+        // Increment counter and allow the call
+        this.jupiterCallCount++;
+        return true;
+    }
     async pollWatchedTokens() {
+        // Emit heartbeat for PriceWatcher
+        if (globalThis.heartbeat?.PriceWatcher) {
+            globalThis.heartbeat.PriceWatcher();
+        }
+        else {
+            logger_1.default.debug('[HEARTBEAT] PriceWatcher heartbeat function not found');
+        }
         if (this.watchedTokens.size === 0) {
             return; // Nothing to poll
         }
-        // Avoid logging this every 5s if many tokens are watched
-        // logger.debug(`[PriceWatcher] Polling ${this.watchedTokens.size} watched tokens...`);
+        // Check if we're approaching rate limits and adjust polling behavior
+        const rpcUtilization = this.rpcCallCount / this.MAX_RPC_CALLS_PER_MINUTE;
+        const jupiterUtilization = this.jupiterCallCount / this.MAX_JUPITER_CALLS_PER_MINUTE;
+        if (rpcUtilization > 0.8 || jupiterUtilization > 0.8) {
+            logger_1.default.warn(`[RateLimit] High API utilization - RPC: ${(rpcUtilization * 100).toFixed(0)}%, Jupiter: ${(jupiterUtilization * 100).toFixed(0)}%. Reducing polling.`);
+            // Only poll a subset of tokens when approaching limits
+            const keysToProcess = Array.from(this.watchedTokens.keys()).slice(0, 5); // Process max 5 tokens
+            const pollPromises = keysToProcess.map(mint => this.pollSingleToken(mint));
+            await Promise.allSettled(pollPromises);
+            return;
+        }
+        // Normal polling when not rate limited
+        logger_1.default.debug(`[PriceWatcher] Polling ${this.watchedTokens.size} tokens. RPC calls: ${this.rpcCallCount}/${this.MAX_RPC_CALLS_PER_MINUTE}, Jupiter: ${this.jupiterCallCount}/${this.MAX_JUPITER_CALLS_PER_MINUTE}`);
         const pollPromises = Array.from(this.watchedTokens.keys()).map(mint => this.pollSingleToken(mint));
-        // Use allSettled to ensure one failure doesn't stop others
         const results = await Promise.allSettled(pollPromises);
-        // Optional: Log aggregate results or handle errors from allSettled
-        results.forEach((result, index) => {
+        // Log errors
+        results.forEach(async (result, index) => {
             if (result.status === 'rejected') {
                 const mint = Array.from(this.watchedTokens.keys())[index];
                 logger_1.default.warn(`[PriceWatcher] Polling promise rejected for ${mint}: ${result.reason}`);
-                // Error handling is also done within pollSingleToken, this is an extra safety net
+                tradeLogger_1.tradeLogger.logScenario('PRICE_WATCHER_ERROR', {
+                    event: 'pollWatchedTokens',
+                    token: mint,
+                    error: result.reason?.message || String(result.reason),
+                    timestamp: new Date().toISOString()
+                });
+                await (0, notifications_1.sendAlert)(`[PriceWatcher] Polling promise rejected for ${mint}: ${result.reason}`, 'CRITICAL');
             }
         });
     }
@@ -218,27 +308,33 @@ class PriceWatcher extends events_1.EventEmitter {
             const buyRatio5m = this.calculateBuyRatio(pairData, 'm5'); // 5 minutes
             const updateEventData = {
                 mint: mintAddress,
-                pairAddress: tokenData.pairAddress,
-                decimals: tokenData.decimals, // Include decimals in the event
-                currentPrice: currentPrice,
-                priceChangePercent: priceChangePercent,
-                priceChange1m: priceChange1m,
-                volume5m: pairData?.volume?.m5, // Pass through 5m volume if available
-                volumeChangePercent: volumeChangePercent,
-                liquidity: tokenData.liquidity ?? 0, // Use stored liquidity or 0
-                buyRatio5m: buyRatio5m,
-                pairCreatedAt: pairData?.pairCreatedAt // Add creation timestamp
+                pairAddress: tokenData.pairAddress ?? undefined,
+                decimals: tokenData.decimals ?? 0,
+                currentPrice: currentPrice ?? 0,
+                priceChangePercent: priceChangePercent ?? undefined,
+                priceChange1m: priceChange1m ?? undefined,
+                volume5m: pairData?.volume?.m5 ?? undefined,
+                volumeChangePercent: volumeChangePercent ?? undefined,
+                liquidity: tokenData.liquidity ?? 0,
+                buyRatio5m: buyRatio5m ?? undefined,
+                pairCreatedAt: pairData?.pairCreatedAt ?? undefined,
+                signalReason: undefined,
+                symbol: undefined,
+                volume1h: pairData?.volume?.h1 ?? undefined
             };
-            // --- 4. Emit Event ---
-            // Reduce log verbosity, maybe only log if change is significant?
-            // logger.debug(`[PriceWatcher] Data update for ${mintAddress}: Price=${currentPrice.toFixed(6)}, Liq=${tokenData.liquidity?.toFixed(2)}, Change1m=${priceChange1m?.toFixed(2)}%, BuyRatio5m=${buyRatio5m?.toFixed(2)}`);
-            this.emit('marketDataUpdate', updateEventData);
             // Reset error count on success
             tokenData.errorCount = 0;
             tokenData.lastCheckTimestamp = Date.now();
         }
         catch (error) {
             logger_1.default.error(`[PriceWatcher] Error polling token ${mintAddress}: ${error.message}`);
+            tradeLogger_1.tradeLogger.logScenario('PRICE_WATCHER_ERROR', {
+                event: 'pollSingleToken',
+                token: mintAddress,
+                error: error?.message || String(error),
+                timestamp: new Date().toISOString()
+            });
+            await (0, notifications_1.sendAlert)(`[PriceWatcher] Error polling token ${mintAddress}: ${error.message}`, 'CRITICAL');
             // const tokenData = this.watchedTokens.get(mintAddress); // Already defined above
             // if (tokenData) { // Check if tokenData exists (it should)
             tokenData.errorCount++;
@@ -250,9 +346,19 @@ class PriceWatcher extends events_1.EventEmitter {
             // }
         }
     }
-    // Updated Jupiter price fetching function
+    // Updated Jupiter price fetching function with rate limiting
     async fetchJupiterPrice(inputMint, outputMint, inputDecimals) {
-        // logger.debug(`[PriceWatcher] Fetching Jupiter price for ${inputMint} (${inputDecimals} dec) -> ${outputMint}`);
+        // Check Jupiter rate limit before making API call
+        if (!this.checkJupiterRateLimit()) {
+            logger_1.default.warn(`[PriceWatcher] Jupiter rate limit reached for ${inputMint}, using cached price if available`);
+            // Try to use cached price if available
+            const tokenData = this.watchedTokens.get(inputMint);
+            if (tokenData?.lastPrice) {
+                return tokenData.lastPrice;
+            }
+            // Otherwise throw error to be handled by caller
+            throw new Error('Jupiter rate limit reached and no cached price available');
+        }
         // Get decimals for the output token (quote currency)
         const outputDecimals = await this.getTokenDecimals(outputMint);
         // Calculate amount for 1 whole unit of the input token in its smallest unit
@@ -262,8 +368,8 @@ class PriceWatcher extends events_1.EventEmitter {
                 inputMint: inputMint,
                 outputMint: outputMint,
                 amount: amountInLamports.toString(), // Force type to resolve TS error
-                // onlyDirectRoutes: true, // Consider for faster quotes? Might be less accurate.
-                // slippageBps: 50
+                onlyDirectRoutes: true, // Use direct routes to reduce API complexity
+                slippageBps: 50
             });
             if (!quoteResponse || !quoteResponse.outAmount || quoteResponse.outAmount === "0") {
                 throw new Error(`Invalid quote response or zero outAmount from Jupiter V6 for ${inputMint}`);
@@ -279,40 +385,37 @@ class PriceWatcher extends events_1.EventEmitter {
         catch (error) {
             // Improve error logging
             const errorMessage = error.message || 'Unknown error';
-            // Avoid logging full error details every time unless necessary
-            // const errorDetails = error.details || (error.response?.data) || error; 
             logger_1.default.error(`[PriceWatcher] Jupiter quote failed for ${inputMint} -> ${outputMint}: ${errorMessage}`);
-            throw new Error(`Jupiter quote failed: ${errorMessage}`); // Re-throw cleaner error
+            await (0, notifications_1.sendAlert)(`[PriceWatcher] Jupiter quote failed for ${inputMint} -> ${outputMint}: ${errorMessage}`, 'ERROR');
+            // Try to use cached price if available
+            const tokenData = this.watchedTokens.get(inputMint);
+            if (tokenData?.lastPrice) {
+                logger_1.default.info(`[PriceWatcher] Using cached price ${tokenData.lastPrice} for ${inputMint} due to Jupiter error`);
+                return tokenData.lastPrice;
+            }
+            throw new Error(`Jupiter quote failed: ${errorMessage}`);
         }
     }
-    // Updated Dexscreener placeholder
+    // Fetches Dexscreener data for a pool (pair) or token using axios
     async fetchDexscreenerData(queryAddress, type) {
         let url;
         if (type === 'pair') {
             url = `https://api.dexscreener.com/latest/dex/pairs/solana/${queryAddress}`;
         }
-        else { // type === 'token'
-            url = `https://api.dexscreener.com/latest/dex/tokens/${queryAddress}`;
-            // Note: Dexscreener token endpoint might return multiple pairs. We might need to select the most liquid/relevant one.
-            // For simplicity, we'll aim to get the pair data from the first result if using token search.
+        else {
+            url = `https://api.dexscreener.com/latest/dex/tokens/solana/${queryAddress}`;
         }
         logger_1.default.debug(`[PriceWatcher] Fetching Dexscreener data: ${url}`);
         try {
-            const response = await axios_1.default.get(url, {
-                timeout: 10000, // 10 second timeout
-                headers: { 'Accept': 'application/json' }
-            });
+            const response = await axios_1.default.get(url, { timeout: 10000, headers: { 'Accept': 'application/json' } });
             if (response.status !== 200) {
                 logger_1.default.warn(`[PriceWatcher] Dexscreener API returned non-200 status: ${response.status} for ${url}`);
                 return null;
             }
             if (!response.data || !response.data.pairs) {
-                // Dexscreener might return an empty object or missing pairs field for unknown tokens/pairs
                 logger_1.default.warn(`[PriceWatcher] Dexscreener API returned no pairs data for ${url}`);
                 return null;
             }
-            // If searching by token, we get an array. Find the most liquid USDC/SOL pair if possible.
-            // If searching by pair, we get a single pair object wrapped in the 'pairs' array.
             const pairs = response.data.pairs;
             if (!pairs || pairs.length === 0) {
                 logger_1.default.warn(`[PriceWatcher] Dexscreener API returned empty pairs array for ${url}`);
@@ -324,7 +427,7 @@ class PriceWatcher extends events_1.EventEmitter {
                 targetPair = pairs.sort((a, b) => (b.liquidity?.usd ?? 0) - (a.liquidity?.usd ?? 0))
                     .find((p) => p.quoteToken?.address === this.config.solana.usdcMint || p.quoteToken?.symbol === 'SOL');
                 if (!targetPair) {
-                    targetPair = pairs[0]; // Fallback to the first (likely most liquid) pair
+                    targetPair = pairs[0];
                     logger_1.default.debug(`[PriceWatcher] No primary quote pair (USDC/SOL) found via token search for ${queryAddress}, using most liquid: ${targetPair?.pairAddress}`);
                 }
                 else {
@@ -332,14 +435,12 @@ class PriceWatcher extends events_1.EventEmitter {
                 }
             }
             else {
-                // If searching by pair, the API should return only that pair
                 targetPair = pairs[0];
             }
             if (!targetPair) {
                 logger_1.default.warn(`[PriceWatcher] Could not determine target pair from Dexscreener response for ${url}`);
                 return null;
             }
-            // Return the relevant pair object
             return targetPair;
         }
         catch (error) {

@@ -5,6 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.NotificationManager = void 0;
 const logger_1 = __importDefault(require("../utils/logger"));
+const persistence_1 = require("../utils/persistence");
 class NotificationManager {
     discord;
     telegram;
@@ -31,6 +32,8 @@ class NotificationManager {
             (position.pnl ? `PnL: ${position.pnl > 0 ? '+' : ''}${position.pnl.toFixed(2)}%\n` : '') +
             `Stop Loss: $${position.stopLoss.toFixed(8)}`;
         await this.notify(message, 'trades');
+        // Persist trade event for analytics
+        await (0, persistence_1.persistTrade)({ type, ...position, timestamp: new Date().getTime() });
     }
     async notifyRisk(metrics) {
         const message = `📊 Risk Metrics Update\n` +
