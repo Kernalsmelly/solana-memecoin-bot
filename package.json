@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "description": "Solana memecoin trading bot with advanced pattern detection",
   "main": "src/live/testLive.ts",
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  },
   "scripts": {
     "smoke": "ts-node --project tsconfig.dev.json scripts/smokeTest.ts",
     "start": "ts-node src/launch.ts",
@@ -15,7 +19,8 @@
     "dashboard": "ts-node src/scripts/performance-dashboard.ts",
     "unit-test": "vitest run",
     "unit-test:watch": "vitest",
-    "launch": "ts-node src/launch.ts"
+    "launch": "ts-node src/launch.ts",
+    "dry-vol-sim": "ts-node scripts/dry-vol-sim.ts"
   },
   "dependencies": {
     "@jup-ag/api": "^6.0.40",

@@ -5,16 +5,8 @@ Advanced trading bot for Solana memecoins with real-time pattern detection and a
 ## Features
 
 ### Pattern Detection 
-- Mega Pump and Dump (187.5% avg return)
-- Volatility Squeeze (75.9% avg return)
-- Smart Money Trap (66.8% avg return)
-- Algorithmic Stop Hunt (61.0% avg return)
-- Smart Money Reversal (55.3% avg return)
-- Volume Divergence
-- Hidden Accumulation
-- Wyckoff Spring
-- Liquidity Grab
-- FOMO Cycle
+- Volatility Squeeze (20%+ price change within 30 min with 2x volume)
+- (More patterns coming soon...)
 
 ### Real-time Monitoring 
 - Birdeye WebSocket integration
@@ -46,18 +38,42 @@ Advanced trading bot for Solana memecoins with real-time pattern detection and a
 
 ## Installation
 
+### macOS Setup
+See detailed [macOS setup guide](docs/SETUP_MAC.md)
+
+### Quick Start
+
 1. Clone the repository:
 ```bash
 git clone https://github.com/yourusername/solmemebot.git
 cd solmemebot
 ```
 
-2. Install dependencies:
+2. Set up environment variables:
 ```bash
-npm install
+cp .env.example .env
 ```
 
-3. Create .env file:
+3. Install dependencies:
+```bash
+pnpm install
+```
+
+4. Build the project:
+```bash
+pnpm run build
+```
+
+5. Run dry-run simulation:
+```bash
+pnpm run dry-vol-sim
+```
+
+The dry-run simulation will:
+- Monitor new tokens with >$50k liquidity
+- Detect volatility squeezes
+- Simulate trades without broadcasting
+- Log risk metrics
 
 ## Free Data Stack
 
