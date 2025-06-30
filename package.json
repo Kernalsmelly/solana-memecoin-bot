@@ -10,7 +10,7 @@
   "scripts": {
     "smoke": "ts-node --project tsconfig.dev.json scripts/smokeTest.ts",
     "start": "ts-node src/launch.ts",
-    "test": "ts-node src/demo/testDetection.ts",
+    "test": "vitest run",
     "build": "tsc",
     "lint": "eslint . --ext .ts",
     "validate": "ts-node src/scripts/validate-config.ts",
@@ -19,6 +19,7 @@
     "dashboard": "ts-node src/scripts/performance-dashboard.ts",
     "unit-test": "vitest run",
     "unit-test:watch": "vitest",
+    "test:watch": "vitest",
     "launch": "ts-node src/launch.ts",
     "dry-vol-sim": "ts-node scripts/dry-vol-sim.ts"
   },
@@ -58,6 +59,7 @@
     "eslint": "^8.54.0",
     "jest": "^29.7.0",
     "lru-cache": "^11.1.0",
+    "nock": "^14.0.5",
     "p-queue": "^8.1.0",
     "ts-jest": "^29.3.0",
     "ts-node": "^10.9.2",

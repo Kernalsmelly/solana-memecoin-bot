@@ -2,8 +2,9 @@ import { EventEmitter } from 'events';
 import { DataBroker } from '../integrations/data-hub/DataBroker';
 import { RpcRotator } from '../integrations/data-hub/RpcRotator';
 import { BirdeyeTokenData, TokenAnalyzer, AnalyzedToken } from '../analysis/tokenAnalyzer';
-import logger from '../utils/logger'; // Correct default import
-import { MemoryManager } from '../utils/memoryManager'; // Correct class import
+import logger from '../utils/logger';
+import { MemoryManager } from '../utils/memoryManager';
+import { BirdeyeAPI } from '../api/birdeyeAPI';
 
 // Discovery options for configuration
 export interface TokenDiscoveryOptions {
@@ -31,6 +32,10 @@ export class TokenDiscovery extends EventEmitter {
   private cleanupInterval: NodeJS.Timeout | null = null;
   private processingQueue: boolean = false;
   private lastAnalysisTime: number = 0;
+
+  // Birdeye API integration
+  private birdeyeAPI?: BirdeyeAPI;
+  private seenPoolAddresses: Set<string> = new Set();
   
   // Configuration
   private MIN_LIQUIDITY: number;
@@ -72,9 +77,44 @@ export class TokenDiscovery extends EventEmitter {
   
   // Start token discovery
   public async start(): Promise<boolean> {
-  logger.info('TokenDiscovery started');
-  return true;
-}
+    logger.info('TokenDiscovery started');
+    // Setup BirdeyeAPI and listen for pool events
+    const apiKey = process.env.BIRDEYE_API_KEY;
+    if (!apiKey) {
+      logger.error('Missing BIRDEYE_API_KEY, cannot start discovery.');
+      return false;
+    }
+    this.birdeyeAPI = new BirdeyeAPI(apiKey);
+    this.birdeyeAPI.on('pool', (pool: any) => {
+      if (this.filterPool(pool)) {
+        // Convert pool to BirdeyeTokenData shape if needed
+        const tokenData: BirdeyeTokenData = {
+          address: pool.address,
+          name: pool.name || '',
+          symbol: pool.symbol || '',
+          liquidity: pool.liquidityUsd || pool.liquidity || 0,
+          mcap: pool.mcapUsd || pool.mcap || 0,
+          ...pool
+        };
+        this.tokenProcessQueue.set(tokenData.address, tokenData);
+        if (!this.processingQueue) {
+          this.processTokenQueue();
+        }
+      }
+    });
+    await this.birdeyeAPI.connectWebSocket();
+    return true;
+  }
+
+  // Filter pools by liquidity and market cap
+  private filterPool(pool: any): boolean {
+    if (!pool) return false;
+    if (this.seenPoolAddresses.has(pool.address)) return false;
+    if ((pool.liquidityUsd ?? pool.liquidity ?? 0) < this.MIN_LIQUIDITY) return false;
+    if ((pool.mcapUsd ?? pool.mcap ?? 0) > 50000) return false;
+    this.seenPoolAddresses.add(pool.address);
+    return true;
+  }
   
   // Stop token discovery
   public stop(): void {

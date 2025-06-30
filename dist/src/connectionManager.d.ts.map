@@ -1,0 +1,1 @@
+{"version":3,"file":"connectionManager.d.ts","sourceRoot":"","sources":["../../src/connectionManager.ts"],"names":[],"mappings":"AAEA,OAAO,EAAE,UAAU,EAAiB,MAAM,iBAAiB,CAAC;AAE5D,cAAM,iBAAiB;IACrB,OAAO,CAAC,MAAM,CAAC,QAAQ,CAAoB;IAC3C,OAAO,CAAC,UAAU,CAAa;IAE/B,OAAO;WAKO,WAAW,IAAI,iBAAiB;IAOjC,aAAa,IAAI,OAAO,CAAC,UAAU,CAAC;IAI1C,iBAAiB,IAAI,UAAU;CAGvC;AAED,eAAe,iBAAiB,CAAC"}

@@ -211,27 +211,60 @@ const accountBalance: AccountBalance = typeof rawBalance === 'object' && rawBala
     
     let bestMatch: PatternMatch | null = null;
     let highestConfidence = 0;
-    
+
+    // --- Volatility Squeeze Utility ---
+    function detectVolatilitySqueeze(prices: number[], currentPrice?: number): { isSqueeze: boolean, breakout: boolean, squeezeStrength: number, bandWidth: number } {
+      // Calculate Bollinger Bands (20 period, 2 stddev)
+      const period = 20;
+      if (prices.length < period) return { isSqueeze: false, breakout: false, squeezeStrength: 0, bandWidth: 0 };
+      const slice = prices.slice(-period);
+      const mean = slice.reduce((a, b) => a + b, 0) / period;
+      const std = Math.sqrt(slice.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / period);
+      const upper = mean + 2 * std;
+      const lower = mean - 2 * std;
+      const bandWidth = (upper - lower) / mean;
+      // Squeeze: bandWidth is very low (e.g. < 0.06 for functional testing)
+      const isSqueeze = bandWidth < 0.06;
+      // Breakout: use currentPrice if provided, else last price in history
+      const breakout = (typeof currentPrice === 'number' ? currentPrice : prices[prices.length - 1]) > upper;
+      // Squeeze strength: inverse of bandWidth
+      const squeezeStrength = Math.min(1, 0.06 / (bandWidth + 1e-8));
+      return { isSqueeze, breakout, squeezeStrength, bandWidth };
+    }
+
     // Check each pattern
     for (const pattern of this.enabledPatterns) {
       const criteria = this.patternCriteria[pattern];
-      
       // Skip if token age exceeds pattern's max age
       if (criteria.ageMax && token.age > criteria.ageMax) {
         continue;
       }
-      
       // Skip if liquidity is too low
       if (token.liquidity < criteria.liquidityMin) {
         continue;
       }
-      
-      // Calculate confidence score (0-100)
-      const priceChangeScore = Math.min(token.priceChange24h / criteria.priceChangeMin, 2) * 25;
-      const volumeChangeScore = Math.min(token.volumeChange24h / criteria.volumeChangeMin, 2) * 25;
-      const buyRatioScore = Math.min(token.buyRatio / criteria.buyRatioMin, 2) * 25;
-      const liquidityScore = Math.min(token.liquidity / criteria.liquidityMin, 2) * 25;
-      
+      // --- Volatility Squeeze Logic ---
+      if (pattern === 'Volatility Squeeze' && Array.isArray(token.priceHistory) && token.priceHistory.length >= 20) {
+        const { isSqueeze, breakout, squeezeStrength, bandWidth } = detectVolatilitySqueeze(token.priceHistory, token.price);
+        if (isSqueeze && breakout) {
+          const confidence = Math.round(80 + squeezeStrength * 20); // 80-100% confidence
+          if (confidence > highestConfidence) {
+            highestConfidence = confidence;
+            bestMatch = {
+              pattern,
+              confidence,
+              signalType: 'buy',
+              meta: { squeezeStrength, bandWidth }
+            };
+          }
+          continue;
+        }
+      }
+      // --- Other Patterns (default logic) ---
+      const priceChangeScore = Math.min(100, Math.max(0, ((token.priceChange24h || 0) / (criteria.priceChangeMin || 1)) * 100));
+      const volumeChangeScore = Math.min(100, Math.max(0, ((token.volumeChange24h || 0) / (criteria.volumeChangeMin || 1)) * 100));
+      const buyRatioScore = Math.min(100, Math.max(0, ((token.buyRatio || 0) / (criteria.buyRatioMin || 1)) * 100));
+      const liquidityScore = Math.min(100, Math.max(0, ((token.liquidity || 0) / (criteria.liquidityMin || 1)) * 100));
       // Weight the scores based on importance
       const confidence = Math.round(
         (priceChangeScore * 0.4) + 
@@ -239,7 +272,6 @@ const accountBalance: AccountBalance = typeof rawBalance === 'object' && rawBala
         (buyRatioScore * 0.2) + 
         (liquidityScore * 0.1)
       );
-      
       // If this pattern has higher confidence, make it the best match
       if (confidence > highestConfidence && confidence >= 70) { // Minimum 70% confidence
         highestConfidence = confidence;
@@ -250,7 +282,6 @@ const accountBalance: AccountBalance = typeof rawBalance === 'object' && rawBala
         };
       }
     }
-    
     return bestMatch;
   }
   

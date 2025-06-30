@@ -1,0 +1,1 @@
+{"version":3,"file":"positionSizing.d.ts","sourceRoot":"","sources":["../../../src/utils/positionSizing.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,YAAY,EAAE,MAAM,qBAAqB,CAAC;AACnD,OAAO,EAAE,WAAW,EAAE,MAAM,qBAAqB,CAAC;AAClD,OAAO,EAAE,cAAc,EAAE,MAAM,oBAAoB,CAAC;AAEpD;;;;;;GAMG;AACH,wBAAgB,qBAAqB,CACnC,KAAK,EAAE,YAAY,EACnB,WAAW,EAAE,WAAW,EACxB,cAAc,EAAE,cAAc,GAC7B,MAAM,CAuBR"}

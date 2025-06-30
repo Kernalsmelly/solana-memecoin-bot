@@ -7,16 +7,26 @@ import EventEmitter from 'events';
  */
 export class BirdeyeAPI extends EventEmitter {
   /**
-   * Connect to Birdeye WebSocket (stub).
+   * Connect to Birdeye WebSocket (stub for free tier).
+   * For free tier, use REST polling fallback.
    */
-  async connectWebSocket(_channels: string[]): Promise<boolean> {
-    console.log('[BirdeyeAPI] connectWebSocket: TODO - not implemented.');
-    return false;
+  async connectWebSocket(_channels: string[] = []): Promise<boolean> {
+    if (this.usePremium) {
+      // Premium WS logic would go here.
+      console.log('[BirdeyeAPI] Premium WebSocket not implemented.');
+      return false;
+    } else {
+      // Start REST polling for new pools (free tier)
+      this._startRestPolling();
+      return true;
+    }
   }
 
   public key: string;
   private usePremium: boolean;
   private _pingId?: NodeJS.Timeout;
+  private _pollTimer?: NodeJS.Timeout;
+  private _seenPools: Set<string> = new Set();
 
   constructor(apiKey: string) {
     super();
@@ -29,6 +39,37 @@ export class BirdeyeAPI extends EventEmitter {
       this._pingId = setInterval(() => {}, 30000);
     }
   }
+
+  /**
+   * Start REST polling for new pools (free tier fallback).
+   */
+  private async _startRestPolling() {
+    const axios = require('axios');
+    const POLL_INTERVAL = 5000;
+    const API_URL = 'https://public-api.birdeye.so/public/pool/all?sort_by=created_at&sort_type=desc&offset=0&limit=20';
+    const headers = { 'X-API-KEY': this.key };
+    const poll = async () => {
+      try {
+        const res = await axios.get(API_URL, { headers });
+        const pools = res.data?.data || [];
+        for (const pool of pools) {
+          if (!this._seenPools.has(pool.address)) {
+            this._seenPools.add(pool.address);
+            this.emit('pool', pool);
+          }
+        }
+      } catch (e) {
+        if (e instanceof Error) {
+          console.error('[BirdeyeAPI] REST poll error:', e.message);
+        } else {
+          console.error('[BirdeyeAPI] REST poll error:', e);
+        }
+      }
+      this._pollTimer = setTimeout(poll, POLL_INTERVAL);
+    };
+    poll();
+  }
+
 
   /**
    * Fetch token metadata from Birdeye. Returns mock data if premium is disabled.
