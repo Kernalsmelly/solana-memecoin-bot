@@ -213,24 +213,36 @@ const accountBalance: AccountBalance = typeof rawBalance === 'object' && rawBala
     let highestConfidence = 0;
 
     // --- Volatility Squeeze Utility ---
-    function detectVolatilitySqueeze(prices: number[], currentPrice?: number): { isSqueeze: boolean, breakout: boolean, squeezeStrength: number, bandWidth: number } {
-      // Calculate Bollinger Bands (20 period, 2 stddev)
-      const period = 20;
-      if (prices.length < period) return { isSqueeze: false, breakout: false, squeezeStrength: 0, bandWidth: 0 };
-      const slice = prices.slice(-period);
-      const mean = slice.reduce((a, b) => a + b, 0) / period;
-      const std = Math.sqrt(slice.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / period);
-      const upper = mean + 2 * std;
-      const lower = mean - 2 * std;
-      const bandWidth = (upper - lower) / mean;
-      // Squeeze: bandWidth is very low (e.g. < 0.06 for functional testing)
-      const isSqueeze = bandWidth < 0.06;
-      // Breakout: use currentPrice if provided, else last price in history
-      const breakout = (typeof currentPrice === 'number' ? currentPrice : prices[prices.length - 1]) > upper;
-      // Squeeze strength: inverse of bandWidth
-      const squeezeStrength = Math.min(1, 0.06 / (bandWidth + 1e-8));
-      return { isSqueeze, breakout, squeezeStrength, bandWidth };
-    }
+/**
+ * Detects a volatility squeeze using Bollinger Bands.
+ * @param prices Array of recent prices (most recent last)
+ * @param currentPrice Optional current price (if not last in prices)
+ * @param period Number of periods for rolling window (default 20)
+ * @param squeezeThreshold Band width threshold for squeeze (default 0.06)
+ * @returns Squeeze/breakout status and metrics
+ */
+function detectVolatilitySqueeze(
+  prices: number[],
+  currentPrice?: number,
+  period = 20,
+  squeezeThreshold = 0.06
+): { isSqueeze: boolean, breakout: boolean, squeezeStrength: number, bandWidth: number } {
+  // Require enough data
+  if (prices.length < period) return { isSqueeze: false, breakout: false, squeezeStrength: 0, bandWidth: 0 };
+  const slice = prices.slice(-period);
+  const mean = slice.reduce((a, b) => a + b, 0) / period;
+  const std = Math.sqrt(slice.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / period);
+  const upper = mean + 2 * std;
+  const lower = mean - 2 * std;
+  const bandWidth = (upper - lower) / mean;
+  // Squeeze: bandWidth is very low (e.g. < 0.06 by default)
+  const isSqueeze = bandWidth < squeezeThreshold;
+  // Breakout: use currentPrice if provided, else last price in history
+  const breakout = (typeof currentPrice === 'number' ? currentPrice : (prices?.[prices.length - 1] ?? 0)) > upper;
+  // Squeeze strength: inverse of bandWidth (capped at 1)
+  const squeezeStrength = Math.min(1, squeezeThreshold / (bandWidth + 1e-8));
+  return { isSqueeze, breakout, squeezeStrength, bandWidth };
+}
 
     // Check each pattern
     for (const pattern of this.enabledPatterns) {
@@ -244,8 +256,11 @@ const accountBalance: AccountBalance = typeof rawBalance === 'object' && rawBala
         continue;
       }
       // --- Volatility Squeeze Logic ---
-      if (pattern === 'Volatility Squeeze' && Array.isArray(token.priceHistory) && token.priceHistory.length >= 20) {
-        const { isSqueeze, breakout, squeezeStrength, bandWidth } = detectVolatilitySqueeze(token.priceHistory, token.price);
+      if (pattern === 'Volatility Squeeze' && Array.isArray(token.priceHistory) && token.priceHistory.length >= ((criteria as any).period || 20)) {
+        // Allow period and squeeze threshold to be overridden in criteria
+        const period = (criteria as any).period || 20;
+        const squeezeThreshold = (criteria as any).squeezeThreshold || 0.06;
+        const { isSqueeze, breakout, squeezeStrength, bandWidth } = detectVolatilitySqueeze(token.priceHistory, token.price, period, squeezeThreshold);
         if (isSqueeze && breakout) {
           const confidence = Math.round(80 + squeezeStrength * 20); // 80-100% confidence
           if (confidence > highestConfidence) {
@@ -254,7 +269,7 @@ const accountBalance: AccountBalance = typeof rawBalance === 'object' && rawBala
               pattern,
               confidence,
               signalType: 'buy',
-              meta: { squeezeStrength, bandWidth }
+              // meta: { squeezeStrength, bandWidth, period, squeezeThreshold }
             };
           }
           continue;

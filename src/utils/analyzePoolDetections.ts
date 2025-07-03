@@ -23,7 +23,7 @@ type Pool = {
 };
 
 type Trade = {
-    action: string;
+    action: 'buy' | 'sell';
     pairAddress?: string;
     token?: string;
     pnl?: number | string;
@@ -85,7 +85,7 @@ function main() {
     // Group trades by poolAddress or token
     const poolTradeStats: Record<string, { pnlSum: number, winCount: number, tradeCount: number }> = {};
     for (const t of trades) {
-        if (t.action !== 'BUY' && t.action !== 'SELL') continue;
+        if (t.action !== 'buy' && t.action !== 'sell') continue;
         const key = t.pairAddress || t.token;
         if (!key) continue;
         if (!poolTradeStats[key]) poolTradeStats[key] = { pnlSum: 0, winCount: 0, tradeCount: 0 };
@@ -281,7 +281,7 @@ function parameterSweep(pools: Pool[], trades: Trade[]) {
     const vlRatioRange = [0.01, 0.02, 0.05, 0.08, 0.1];
     const poolTradeStats: Record<string, { pnlSum: number, winCount: number, tradeCount: number }> = {};
     for (const t of trades) {
-        if (t.action !== 'BUY' && t.action !== 'SELL') continue;
+        if (t.action !== 'buy' && t.action !== 'sell') continue;
         const key = t.pairAddress || t.token;
         if (!key) continue;
         if (!poolTradeStats[key]) poolTradeStats[key] = { pnlSum: 0, winCount: 0, tradeCount: 0 };

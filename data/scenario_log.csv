@@ -2,3 +2,12 @@ timestamp,scenario,details
 2025-06-10T21:56:16.385Z,POSITIONS_FILE_NOT_FOUND,file=C:\Users\kerna\Documents\GitHub\Solmemebot\data\positions.json; timestamp=2025-06-10T21:56:16.385Z
 2025-06-10T21:58:30.985Z,POSITIONS_FILE_NOT_FOUND,file=C:\Users\kerna\Documents\GitHub\Solmemebot\data\positions.json; timestamp=2025-06-10T21:58:30.985Z
 2025-06-10T23:57:22.729Z,POSITIONS_FILE_NOT_FOUND,file=C:\Users\kerna\Documents\GitHub\Solmemebot\data\positions.json; timestamp=2025-06-10T23:57:22.729Z
+2025-07-01T00:18:26.665Z,PATTERN_ANALYSIS,event=analyzeTokenForPattern; token=SQUEEZED; timestamp=2025-07-01T00:18:26.665Z
+2025-07-01T00:18:49.169Z,PATTERN_ANALYSIS,event=analyzeTokenForPattern; token=SQUEEZED; timestamp=2025-07-01T00:18:49.169Z
+2025-07-01T00:19:40.895Z,PATTERN_ANALYSIS,event=analyzeTokenForPattern; token=SQUEEZED; timestamp=2025-07-01T00:19:40.895Z
+2025-07-02T04:56:07.333Z,PATTERN_ANALYSIS,event=analyzeTokenForPattern; token=SQUEEZED; timestamp=2025-07-02T04:56:07.330Z
+2025-07-02T17:50:15.480Z,PATTERN_ANALYSIS,event=analyzeTokenForPattern; token=SQUEEZED; timestamp=2025-07-02T17:50:15.480Z
+2025-07-02T17:52:29.761Z,PATTERN_ANALYSIS,event=analyzeTokenForPattern; token=SQUEEZED; timestamp=2025-07-02T17:52:29.761Z
+2025-07-02T17:59:51.973Z,PATTERN_ANALYSIS,event=analyzeTokenForPattern; token=SQUEEZED; timestamp=2025-07-02T17:59:51.973Z
+2025-07-02T18:00:31.333Z,PATTERN_ANALYSIS,event=analyzeTokenForPattern; token=SQUEEZED; timestamp=2025-07-02T18:00:31.333Z
+2025-07-02T18:01:23.241Z,PATTERN_ANALYSIS,event=analyzeTokenForPattern; token=SQUEEZED; timestamp=2025-07-02T18:01:23.241Z

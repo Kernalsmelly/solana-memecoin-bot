@@ -112,7 +112,7 @@ export interface TradingSignal {
 // TradeHistoryEntry for trade history logging
 export interface TradeHistoryEntry {
     timestamp: number | string;
-    action: string;
+    action: 'buy' | 'sell';
     tokenAddress: string;
     tokenSymbol?: string;
     quantity: number;

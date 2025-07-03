@@ -5,7 +5,7 @@ import logger from './logger';
 
 export interface TradeLogEntry {
     timestamp: string;
-    action: 'BUY' | 'SELL' | 'SKIP';
+    action: 'buy' | 'sell' | 'skip';
     token: string;
     pairAddress?: string;
     price: number;
@@ -67,7 +67,7 @@ export class TradeLogger {
     public log(entry: TradeLogEntry) {
         const row = [
             entry.timestamp,
-            entry.action,
+            entry.action.toUpperCase(), // log as uppercase for emphasis
             entry.token,
             entry.pairAddress || '',
             entry.price,

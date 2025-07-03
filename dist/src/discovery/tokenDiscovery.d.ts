@@ -6,6 +6,7 @@ export interface TokenDiscoveryOptions {
     cleanupIntervalMs?: number;
     maxTokenAge?: number;
     analysisThrottleMs?: number;
+    blacklist?: string[];
 }
 export interface RiskManager {
     [key: string]: any;
@@ -20,13 +21,23 @@ export declare class TokenDiscovery extends EventEmitter {
     private cleanupInterval;
     private processingQueue;
     private lastAnalysisTime;
+    private birdeyeAPI?;
+    private seenPoolAddresses;
     private MIN_LIQUIDITY;
     private MIN_VOLUME;
     private CLEANUP_INTERVAL_MS;
     private TOKEN_MAX_AGE_MS;
     private ANALYSIS_THROTTLE_MS;
+    private BLACKLIST;
+    private useMockDiscovery;
+    private tokenCache;
+    private rateLimiter;
+    private ws;
+    private wsBackoff;
+    private wsConnected;
     constructor(options?: TokenDiscoveryOptions, riskManager?: RiskManager);
     start(): Promise<boolean>;
+    private filterPool;
     stop(): void;
     private handleTokenEvent;
     private processTokenQueue;

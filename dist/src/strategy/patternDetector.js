@@ -199,6 +199,33 @@ class PatternDetector extends events_1.EventEmitter {
         }
         let bestMatch = null;
         let highestConfidence = 0;
+        // --- Volatility Squeeze Utility ---
+        /**
+         * Detects a volatility squeeze using Bollinger Bands.
+         * @param prices Array of recent prices (most recent last)
+         * @param currentPrice Optional current price (if not last in prices)
+         * @param period Number of periods for rolling window (default 20)
+         * @param squeezeThreshold Band width threshold for squeeze (default 0.06)
+         * @returns Squeeze/breakout status and metrics
+         */
+        function detectVolatilitySqueeze(prices, currentPrice, period = 20, squeezeThreshold = 0.06) {
+            // Require enough data
+            if (prices.length < period)
+                return { isSqueeze: false, breakout: false, squeezeStrength: 0, bandWidth: 0 };
+            const slice = prices.slice(-period);
+            const mean = slice.reduce((a, b) => a + b, 0) / period;
+            const std = Math.sqrt(slice.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / period);
+            const upper = mean + 2 * std;
+            const lower = mean - 2 * std;
+            const bandWidth = (upper - lower) / mean;
+            // Squeeze: bandWidth is very low (e.g. < 0.06 by default)
+            const isSqueeze = bandWidth < squeezeThreshold;
+            // Breakout: use currentPrice if provided, else last price in history
+            const breakout = (typeof currentPrice === 'number' ? currentPrice : prices[prices.length - 1]) > upper;
+            // Squeeze strength: inverse of bandWidth (capped at 1)
+            const squeezeStrength = Math.min(1, squeezeThreshold / (bandWidth + 1e-8));
+            return { isSqueeze, breakout, squeezeStrength, bandWidth };
+        }
         // Check each pattern
         for (const pattern of this.enabledPatterns) {
             const criteria = this.patternCriteria[pattern];
@@ -210,11 +237,31 @@ class PatternDetector extends events_1.EventEmitter {
             if (token.liquidity < criteria.liquidityMin) {
                 continue;
             }
-            // Calculate confidence score (0-100)
-            const priceChangeScore = Math.min(token.priceChange24h / criteria.priceChangeMin, 2) * 25;
-            const volumeChangeScore = Math.min(token.volumeChange24h / criteria.volumeChangeMin, 2) * 25;
-            const buyRatioScore = Math.min(token.buyRatio / criteria.buyRatioMin, 2) * 25;
-            const liquidityScore = Math.min(token.liquidity / criteria.liquidityMin, 2) * 25;
+            // --- Volatility Squeeze Logic ---
+            if (pattern === 'Volatility Squeeze' && Array.isArray(token.priceHistory) && token.priceHistory.length >= (criteria.period || 20)) {
+                // Allow period and squeeze threshold to be overridden in criteria
+                const period = criteria.period || 20;
+                const squeezeThreshold = criteria.squeezeThreshold || 0.06;
+                const { isSqueeze, breakout, squeezeStrength, bandWidth } = detectVolatilitySqueeze(token.priceHistory, token.price, period, squeezeThreshold);
+                if (isSqueeze && breakout) {
+                    const confidence = Math.round(80 + squeezeStrength * 20); // 80-100% confidence
+                    if (confidence > highestConfidence) {
+                        highestConfidence = confidence;
+                        bestMatch = {
+                            pattern,
+                            confidence,
+                            signalType: 'buy',
+                            meta: { squeezeStrength, bandWidth, period, squeezeThreshold }
+                        };
+                    }
+                    continue;
+                }
+            }
+            // --- Other Patterns (default logic) ---
+            const priceChangeScore = Math.min(100, Math.max(0, ((token.priceChange24h || 0) / (criteria.priceChangeMin || 1)) * 100));
+            const volumeChangeScore = Math.min(100, Math.max(0, ((token.volumeChange24h || 0) / (criteria.volumeChangeMin || 1)) * 100));
+            const buyRatioScore = Math.min(100, Math.max(0, ((token.buyRatio || 0) / (criteria.buyRatioMin || 1)) * 100));
+            const liquidityScore = Math.min(100, Math.max(0, ((token.liquidity || 0) / (criteria.liquidityMin || 1)) * 100));
             // Weight the scores based on importance
             const confidence = Math.round((priceChangeScore * 0.4) +
                 (volumeChangeScore * 0.3) +

@@ -2,13 +2,19 @@
 
 import { Connection, clusterApiUrl } from '@solana/web3.js';
 
+export function getNetworkClusterUrl(): string {
+  const network = process.env.NETWORK || 'devnet';
+  if (network === 'mainnet') return clusterApiUrl('mainnet-beta');
+  return clusterApiUrl('devnet');
+}
+
 class ConnectionManager {
   private static instance: ConnectionManager;
   private connection: Connection;
 
   private constructor() {
-    // Connect to the mainnet-beta cluster (adjust as needed)
-    this.connection = new Connection(clusterApiUrl('mainnet-beta'));
+    // Connect to the correct cluster based on NETWORK env var
+    this.connection = new Connection(getNetworkClusterUrl());
   }
 
   public static getInstance(): ConnectionManager {

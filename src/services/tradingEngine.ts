@@ -200,7 +200,7 @@ tradeLogger.logScenario('POSITIONS_FILE_SAVE_ERROR', {
             if (this.currentPositions.size >= this.maxPositions) {
                 tradeLogger.log({
                     timestamp: new Date().toISOString(),
-                    action: 'SKIP',
+                    action: 'skip',
                     token: marketData.mint,
                     pairAddress: marketData.pairAddress,
                     price: marketData.currentPrice,
@@ -223,7 +223,7 @@ tradeLogger.logScenario('POSITIONS_FILE_SAVE_ERROR', {
                 this.buyToken(new PublicKey(marketData.mint), marketData.pairAddress ?? '', marketData).then(buySuccess => {
                     tradeLogger.log({
                         timestamp: new Date().toISOString(),
-                        action: 'BUY',
+                        action: 'buy',
                         token: marketData.mint,
                         pairAddress: marketData.pairAddress,
                         price: marketData.currentPrice,
@@ -253,7 +253,7 @@ tradeLogger.logScenario('POSITIONS_FILE_SAVE_ERROR', {
                         : undefined;
                     tradeLogger.log({
                         timestamp: new Date().toISOString(),
-                        action: 'SELL',
+                        action: 'sell',
                         token: marketData.mint,
                         pairAddress: marketData.pairAddress,
                         price: marketData.currentPrice,

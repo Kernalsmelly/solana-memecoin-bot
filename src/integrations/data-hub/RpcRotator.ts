@@ -29,7 +29,7 @@ export class RpcRotator {
     for (let tries = 0; tries < this.endpoints.length; tries++) {
       const idx = (this.i + tries) % this.endpoints.length;
       const ep = this.endpoints[idx];
-      if (ep.cooldownUntil < now) {
+      if (ep && ep.cooldownUntil < now) {
         this.i = (idx + 1) % this.endpoints.length;
         return new Connection(ep.url);
       }

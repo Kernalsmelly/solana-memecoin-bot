@@ -6,15 +6,13 @@ interface VolatilitySqueezeOptions {
     checkIntervalMs: number;
 }
 export declare class VolatilitySqueeze extends EventEmitter {
-    private tokenAnalyzer;
-    private rateLimiter;
     private options;
     private lastCheckTime;
+    private interval;
     constructor(options?: Partial<VolatilitySqueezeOptions>);
-    start(): Promise<void>;
-    private checkForSqueeze;
-    private detectSqueeze;
+    start(): void;
     stop(): void;
+    private check;
 }
 export {};
 //# sourceMappingURL=volatilitySqueeze.d.ts.map

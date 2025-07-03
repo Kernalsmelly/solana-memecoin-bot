@@ -17,6 +17,21 @@ jobs:
         run: npm run build || echo "Build step skipped (non-blocking)"
       - name: Run tests with coverage
         run: npx vitest run --coverage --reporter verbose
+      - name: Enforce minimum coverage
+        run: |
+          COVERAGE=$(npx vitest run --coverage --reporter json-summary | grep total | grep lines | awk '{print $3}' | tr -d ',')
+          if [ "$(echo "$COVERAGE < 70" | bc)" -eq 1 ]; then
+            echo "Coverage $COVERAGE% is below threshold (70%)" && exit 1
+          fi
+      - name: Run dry-run simulation (1 min)
+        run: |
+          timeout 70s node scripts/dry-vol-sim.ts || (echo "Simulation failed" && exit 1)
+      - name: Run live-mode (mocked) smoke test
+        env:
+          LIVE_MODE: true
+          SOLANA_PRIVATE_KEY: "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64"
+        run: |
+          pnpm test src/tests/integration/liveModePipeline.test.ts || (echo "Live mode pipeline test failed" && exit 1)
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
         with:

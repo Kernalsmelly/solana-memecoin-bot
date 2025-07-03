@@ -1,4 +1,4 @@
-import riskManager from '../live/riskManager';
+import { RiskManager } from '../live/riskManager';
 import { TradeHistoryEntry } from '../types';
 import logger from '../utils/logger';
 
@@ -27,7 +27,10 @@ export async function handleDryRunFill(params: {
     ...meta
   };
   logger.info('[DryRunFill] Simulated fill', trade);
-  const rm = injectedRiskManager || riskManager;
+  const rm = injectedRiskManager;
+  if (!rm || typeof rm.recordTrade !== 'function') {
+    throw new Error('No valid riskManager provided to handleDryRunFill');
+  }
   if (rm && typeof rm.recordTrade === 'function') {
     rm.recordTrade(pnl); // Record trade with dummy P&L for now
   }

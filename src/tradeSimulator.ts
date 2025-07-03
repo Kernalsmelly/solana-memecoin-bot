@@ -168,7 +168,7 @@ export class TradeSimulator {
   public logMissedOpportunity(token: string, reason: string) {
     tradeLogger.log({
       timestamp: new Date().toISOString(),
-      action: 'SKIP',
+      action: 'skip',
       token,
       price: 0,
       reason,

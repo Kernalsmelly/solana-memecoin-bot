@@ -5,77 +5,76 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.VolatilitySqueeze = void 0;
 const events_1 = require("events");
-const tokenAnalyzer_1 = require("../analysis/tokenAnalyzer");
 const logger_1 = __importDefault(require("../utils/logger"));
-const rateLimiter_1 = require("../utils/rateLimiter");
+const axios_1 = __importDefault(require("axios"));
+const mockPriceFeed_1 = require("../utils/mockPriceFeed");
 class VolatilitySqueeze extends events_1.EventEmitter {
-    tokenAnalyzer;
-    rateLimiter;
     options;
     lastCheckTime;
+    interval;
     constructor(options = {}) {
         super();
-        this.tokenAnalyzer = new tokenAnalyzer_1.TokenAnalyzer();
-        this.rateLimiter = rateLimiter_1.globalRateLimiter;
         this.options = {
-            priceChangeThreshold: options.priceChangeThreshold || 20, // 20% default
-            volumeMultiplier: options.volumeMultiplier || 2, // 2x 1h SMA default
-            lookbackPeriodMs: options.lookbackPeriodMs || 30 * 60 * 1000, // 30 min
-            checkIntervalMs: options.checkIntervalMs || 60 * 1000 // 1 min
+            priceChangeThreshold: options.priceChangeThreshold ?? 20,
+            volumeMultiplier: options.volumeMultiplier ?? 2,
+            lookbackPeriodMs: options.lookbackPeriodMs ?? 30 * 60 * 1000,
+            checkIntervalMs: options.checkIntervalMs ?? 60 * 1000
         };
         this.lastCheckTime = Date.now();
+        this.interval = null;
     }
-    async start() {
-        // Start checking for patterns
-        setInterval(async () => {
-            await this.checkForSqueeze();
-        }, this.options.checkIntervalMs);
-    }
-    async checkForSqueeze() {
-        // Rate limit check
-        if (!await this.rateLimiter.canMakeRequest('birdeye')) {
-            return;
+    start() {
+        if (!this.interval) {
+            this.interval = setInterval(() => this.check(), this.options.checkIntervalMs);
         }
-        try {
-            // Get recent token data
-            const recentTokens = await this.tokenAnalyzer.getRecentTokens();
-            for (const token of recentTokens) {
-                const isSqueeze = await this.detectSqueeze(token);
-                if (isSqueeze) {
-                    this.emit('patternMatch', {
-                        token,
-                        pattern: 'volatilitySqueeze',
-                        suggestedPosition: 1 // Placeholder for position sizing
-                    });
-                }
-            }
-        }
-        catch (error) {
-            logger_1.default.error('Error in volatility squeeze detection:', error);
-        }
-    }
-    async detectSqueeze(token) {
-        // Get historical price data
-        const history = await this.tokenAnalyzer.getPriceHistory(token.address, this.options.lookbackPeriodMs);
-        if (!history || history.length < 2) {
-            return false;
-        }
-        // Calculate price change
-        const latestPrice = history[0].price;
-        const oldestPrice = history[history.length - 1].price;
-        const priceChange = ((latestPrice - oldestPrice) / oldestPrice) * 100;
-        // Calculate volume metrics
-        const currentVolume = history[0].volume;
-        const oneHourVolume = history
-            .slice(0, Math.floor(this.options.lookbackPeriodMs / (60 * 1000)))
-            .reduce((sum, entry) => sum + entry.volume, 0) / history.length;
-        // Check conditions
-        const priceCondition = Math.abs(priceChange) >= this.options.priceChangeThreshold;
-        const volumeCondition = currentVolume >= (oneHourVolume * this.options.volumeMultiplier);
-        return priceCondition && volumeCondition;
     }
     stop() {
-        // Cleanup any intervals
+        if (this.interval)
+            clearInterval(this.interval);
+        this.interval = null;
+    }
+    async check() {
+        try {
+            // Example: simulate a list of tokens (in real usage, get from discovery pipeline)
+            const tokens = [
+                { address: 'So11111111111111111111111111111111111111112', symbol: 'SOL', name: 'Solana', decimals: 9 },
+                { address: 'dummy', symbol: 'DUMMY', name: 'Dummy Token', decimals: 9 }
+            ];
+            for (const token of tokens) {
+                let price = 0;
+                let used = '';
+                // Try Jupiter API for real price
+                try {
+                    const resp = await axios_1.default.get(`https://quote-api.jup.ag/v6/price?ids=${token.address}`);
+                    if (resp.data && resp.data.data && resp.data.data[token.address]) {
+                        price = resp.data.data[token.address].price;
+                        used = 'jupiter';
+                    }
+                }
+                catch (e) {
+                    // Ignore and fall back
+                }
+                // Fallback to mock price feed
+                if (!price) {
+                    price = mockPriceFeed_1.mockPriceFeed.getPrice(token.address) || (0.00001 + Math.random() * 0.01);
+                    used = 'mock';
+                }
+                // Simulate price/volume history for squeeze detection
+                const priceHistory = Array.from({ length: 20 }, () => price * (0.95 + Math.random() * 0.1));
+                const volumeHistory = Array.from({ length: 20 }, () => Math.floor(1000 + Math.random() * 5000));
+                logger_1.default.info(`[VolatilitySqueeze] Using ${used} price source for ${token.symbol}: $${price.toFixed(6)}`);
+                // Emit a pattern match event as example
+                this.emit('patternMatch', {
+                    token: { ...token, price },
+                    priceHistory,
+                    volumeHistory,
+                    suggestedPosition: 0
+                });
+            }
+        }
+        catch (err) {
+            logger_1.default.error('VolatilitySqueeze check error', err);
+        }
     }
 }
 exports.VolatilitySqueeze = VolatilitySqueeze;

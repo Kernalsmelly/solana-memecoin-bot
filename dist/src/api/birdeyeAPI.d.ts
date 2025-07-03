@@ -6,13 +6,34 @@ import EventEmitter from 'events';
  */
 export declare class BirdeyeAPI extends EventEmitter {
     /**
-     * Connect to Birdeye WebSocket (stub).
+     * Connect to Birdeye WebSocket (stub for free tier).
+     * For free tier, use REST polling fallback.
+     * If WS is not implemented or fails, falls back to REST polling.
+     * @param _channels Optionally subscribe to specific channels (ignored in REST mode)
      */
-    connectWebSocket(_channels: string[]): Promise<boolean>;
+    connectWebSocket(_channels?: string[]): Promise<boolean>;
+    /**
+     * Fetch the current price for a given token address (REST endpoint).
+     * @param tokenAddress The token mint address (string)
+     * @returns Promise<number | null> The current price, or null if unavailable
+     */
+    fetchTokenPrice(tokenAddress: string): Promise<number | null>;
+    /**
+     * Stop all polling and cleanup timers.
+     */
+    stop(): void;
     key: string;
     private usePremium;
     private _pingId?;
-    constructor(apiKey: string);
+    private _pollTimer?;
+    private _seenPools;
+    private _pollInterval;
+    constructor(apiKey: string, pollInterval?: number);
+    /**
+     * Start REST polling for new pools (free tier fallback).
+     * Emits 'pool' events for new pools.
+     */
+    private _startRestPolling;
     /**
      * Fetch token metadata from Birdeye. Returns mock data if premium is disabled.
      */
