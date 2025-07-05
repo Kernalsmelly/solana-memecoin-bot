@@ -39,6 +39,17 @@ pnpm tsx scripts/backtest-vol-sim.ts --sweep
 
 ## Features
 
+### v2.2.0 Highlights
+- **Dynamic Position Sizing:** Trades are sized based on token volatility and account balance using the integrated RiskManager. No more fixed trade sizes; position adapts to market risk.
+- **Live Parameter Feedback Loop:** The bot automatically sweeps and tunes key strategy parameters (e.g., priceChangeThreshold, volumeMultiplier) every 5 trades, applying the best-performing set live.
+- **Concurrency & Cooldown:** Up to 3 tokens can be traded concurrently, with 60s cooldown enforced per token to avoid rapid re-trading. Managed by StrategyCoordinator.
+- **Metrics & Monitoring:** All trades are logged to `data/trade_log.csv`. A Prometheus-compatible metrics server exposes trade stats, win rate, PnL, drawdown, and parameter changes at `/metrics`.
+- **Event-Driven Architecture:** Concurrency and trade signal management are handled via events for robust, scalable operation.
+
+---
+
+## Features
+
 ### Pattern Detection
 
 ### Mega Pump & Dump
@@ -58,6 +69,22 @@ pnpm tsx scripts/backtest-vol-sim.ts --sweep
 ### Example Config Flags
 
 In your `.env` or config:
+
+- `BASE_MINT` — The input token for swaps (default: SOL mint `So111...`).
+- `MIN_LIQUIDITY_USD` — Minimum liquidity for token discovery (default: 10000 for mainnet dry-run).
+- `TEST_TARGET_TOKEN` — If no real token is discovered within 60s, this SPL token address will be used for a forced dry-run trade.
+
+#### Mainnet Dry-Run with Fallback
+
+To run a mainnet dry-run that will always attempt a trade (even if no tokens are discovered):
+
+```sh
+NETWORK=mainnet LIVE_MODE=true BASE_MINT=So11111111111111111111111111111111111111112 TEST_TARGET_TOKEN=<SPL_TOKEN_ADDRESS> pnpm run dry-vol-sim -- --minutes 10 --max-trades 2
+```
+
+- The bot will skip swaps where `inputMint === outputMint` and log a warning.
+- If no real tokens are found, it will use `TEST_TARGET_TOKEN` after 60 seconds.
+
 ```env
 STOP_LOSS_PCT=10
 TAKE_PROFIT_PCT=20
@@ -162,6 +189,29 @@ BIRDEYE_API_KEY=your_birdeye_api_key
 # Wallet Configuration
 WALLET_PRIVATE_KEY=your_wallet_private_key
 WALLET_ADDRESS=your_wallet_address
+
+---
+
+## v2.2.0 Release Notes
+
+### Added
+- **Dynamic Position Sizing** via RiskManager
+- **Live Parameter Feedback Loop** for auto-tuning strategy parameters
+- **Concurrency for up to 3 tokens** with cooldown management
+- **Detailed trade logging** and **metrics server**
+
+### Improved
+- Event-driven concurrency and risk management
+- Logging, error handling, and operational visibility
+
+### How to Use
+- See above: run as usual, but now with adaptive sizing, live tuning, and robust concurrency.
+- Monitor `/metrics` and `data/trade_log.csv` for performance.
+
+### Known Issues
+- If all trades are losing, review stop-loss logic, price feed accuracy, and consider further tuning.
+
+---
 
 # RPC Configuration
 RPC_ENDPOINT=https://solana-mainnet.rpc.examplenode.com
