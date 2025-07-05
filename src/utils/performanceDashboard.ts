@@ -64,6 +64,16 @@ export class PerformanceDashboard {
       });
     });
 
+    app.get('/api/pattern-events', (req: express.Request, res: express.Response) => {
+      // Example: { pumpDump: 3, smartTrap: 1, squeeze: 2 }
+      (res as any).json(this.patternEventCounts || {});
+    });
+
+    app.get('/api/pending-exits', (req: express.Request, res: express.Response) => {
+      // Example: [{ address, stopLoss, takeProfit, entryPrice, timestamp }]
+      (res as any).json(this.pendingExits || []);
+    });
+
     // Main dashboard HTML
     app.get('/', (req: express.Request, res: express.Response) => {
       (res as any).sendFile(path.join(__dirname, '../../public/dashboard.html'));

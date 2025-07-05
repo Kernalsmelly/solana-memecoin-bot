@@ -4,7 +4,30 @@ Advanced trading bot for Solana memecoins with real-time pattern detection and a
 
 ## Features
 
-### Pattern Detection 
+### Pattern Detection
+
+### Mega Pump & Dump
+- Detects when price increases by ≥ 40% over 12 hours and volume spikes ≥ 1.7× 12h SMA.
+- Emits `PatternMatchEvent` with `{ address, strategy: "pumpDump", suggestedSOL: 1 }`.
+
+### Smart Money Trap
+- Detects when price increases by ≥ 15%, volume ≥ 0.8× 1h SMA, and buyRatio ≥ 1.8.
+- Emits `PatternMatchEvent` with `{ address, strategy: "smartTrap", suggestedSOL: 1 }`.
+
+### Exit Strategies
+- After a pattern match trade, the bot schedules automated stop-loss and take-profit exits.
+- Stop-loss: triggers at `entryPrice * (1 – STOP_LOSS_PCT/100)`.
+- Take-profit: triggers at `entryPrice * (1 + TAKE_PROFIT_PCT/100)`.
+- Emits `ExitFilledEvent` or `ExitTimeoutEvent` as appropriate.
+
+### Example Config Flags
+
+In your `.env` or config:
+```env
+STOP_LOSS_PCT=10
+TAKE_PROFIT_PCT=20
+```
+ 
 - Volatility Squeeze (20%+ price change within 30 min with 2x volume)
 - (More patterns coming soon...)
 
