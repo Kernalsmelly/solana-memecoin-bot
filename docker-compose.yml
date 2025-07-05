@@ -1,0 +1,29 @@
+version: '3.8'
+services:
+  bot:
+    build: .
+    env_file:
+      - .env
+    environment:
+      - LIVE_MODE=false
+    restart: unless-stopped
+  dashboard:
+    image: node:20-slim
+    working_dir: /app
+    volumes:
+      - .:/app
+    command: ["pnpm", "run", "dashboard"]
+    env_file:
+      - .env
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+  alerts:
+    image: node:20-slim
+    working_dir: /app
+    volumes:
+      - .:/app
+    command: ["pnpm", "run", "alerts"]
+    env_file:
+      - .env
+    restart: unless-stopped

@@ -20,6 +20,8 @@ export class PerformanceDashboard {
   private dataDir: string;
   private refreshInterval: number;
   private performanceHistory: any[] = [];
+  private tradeHistory: any[] = [];
+  private pnlSeries: { timestamp: number; pnl: number }[] = [];
 
   constructor(options: DashboardOptions) {
     this.app = express();
@@ -40,6 +42,27 @@ export class PerformanceDashboard {
     const app = this.app as any;
     // Serve static assets
     app.use(express.static(path.join(__dirname, '../../public')));
+
+    // Monitoring endpoints
+    app.get('/api/trades', (req: express.Request, res: express.Response) => {
+      (res as any).json(this.tradeHistory.slice(-100));
+    });
+    app.get('/api/pnl', (req: express.Request, res: express.Response) => {
+      (res as any).json(this.pnlSeries.slice(-100));
+    });
+    app.get('/metrics', (req: express.Request, res: express.Response) => {
+      // Prometheus format
+      const metrics = this.riskManager.getMetrics();
+      let output = '';
+      output += `trades_executed_total ${metrics.tradesExecuted || 0}\n`;
+      output += `pnl_total ${metrics.pnlTotal || 0}\n`;
+      output += `drawdown_max ${metrics.drawdownMax || 0}\n`;
+      res.set('Content-Type', 'text/plain');
+      res.send(output);
+    });
+    app.get('/health', (req: express.Request, res: express.Response) => {
+      res.json({ status: 'ok', time: new Date().toISOString() });
+    });
 
     // API routes
     app.get('/api/metrics', (req: express.Request, res: express.Response) => {

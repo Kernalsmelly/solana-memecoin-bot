@@ -141,17 +141,33 @@
         
         <div class="row mt-2">
             <div class="col-12">
+                <div class="card mb-4">
+                    <div class="card-header bg-success text-white">
+                        PnL & Drawdown
+                    </div>
+                    <div class="card-body">
+                        <canvas id="pnlChart" height="80"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row mt-2">
+            <div class="col-12">
                 <div class="card">
                     <div class="card-header bg-secondary text-white">
                         Recent Trades
                     </div>
                     <div class="card-body">
                         <div class="table-responsive">
-                            <table class="table table-hover">
+                            <table class="table table-striped">
                                 <thead>
                                     <tr>
                                         <th>Time</th>
-                                        <th>Token</th>
+                                        <th>In</th>
+                                        <th>Out</th>
+                                        <th>Amount In</th>
+                                        <th>Amount Out</th>
+                                        <th>PnL</th>
                                         <th>Pattern</th>
                                         <th>Side</th>
                                         <th>Size</th>
@@ -173,34 +189,60 @@
     </div>
 
     <script>
-        // Top performing patterns from historical data
-        const topPatterns = [
-            { name: 'Mega Pump and Dump', performance: 187.5, drawdown: 65.2, emoji: '🔥' },
-            { name: 'Volatility Squeeze', performance: 75.9, drawdown: 43.2, emoji: '⚡️' },
-            { name: 'Smart Money Trap', performance: 66.8, drawdown: 40.0, emoji: '🎯' },
-            { name: 'Algorithmic Stop Hunt', performance: 61.0, drawdown: 37.9, emoji: '🚀' },
-            { name: 'Smart Money Reversal', performance: 55.3, drawdown: 35.6, emoji: '📈' }
-        ];
-        
-        // Performance chart
-        let performanceChart;
-        
-        // Initialize dashboard
-        document.addEventListener('DOMContentLoaded', function() {
-            // Render top patterns
-            renderPatterns();
-            
-            // Initialize chart
-            initChart();
-            
-            // Load initial data
-            loadDashboardData();
-            
-            // Set update interval (every 5 seconds)
-            setInterval(loadDashboardData, 5000);
-        });
-        
-        function renderPatterns() {
+        let pnlChart;
+        let pnlChartInstance;
+        let tradesTableBody;
+
+        function renderPnLChart(pnlSeries) {
+            const ctx = document.getElementById('pnlChart').getContext('2d');
+            const labels = pnlSeries.map(p => new Date(p.timestamp).toLocaleTimeString());
+            const data = pnlSeries.map(p => p.pnl);
+            if (pnlChartInstance) pnlChartInstance.destroy();
+            pnlChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [{
+                        label: 'PnL',
+                        data,
+                        borderColor: '#28a745',
+                        backgroundColor: 'rgba(40,167,69,0.1)',
+                        fill: true,
+                        tension: 0.2
+                    }]
+                },
+                options: {
+                    plugins: { legend: { display: false } },
+                    scales: { x: { display: true }, y: { display: true } }
+                }
+            });
+        }
+
+        function renderTrades(trades) {
+            const table = document.getElementById('trades-table-body');
+            if (!table) return;
+            table.innerHTML = '';
+            trades.slice().reverse().forEach(trade => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${trade.timestamp ? new Date(trade.timestamp).toLocaleTimeString() : ''}</td>
+                    <td>${trade.inputMint || ''}</td>
+                    <td>${trade.outputMint || ''}</td>
+                    <td>${trade.amountIn || ''}</td>
+                    <td>${trade.amountOut || ''}</td>
+                    <td>${trade.pnl !== undefined ? trade.pnl.toFixed(3) : ''}</td>
+                `;
+                table.appendChild(row);
+            });
+        }
+
+        function pollPnLAndTrades() {
+            fetch('/api/pnl').then(r => r.json()).then(renderPnLChart);
+            fetch('/api/trades').then(r => r.json()).then(renderTrades);
+        }
+        setInterval(pollPnLAndTrades, 5000);
+        window.onload = pollPnLAndTrades;
+
             const container = document.getElementById('patterns-container');
             
             topPatterns.forEach(pattern => {

@@ -23,6 +23,13 @@ jobs:
           if [ "$(echo "$COVERAGE < 70" | bc)" -eq 1 ]; then
             echo "Coverage $COVERAGE% is below threshold (70%)" && exit 1
           fi
+      - name: Mainnet dry-run simulation (fail on warning/error)
+        env:
+          NETWORK: mainnet
+          LIVE_MODE: true
+        run: |
+          pnpm run dry-vol-sim -- --minutes 1 --max-trades 1 2>&1 | tee mainnet-dryrun.log
+          grep -iE 'error|warning' mainnet-dryrun.log && (echo 'Console warning or error detected' && exit 1) || true
       - name: Run dry-run simulation (1 min)
         run: |
           timeout 70s node scripts/dry-vol-sim.ts || (echo "Simulation failed" && exit 1)

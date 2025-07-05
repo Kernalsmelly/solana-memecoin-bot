@@ -44,6 +44,50 @@ async function loadOHLCV(csvPath: string): Promise<OHLCV[]> {
 async function main() {
   const argv = minimist(process.argv.slice(2));
   const ohlcvPath = argv['csv'] || 'data/ohlcv.csv';
+
+  // Sweep mode
+  if (argv['sweep']) {
+    const priceChanges = [10, 15, 20, 25, 30];
+    const volumeMults = [1.5, 2, 2.5, 3];
+    const lookbacks = [15 * 60 * 1000, 30 * 60 * 1000, 60 * 60 * 1000];
+    const results: any[] = [];
+    logger.info('Running parameter sweep...');
+    const ohlcv = await loadOHLCV(ohlcvPath);
+    for (const priceChangeThreshold of priceChanges) {
+      for (const volumeMultiplier of volumeMults) {
+        for (const lookbackPeriod of lookbacks) {
+          const trades: Trade[] = [];
+          let lastTrade: Trade | null = null;
+          for (let i = 1; i < ohlcv.length; i++) {
+            const prev = ohlcv[i - 1];
+            const curr = ohlcv[i];
+            const priceDelta = ((curr.close - prev.open) / prev.open) * 100;
+            if (priceDelta > priceChangeThreshold && curr.volume > volumeMultiplier * prev.volume) {
+              if (!lastTrade || lastTrade.exitTime) {
+                lastTrade = { entryTime: curr.timestamp, entryPrice: curr.close };
+                trades.push(lastTrade);
+              }
+            } else if (lastTrade && !lastTrade.exitTime && priceDelta < -priceChangeThreshold) {
+              lastTrade.exitTime = curr.timestamp;
+              lastTrade.exitPrice = curr.close;
+              lastTrade.pnl = ((lastTrade.exitPrice - lastTrade.entryPrice) / lastTrade.entryPrice) * 100;
+            }
+          }
+          const pnls = trades.filter(t => t.pnl !== undefined).map(t => t.pnl!);
+          const mean = pnls.reduce((a, b) => a + b, 0) / (pnls.length || 1);
+          const stdev = Math.sqrt(pnls.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / (pnls.length || 1));
+          const sharpe = stdev > 0 ? mean / stdev : 0;
+          results.push({ priceChangeThreshold, volumeMultiplier, lookbackPeriod, mean, stdev, sharpe, trades: pnls.length });
+        }
+      }
+    }
+    results.sort((a, b) => b.sharpe - a.sharpe);
+    const top3 = results.slice(0, 3);
+    fs.writeFileSync('sweep-report.json', JSON.stringify(top3, null, 2));
+    logger.info('Sweep complete. Top 3 configs:', top3);
+    return;
+  }
+
   const priceChangeThreshold = argv['price-change'] ? Number(argv['price-change']) : 20;
   const volumeMultiplier = argv['volume-mult'] ? Number(argv['volume-mult']) : 2;
   const lookbackPeriod = argv['lookback'] ? Number(argv['lookback']) : 30 * 60 * 1000;

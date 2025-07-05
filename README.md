@@ -2,6 +2,41 @@
 
 Advanced trading bot for Solana memecoins with real-time pattern detection and automated trading capabilities.
 
+---
+
+## 🚀 Production Quickstart
+
+### 1. Build and Run with Docker
+```sh
+# Build the production image
+LIVE_MODE=false docker build -t solana-memecoin-bot .
+# Run the bot (dry-run)
+docker run --env-file .env -p 3000:3000 solana-memecoin-bot
+```
+
+### 2. Mainnet Live Trading
+```sh
+LIVE_MODE=true NETWORK=mainnet docker run --env-file .env -p 3000:3000 solana-memecoin-bot
+```
+
+### 3. Hardware Wallet (Ledger) [Production]
+- Set `SIGNER_TYPE=ledger` in your `.env`.
+- Connect Ledger and unlock Solana app before starting.
+- (See `src/orderExecution/signer.ts` for implementation status.)
+
+### 4. Dashboard & Health
+- Visit `http://localhost:3000` for real-time dashboard.
+- Prometheus metrics: `http://localhost:3000/metrics`
+- Healthcheck: `http://localhost:3000/health`
+
+### 5. Parameter Sweep
+```sh
+pnpm tsx scripts/backtest-vol-sim.ts --sweep
+# Results in sweep-report.json
+```
+
+---
+
 ## Features
 
 ### Pattern Detection

@@ -38,4 +38,15 @@ export class EnvVarSigner implements Signer {
   }
 }
 
-// (Optional) LedgerSigner for hardware wallet support can be added here
+// LedgerSigner for hardware wallet support (stub)
+export class LedgerSigner implements Signer {
+  public publicKey: PublicKey;
+  constructor() {
+    // TODO: Implement Ledger hardware wallet integration
+    // Use solana-ledger-wallet or similar library for production
+    throw new Error('LedgerSigner not implemented yet');
+  }
+  async signAndSendTransaction(tx: Transaction, connection: Connection): Promise<string> {
+    throw new Error('LedgerSigner not implemented yet');
+  }
+}
