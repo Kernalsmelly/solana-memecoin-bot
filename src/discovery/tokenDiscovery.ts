@@ -70,7 +70,13 @@ export class TokenDiscovery extends EventEmitter {
     this.riskManager = riskManager;
 
     // Hybrid logic: use mock discovery if no Birdeye/Helius API key
-    this.useMockDiscovery = !process.env.BIRDEYE_API_KEY && !process.env.HELIUS_API_KEY;
+    // Use env var for min liquidity if present
+    const envMinLiq = process.env.MIN_LIQUIDITY_USD ? Number(process.env.MIN_LIQUIDITY_USD) : undefined;
+    const minLiquidity = envMinLiq || options.minLiquidity || 10000;
+    this.MIN_LIQUIDITY = minLiquidity;
+
+    // Use mock discovery ONLY if not mainnet/live mode
+    this.useMockDiscovery = !process.env.BIRDEYE_API_KEY && !process.env.HELIUS_API_KEY && process.env.LIVE_MODE !== 'true' && process.env.NETWORK !== 'mainnet';
     if (this.useMockDiscovery) {
       logger.warn('[TokenDiscovery] No API key found, using mock token discovery.');
       mockTokenDiscovery.on('tokenDiscovered', (token: MockToken) => {
@@ -92,12 +98,12 @@ export class TokenDiscovery extends EventEmitter {
     }
     // Initialize token analyzer
     this.tokenAnalyzer = new TokenAnalyzer({
-      minLiquidity: options.minLiquidity || 1000,
+      minLiquidity: minLiquidity,
       minHolders: 10 // Default
     });
     
     // Set configuration options with defaults
-    this.MIN_LIQUIDITY = options.minLiquidity || 1000;
+    this.MIN_LIQUIDITY = minLiquidity;
     this.MIN_VOLUME = options.minVolume || 500;
     this.CLEANUP_INTERVAL_MS = options.cleanupIntervalMs || 5 * 60 * 1000; // 5 minutes
     this.TOKEN_MAX_AGE_MS = options.maxTokenAge || 24 * 60 * 60 * 1000; // 24 hours
@@ -106,6 +112,27 @@ export class TokenDiscovery extends EventEmitter {
     // TODO: Allow dynamic update of blacklist from user config or external source
     // Start cleanup interval
     this.startCleanupInterval();
+
+    // Fallback: If no real token discovered in X seconds, emit TEST_TARGET_TOKEN
+    const fallbackSecs = process.env.TOKEN_DISCOVERY_FALLBACK_SECS ? Number(process.env.TOKEN_DISCOVERY_FALLBACK_SECS) : 60;
+    const testTargetToken = process.env.TEST_TARGET_TOKEN;
+    if (testTargetToken) {
+      setTimeout(() => {
+        if (this.tokensDiscovered.size === 0) {
+          logger.warn(`[TokenDiscovery] No real tokens found after ${fallbackSecs}s, emitting TEST_TARGET_TOKEN`);
+          this.emit('tokenDiscovered', {
+            address: testTargetToken,
+            symbol: 'TEST',
+            name: 'Test Token',
+            decimals: 9,
+            liquidity: 999999,
+            volume: 99999,
+            price: 1,
+            createdAt: Date.now(),
+          });
+        }
+      }, fallbackSecs * 1000);
+    }
   }
   
   

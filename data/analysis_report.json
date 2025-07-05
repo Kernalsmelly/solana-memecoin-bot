@@ -1,0 +1,24 @@
+[
+  {
+    "token": "MOCK2",
+    "trades": 34,
+    "wins": 0,
+    "losses": 34,
+    "winRate": 0,
+    "totalPnL": -248.77184661450474,
+    "maxDrawdown": -248.77184661450474,
+    "avgTradePnL": -7.3168190180736685,
+    "paramSummary": {}
+  },
+  {
+    "token": "MOCK1",
+    "trades": 36,
+    "wins": 0,
+    "losses": 36,
+    "winRate": 0,
+    "totalPnL": -821.2459547229533,
+    "maxDrawdown": -821.2459547229533,
+    "avgTradePnL": -22.812387631193147,
+    "paramSummary": {}
+  }
+]

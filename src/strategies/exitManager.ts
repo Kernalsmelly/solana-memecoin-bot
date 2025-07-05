@@ -36,7 +36,7 @@ export class ExitManager extends EventEmitter {
   private takeProfitPct: number;
   private timeoutMs: number;
 
-  constructor({ stopLossPct = 5, takeProfitPct = 10, timeoutMs = 12 * 60 * 60 * 1000 } = {}) {
+  constructor({ stopLossPct = 0.1, takeProfitPct = 0.1, timeoutMs = 20000 } = {}) {
     super();
     this.stopLossPct = stopLossPct;
     this.takeProfitPct = takeProfitPct;

@@ -1,8 +1,10 @@
-import { Transaction, Connection, PublicKey, Signer as Web3Signer } from '@solana/web3.js';
+import { Transaction, VersionedTransaction, Connection, PublicKey, Keypair } from '@solana/web3.js';
+
+export type AnySolanaTx = Transaction | VersionedTransaction;
 
 export interface Signer {
   publicKey: PublicKey;
-  signAndSendTransaction(tx: Transaction, connection: Connection): Promise<string>;
+  signAndSendTransaction(tx: AnySolanaTx, connection: Connection): Promise<string>;
 }
 
 // Mock signer for dry-run mode
@@ -20,21 +22,28 @@ export class MockSigner implements Signer {
 // EnvVar-based signer for live mode (uses private key from env)
 export class EnvVarSigner implements Signer {
   public publicKey: PublicKey;
-  private keypair: Web3Signer;
+  private keypair: Keypair;
   constructor() {
     const secret = process.env.SOLANA_PRIVATE_KEY;
     if (!secret) throw new Error('Missing SOLANA_PRIVATE_KEY');
     const arr = secret.split(',').map(Number);
-    // @ts-ignore
-    this.keypair = Web3Signer.fromSecretKey(new Uint8Array(arr));
+    this.keypair = Keypair.fromSecretKey(new Uint8Array(arr));
     this.publicKey = this.keypair.publicKey;
   }
-  async signAndSendTransaction(tx: Transaction, connection: Connection): Promise<string> {
-    tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
-    tx.feePayer = this.publicKey;
-    tx.sign(this.keypair);
-    const raw = tx.serialize();
-    return await connection.sendRawTransaction(raw, { skipPreflight: false });
+  async signAndSendTransaction(tx: Transaction | VersionedTransaction, connection: Connection): Promise<string> {
+    if (tx instanceof Transaction) {
+      tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+      tx.feePayer = this.publicKey;
+      tx.sign(this.keypair);
+      const raw = tx.serialize();
+      return await connection.sendRawTransaction(raw, { skipPreflight: false });
+    } else if (tx instanceof (await import('@solana/web3.js')).VersionedTransaction) {
+      // Assume already signed by Jupiter, just send
+      const raw = tx.serialize();
+      return await connection.sendRawTransaction(raw, { skipPreflight: false });
+    } else {
+      throw new Error('Unknown transaction type');
+    }
   }
 }
 

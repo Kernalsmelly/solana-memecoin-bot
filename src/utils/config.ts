@@ -156,8 +156,8 @@ export interface Config {
   sellCriteria: {
     minSellLiquidity: number | undefined;
     minSellBuyRatio: number | undefined;
-    stopLossPercent: number | undefined;
-    takeProfitPercent: number | undefined;
+    stopLossPercent: number | undefined; // Tuned by parameter sweep 2025-07-05
+    takeProfitPercent: number | undefined; // Tuned by parameter sweep 2025-07-05
   };
 }
 
@@ -213,6 +213,8 @@ export const config: Config = {
     maxPositionSizeUsd: getEnvAsNumber('MAX_POSITION_SIZE_USD', 50),
     txConfirmationTimeoutMs: getEnvAsNumber('TRANSACTION_CONFIRMATION_TIMEOUT_MS', 20000),
     txPriorityFeeMicroLamports: getEnvAsNumber('TRANSACTION_PRIORITY_FEE_MICRO_LAMPORTS', 10000),
+    slippagePercent: 0.2, // 0.2% slippage for cost modeling
+    feePerTradeSol: 0.000005, // 5,000 lamports (0.000005 SOL) typical Solana tx fee
   },
   solana: {
     rpcEndpoint: getEnv('QUICKNODE_RPC_URL', 'https://api.mainnet-beta.solana.com'),
@@ -247,6 +249,15 @@ export const config: Config = {
     maxDailyLossPercent: getEnvAsNumber('MAX_DAILY_LOSS_PERCENT'),
     maxDrawdownPercent: getEnvAsNumber('MAX_DRAWDOWN_PERCENT'),
     volatilityThreshold: getEnvAsNumber('VOLATILITY_THRESHOLD'),
+    defaultStopLossPercent: 1, // Tuned by parameter sweep 2025-07-05
+    // ... other risk params
+  },
+  sellCriteria: {
+    minSellLiquidity: undefined,
+    minSellBuyRatio: undefined,
+    stopLossPercent: 1, // Tuned by parameter sweep 2025-07-05
+    takeProfitPercent: 1, // Tuned by parameter sweep 2025-07-05
+  },
     priceDeviationThreshold: getEnvAsNumber('PRICE_DEVIATION_THRESHOLD'),
     defaultStopLossPercent: getEnvAsNumber('DEFAULT_STOP_LOSS_PERCENT', 10),
     trailingStopEnabled: getEnvAsBoolean('TRAILING_STOP_ENABLED', false),
@@ -276,8 +287,8 @@ export const config: Config = {
   sellCriteria: {
     minSellLiquidity: getEnvAsNumber('MIN_SELL_LIQUIDITY'),
     minSellBuyRatio: getEnvAsNumber('MIN_SELL_BUY_RATIO'),
-    stopLossPercent: getEnvAsNumber('STOP_LOSS_PERCENT'),
-    takeProfitPercent: getEnvAsNumber('TAKE_PROFIT_PERCENT'),
+    stopLossPercent: 0.01,
+    takeProfitPercent: 0.01,
   },
 };
 

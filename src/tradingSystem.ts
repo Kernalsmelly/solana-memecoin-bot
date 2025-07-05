@@ -8,8 +8,13 @@ import { ContractValidator, createContractValidator } from './contractValidator'
 import { TokenMonitor } from './tokenMonitor';
 import { PersistenceManager } from './persistenceManager';
 import logger from './utils/logger';
+import { StrategyCoordinator } from './strategy/StrategyCoordinator';
+import { MomentumBreakoutStrategy } from './strategies/momentumBreakout';
+import { VolatilitySqueeze } from './strategies/volatilitySqueeze';
 
 export class TradingSystem {
+    private strategyCoordinator: StrategyCoordinator;
+    private latestPatterns: Map<string, any> = new Map();
     private connection: Connection;
     private orderExecution: LiveOrderExecution;
     private contractValidator: ContractValidator;
@@ -18,6 +23,43 @@ export class TradingSystem {
     // private state: any; // Removed TradingState
 
     constructor(connection: Connection) {
+        // Register both MomentumBreakoutStrategy and VolatilitySqueeze for pilot
+        const momentumBreakout = new MomentumBreakoutStrategy({ cooldownSec: 300 });
+        const squeeze = new VolatilitySqueeze({ priceChangeThreshold: 20, volumeMultiplier: 2 });
+        this.strategyCoordinator = new StrategyCoordinator({
+            strategies: [momentumBreakout, squeeze],
+            enabledStrategies: ['momentumBreakout', 'volatilitySqueeze'],
+            cooldownSec: 300
+        });
+        this.strategyCoordinator.on('tokenDispatch', async (tokenAddress: string) => {
+            const pattern = this.latestPatterns.get(tokenAddress);
+            if (pattern) {
+                logger.info(`[Coordinator] Dispatching trade for ${tokenAddress}`);
+                try {
+                    if (this.canOpenPosition()) {
+                        await this.executeSignal({
+                            tokenAddress: pattern.tokenAddress,
+                            price: pattern.metrics.price,
+                            stopLoss: pattern.metrics.price * 0.95,
+                            positionSize: this.calculatePositionSize(pattern.metrics.liquidity),
+                            confidence: pattern.confidence,
+                            timestamp: Date.now(),
+                            timeframe: '1h',
+                            signalType: 'buy'
+                        });
+                    } else {
+                        logger.info(`[Coordinator] Cannot open position, skipping trade for ${tokenAddress}`);
+                    }
+                } catch (e) {
+                    logger.error(`[Coordinator] Error dispatching trade for ${tokenAddress}:`, e);
+                }
+                // Always mark token as complete after trade attempt
+                this.strategyCoordinator.completeToken(tokenAddress);
+            } else {
+                logger.warn(`[Coordinator] No pattern found for dispatched token ${tokenAddress}`);
+                this.strategyCoordinator.completeToken(tokenAddress);
+            }
+        });
         this.connection = connection;
         this.orderExecution = new LiveOrderExecution(connection, Keypair.generate());
         this.contractValidator = createContractValidator(connection);
@@ -71,6 +113,18 @@ export class TradingSystem {
     }
 
     private async handlePatternDetected(pattern: any): Promise<void> {
+        try {
+            // Store the pattern for later dispatch
+            this.latestPatterns.set(pattern.tokenAddress, pattern);
+            // Enqueue the token for concurrency/cooldown-controlled trading
+            this.strategyCoordinator.enqueueToken(pattern.tokenAddress);
+        } catch (error) {
+            logger.error('[DEBUG] Error handling pattern:', error instanceof Error ? error.message : 'Unknown error');
+        }
+    }
+
+    // [Legacy implementation below for reference, now replaced by concurrency coordinator]
+    /*
         try {
             logger.info('[DEBUG] handlePatternDetected called', { pattern });
             // Generate trading signal

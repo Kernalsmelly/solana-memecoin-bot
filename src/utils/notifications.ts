@@ -25,17 +25,21 @@ const DEFAULT_OPTIONS: AlertOptions = {
  * @param options Notification options
  */
 export async function sendPatternMatchAlert(event: any) {
-  const msg = `🚦 PatternMatchEvent: *${event.strategy || 'unknown'}*\nToken: \\`${event.address}\\`\nSuggested SOL: ${event.suggestedSOL}\nDetails: ${JSON.stringify(event.details)}`;
+  const msg = `🚦 PatternMatchEvent: *${event.strategy || 'unknown'}*\nToken: \`${event.address}\`\nSuggested SOL: ${event.suggestedSOL}\nDetails: ${JSON.stringify(event.details)}`;
   return sendAlert(msg, 'INFO');
 }
 
 export async function sendExitFilledAlert(event: any) {
-  const msg = `🏁 ExitFilledEvent: *${event.exitType}*\nToken: \\`${event.address}\\`\nEntry: ${event.entryPrice}\nExit: ${event.exitPrice}\nTime: ${new Date(event.timestamp).toLocaleString()}`;
+  const msg = `🏁 ExitFilledEvent: *${event.exitType}*\nToken: \`${event.address}\`\nEntry: ${event.entryPrice}\nExit: ${event.exitPrice}\nTime: ${new Date(event.timestamp).toLocaleString()}`;
   return sendAlert(msg, 'INFO');
 }
 
 export async function sendExitTimeoutAlert(event: any) {
-  const msg = `⏰ ExitTimeoutEvent\nToken: \\`${event.address}\\`\nReason: ${event.reason}\nEntry: ${event.entryPrice}\nTime: ${new Date(event.timestamp).toLocaleString()}`;
+  const msg = `⏰ ExitTimeoutEvent
+Token: ${event.address}
+Reason: ${event.reason}
+Entry: ${event.entryPrice}
+Time: ${new Date(event.timestamp).toLocaleString()}`;
   return sendAlert(msg, 'WARNING');
 }
 

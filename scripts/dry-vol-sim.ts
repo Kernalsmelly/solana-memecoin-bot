@@ -1,6 +1,8 @@
 import 'dotenv/config';
 import { TokenDiscovery } from '../src/discovery/tokenDiscovery';
 import { VolatilitySqueeze } from '../src/strategies/volatilitySqueeze';
+import { ParameterSweepManager, SweepParams } from '../src/strategy/ParameterSweepManager';
+import { StrategyCoordinator } from '../src/strategy/StrategyCoordinator';
 import logger from '../src/utils/logger';
 import { globalRateLimiter } from '../src/utils/rateLimiter';
 
@@ -28,20 +30,75 @@ async function main() {
       cleanupIntervalMs: 5 * 60 * 1000  // 5 minutes
     });
 
+    // Parameter sweep grid (customize as needed)
+    const paramGrid: SweepParams[] = [
+      { priceChangeThreshold: 15, volumeMultiplier: 1.5 },
+      { priceChangeThreshold: 20, volumeMultiplier: 2 },
+      { priceChangeThreshold: 25, volumeMultiplier: 2.5 }
+    ];
+    const sweepManager = new ParameterSweepManager(paramGrid, 5); // 5 trades per batch
+    sweepManager.on('ParameterUpdateEvent', (params) => {
+      logger.info(`[ParameterUpdateEvent] New params: ${JSON.stringify(params)}`);
+      // Update VolatilitySqueeze params on the fly
+      volatilitySqueeze.setParams(params);
+    });
+    const initialParams = sweepManager.getCurrentParams();
     const volatilitySqueeze = new VolatilitySqueeze({
-      priceChangeThreshold: 20,  // 20% price change
-      volumeMultiplier: 2,       // 2x 1h volume
-      lookbackPeriodMs: 30 * 60 * 1000, // 30 minutes
-      checkIntervalMs: 60 * 1000  // 1 minute
+      ...initialParams,
+      lookbackPeriodMs: 30 * 60 * 1000,
+      checkIntervalMs: 60 * 1000
     });
 
-    // Set up event listeners
+    // Multi-token concurrency: setup strategy coordinator
+    const coordinator = new StrategyCoordinator({ maxConcurrent: 3, cooldownMs: 2 * 60 * 1000 }); // 3 tokens, 2min cooldown
     discovery.on('tokenDiscovered', async (token) => {
       logger.info(`New token discovered: ${token.address}`);
+      coordinator.enqueueToken(token.address);
     });
-
-    const { fetchJupiterQuote } = await import('../src/orderExecution/jupiterQuote');
-    const { handleDryRunFill } = await import('../src/orderExecution/dryRunFill');
+    volatilitySqueeze.on('patternMatch', async (match) => {
+      coordinator.enqueueToken(match.token.address);
+    });
+    coordinator.on('tokenDispatch', async (tokenAddress: string) => {
+      logger.info(`[Coordinator] Dispatching execution for token ${tokenAddress}`);
+      // Insert execution logic here (swap, order, etc.)
+      // For demo, just simulate a fill and call completeToken
+      try {
+        // Fetch Jupiter quote for token/SOL
+        const inputMint = process.env.BASE_MINT || 'So11111111111111111111111111111111111111112';
+        const outputMint = tokenAddress;
+        if (inputMint === outputMint) {
+          logger.warn(`[SwapLogic] Skipping swap: inputMint and outputMint are the same (${inputMint})`);
+          coordinator.completeToken(tokenAddress);
+          return;
+        }
+        const amount = Number(process.env.SIM_AMOUNT) || 1000000;
+        const slippageBps = Number(process.env.SLIPPAGE_BPS) || 50;
+        const { fetchJupiterQuote } = await import('../src/orderExecution/jupiterQuote');
+        const quote = await fetchJupiterQuote({ inputMint, outputMint, amount, slippageBps });
+        if (!quote) {
+          logger.warn('[JupiterQuote] No quote available for token', tokenAddress);
+          coordinator.completeToken(tokenAddress);
+          return;
+        }
+        logger.info('[JupiterQuote]', JSON.stringify(quote));
+        // Simulate fill
+        const fill = {
+          action: 'buy',
+          tokenAddress,
+          quantity: amount / 1e9,
+          price: quote.price || 0,
+          meta: { quote }
+        };
+        const { handleDryRunFill } = await import('../src/orderExecution/dryRunFill');
+        await handleDryRunFill(fill, riskManager);
+        fills.push(fill);
+        fillCount++;
+        coordinator.completeToken(tokenAddress);
+      } catch (e) {
+        logger.error(`[Coordinator] Execution error for ${tokenAddress}:`, e);
+        coordinator.completeToken(tokenAddress);
+      }
+    });
     const fills: any[] = [];
 
     // Inject a real RiskManager for dry-run tracking
@@ -56,7 +113,9 @@ async function main() {
     let killSwitchEngaged = false;
 
     // Live-mode: set up connection, signer, and order manager
-    let connection, signer, orderManager;
+    let connection: import('@solana/web3.js').Connection | undefined;
+    let signer: EnvVarSigner | undefined;
+    let orderManager: OrderManager | undefined;
     if (liveMode) {
       connection = await ConnectionManager.getInstance().getConnection();
       signer = new EnvVarSigner();
@@ -70,6 +129,36 @@ async function main() {
         fillCount++;
         // Risk manager update
         riskManager.recordTrade(0); // Replace 0 with actual PnL if available
+        sweepManager.recordTrade(order.pnl ?? 0); // Track PnL for parameter sweep
+
+        // --- Automated parameter sweep feedback (live mode) ---
+        if (liveMode && sweepManager.getHistory().length > 0 && sweepManager.getHistory().length % 2 === 0) { // every 2 batches for demo
+          // Run a local sweep around the current params
+          const lastBest = sweepManager.getCurrentParams();
+          const sweepGrid = [
+            { priceChangeThreshold: lastBest.priceChangeThreshold - 2, volumeMultiplier: lastBest.volumeMultiplier },
+            { priceChangeThreshold: lastBest.priceChangeThreshold, volumeMultiplier: lastBest.volumeMultiplier },
+            { priceChangeThreshold: lastBest.priceChangeThreshold + 2, volumeMultiplier: lastBest.volumeMultiplier },
+            { priceChangeThreshold: lastBest.priceChangeThreshold, volumeMultiplier: lastBest.volumeMultiplier - 0.2 },
+            { priceChangeThreshold: lastBest.priceChangeThreshold, volumeMultiplier: lastBest.volumeMultiplier + 0.2 }
+          ];
+          let bestSharpe = -Infinity, bestParams = lastBest;
+          for (const params of sweepGrid) {
+            // Simulate performance (replace with real backtest if available)
+            const mockPnls = sweepManager.getHistory().slice(-2).map(b => b.totalPnL + Math.random() - 0.5); // mock
+            const mean = mockPnls.reduce((a, b) => a + b, 0) / mockPnls.length;
+            const std = Math.sqrt(mockPnls.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / (mockPnls.length || 1));
+            const sharpe = std ? mean / std : mean;
+            if (sharpe > bestSharpe) {
+              bestSharpe = sharpe;
+              bestParams = params;
+            }
+          }
+          logger.info(`[ParamSweep] Feedback sweep complete. Best params: ${JSON.stringify(bestParams)} (Sharpe-like: ${bestSharpe.toFixed(2)})`);
+          volatilitySqueeze.setParams(bestParams);
+          sweepManager.emit('ParameterUpdateEvent', bestParams);
+        }
+
         if (liveMode && fillCount >= maxTrades && !killSwitchEngaged) {
           notificationManager.notify('Test alert: Max trades reached in live-mode devnet.', 'all');
           logger.warn('🚨 Live-Mode kill-switch engaged');
@@ -88,8 +177,12 @@ async function main() {
       logger.info(`Suggested position size: ${match.suggestedPosition} SOL`);
       try {
         // Fetch Jupiter quote for token/SOL
-        const inputMint = process.env.SIM_INPUT_MINT || 'So11111111111111111111111111111111111111112'; // SOL as default input
+        const inputMint = process.env.BASE_MINT || 'So11111111111111111111111111111111111111112'; // Use BASE_MINT (SOL default)
         const outputMint = match.token.address;
+        if (inputMint === outputMint) {
+          logger.warn(`[SwapLogic] Skipping swap: inputMint and outputMint are the same (${inputMint})`);
+          return;
+        }
 
         if (liveMode) {
           // --- REAL JUPITER SWAP LOGIC (DEVNET) ---
@@ -114,14 +207,16 @@ async function main() {
           const transaction = VersionedTransaction.deserialize(swapTxBuf);
 
           // 3. Sign transaction with wallet
-          transaction.sign([signer.keypair]);
-
-          // 4. Send transaction
-          const signature = await connection.sendRawTransaction(transaction.serialize(), { skipPreflight: false });
+          const signature = await signer!.signAndSendTransaction(transaction, connection!);
           logger.info(`[OrderSubmitted] Signature: ${signature}`);
 
-          // 5. Register with OrderManager for confirmation tracking
-          orderManager.placeOrder(transaction);
+          // Register with OrderManager for confirmation tracking (if supported for VersionedTransaction)
+          try {
+            // @ts-ignore - extend OrderManager if needed
+            orderManager.placeOrder(transaction);
+          } catch (e) {
+            logger.warn('OrderManager.placeOrder not compatible with VersionedTransaction');
+          }
           // Confirmation and fillCount handled by orderManager event
           return;
         }

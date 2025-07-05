@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { MockSigner, EnvVarSigner, LedgerSigner } from '../orderExecution/signer';
-import { PublicKey, Transaction, Connection } from '@solana/web3.js';
+import { PublicKey, Transaction, Connection, Keypair } from '@solana/web3.js';
 
 describe('Signer Implementations', () => {
   it('MockSigner returns fake signature', async () => {
@@ -23,11 +23,13 @@ describe('Signer Implementations', () => {
   });
 
   it('EnvVarSigner signs and sends (mocked)', async () => {
-    process.env.SOLANA_PRIVATE_KEY = Array(64).fill(1).join(',');
+    // Use a real random Keypair for the env var
+    const kp = Keypair.generate();
+    process.env.SOLANA_PRIVATE_KEY = Array.from(kp.secretKey).join(',');
     const signer = new EnvVarSigner();
     // Mock connection
     const connection = {
-      getLatestBlockhash: async () => ({ blockhash: 'abc123' }),
+      getLatestBlockhash: async () => ({ blockhash: '11111111111111111111111111111111' }), // valid 32-byte base58
       sendRawTransaction: async () => 'real_sig_123',
     } as any;
     const tx = new Transaction();

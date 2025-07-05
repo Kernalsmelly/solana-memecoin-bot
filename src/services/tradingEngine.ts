@@ -21,6 +21,10 @@ interface PositionInfo {
 }
 
 export class TradingEngine {
+    private riskManager: RiskManager;
+    private parameterFeedbackLoop: ParameterFeedbackLoop;
+    private volatilitySqueeze: VolatilitySqueeze;
+
     // ... (existing properties)
     /**
      * Returns all current positions as an array
@@ -40,6 +44,28 @@ export class TradingEngine {
     private maxPositions: number;
 
     constructor(connection: Connection, config: Config, wallet: Keypair) {
+        this.riskManager = new RiskManager(config.trading);
+
+        // --- Initialize VolatilitySqueeze and ParameterFeedbackLoop ---
+        this.volatilitySqueeze = new VolatilitySqueeze({
+            priceChangeThreshold: config.trading?.priceChangeThreshold ?? 20,
+            volumeMultiplier: config.trading?.volumeMultiplier ?? 2
+        });
+        this.parameterFeedbackLoop = new ParameterFeedbackLoop(
+            {
+                priceChangeThreshold: config.trading?.priceChangeThreshold ?? 20,
+                volumeMultiplier: config.trading?.volumeMultiplier ?? 2
+            },
+            path.resolve(__dirname, '..', '..', 'data', 'trade_log.csv'),
+            25, // buffer size
+            5   // sweep interval
+        );
+        this.parameterFeedbackLoop.loadRecentTrades();
+        this.parameterFeedbackLoop.on('ParameterUpdateEvent', ({ newParams }) => {
+            this.volatilitySqueeze.setParams(newParams);
+            logger.info(`[ParameterFeedbackLoop] Updated VolatilitySqueeze params:`, newParams);
+        });
+
         this.connection = connection;
         this.config = config;
         this.wallet = wallet;
@@ -221,7 +247,7 @@ tradeLogger.logScenario('POSITIONS_FILE_SAVE_ERROR', {
                 logger.info(`[TradingEngine] BUY criteria met for ${marketData.mint}: ${reason}`);
                 // Pass marketData to buyToken to record entry price
                 this.buyToken(new PublicKey(marketData.mint), marketData.pairAddress ?? '', marketData).then(buySuccess => {
-                    tradeLogger.log({
+                    const trade = {
                         timestamp: new Date().toISOString(),
                         action: 'buy',
                         token: marketData.mint,
@@ -230,7 +256,9 @@ tradeLogger.logScenario('POSITIONS_FILE_SAVE_ERROR', {
                         amount: undefined, // Optionally fill with actual amount bought
                         reason: reason,
                         success: buySuccess
-                    });
+                    };
+                    tradeLogger.log(trade);
+                    this.parameterFeedbackLoop.onTrade(trade);
                     // TODO: Alert on buy if desired
                     if(buySuccess) {
                         logger.info(`[TradingEngine] Successfully bought ${marketData.mint}.`);
@@ -251,17 +279,19 @@ tradeLogger.logScenario('POSITIONS_FILE_SAVE_ERROR', {
                     const pnl = positionInfo && positionInfo.entryPrice > 0
                         ? ((marketData.currentPrice - positionInfo.entryPrice) / positionInfo.entryPrice) * 100
                         : undefined;
-                    tradeLogger.log({
+                    const trade = {
                         timestamp: new Date().toISOString(),
                         action: 'sell',
                         token: marketData.mint,
                         pairAddress: marketData.pairAddress,
                         price: marketData.currentPrice,
                         amount: undefined, // Optionally fill with actual amount sold
-                        pnl,
+                        pnl: pnl,
                         reason: reason,
                         success: sellSuccess
-                    });
+                    };
+                    tradeLogger.log(trade);
+                    this.parameterFeedbackLoop.onTrade(trade);
                     // TODO: Alert on sell if desired
                     if(sellSuccess) {
                         logger.info(`[TradingEngine] Successfully sold ${marketData.mint}.`);
@@ -510,6 +540,24 @@ tradeLogger.logScenario('TX_ERROR', {
      * @returns True if the buy operation succeeded, false otherwise.
      */
     public async buyToken(outputMint: PublicKey, pairAddress?: string, marketData?: any): Promise<boolean> {
+        // --- Dynamic Position Sizing ---
+        let positionSizeSol = 0.1; // default fallback
+        try {
+            // Fetch wallet SOL balance
+            const balanceLamports = await this.connection.getBalance(this.wallet.publicKey);
+            const balanceSol = balanceLamports / 1e9;
+            const tokenSymbol = marketData?.symbol || outputMint.toString();
+            positionSizeSol = this.riskManager.getDynamicPositionSizeSol(
+                tokenSymbol,
+                balanceSol,
+                this.config.trading?.riskPct ?? 0.01,
+                this.config.trading?.maxPositionSize ?? 1
+            );
+            logger.info(`[RiskManager] Computed position size for ${tokenSymbol}: ${positionSizeSol} SOL (Wallet balance: ${balanceSol} SOL)`);
+        } catch (err) {
+            logger.warn(`[RiskManager] Failed to compute dynamic position size: ${err}`);
+        }
+
         if ((this.config as any).signalOnlyMode) {
             // --- Signal-Only Mode: Send Discord notification and log ---
             const payload: SignalPayload = {

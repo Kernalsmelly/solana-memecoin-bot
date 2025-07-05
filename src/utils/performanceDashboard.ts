@@ -53,10 +53,29 @@ export class PerformanceDashboard {
     app.get('/metrics', (req: express.Request, res: express.Response) => {
       // Prometheus format
       const metrics = this.riskManager.getMetrics();
+      // Trades/sec (last 5 min)
+      const now = Date.now();
+      const tradesLast5m = (this.tradeHistory || []).filter(t => now - t.timestamp < 5 * 60 * 1000);
+      const tradesPerSec = tradesLast5m.length / 300;
+      // Avg PnL
+      const pnls = (this.tradeHistory || []).map(t => t.pnl).filter(p => typeof p === 'number');
+      const avgPnl = pnls.length ? pnls.reduce((a, b) => a + b, 0) / pnls.length : 0;
+      // Drawdown pct
+      const drawdownPct = metrics.drawdownMax && metrics.highWaterMark ? (metrics.drawdownMax / metrics.highWaterMark) * 100 : 0;
+      // RPC error count (example, should be incremented elsewhere)
+      const rpcErrorCount = global['rpcErrorCount'] || 0;
       let output = '';
       output += `trades_executed_total ${metrics.tradesExecuted || 0}\n`;
-      output += `pnl_total ${metrics.pnlTotal || 0}\n`;
+      output += `trades_per_sec ${tradesPerSec}\n`;
+      output += `avg_pnl ${avgPnl}\n`;
       output += `drawdown_max ${metrics.drawdownMax || 0}\n`;
+      output += `drawdown_pct ${drawdownPct}\n`;
+      output += `rpc_error_count ${rpcErrorCount}\n`;
+      // Add RPC/API call metrics
+      try {
+        const { getRpcCallMetricsPrometheus } = require('./rpcUsageTracker');
+        output += getRpcCallMetricsPrometheus() + '\n';
+      } catch (e) {}
       res.set('Content-Type', 'text/plain');
       res.send(output);
     });

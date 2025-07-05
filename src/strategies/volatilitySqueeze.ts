@@ -11,6 +11,10 @@ interface VolatilitySqueezeOptions {
 }
 
 export class VolatilitySqueeze extends EventEmitter {
+  public setParams(params: Partial<VolatilitySqueezeOptions>) {
+    if (params.priceChangeThreshold !== undefined) this.options.priceChangeThreshold = params.priceChangeThreshold;
+    if (params.volumeMultiplier !== undefined) this.options.volumeMultiplier = params.volumeMultiplier;
+  }
   private options: VolatilitySqueezeOptions;
   private lastCheckTime: number;
   private interval: NodeJS.Timeout | null;
