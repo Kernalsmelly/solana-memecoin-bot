@@ -334,7 +334,7 @@ export class TradingEngine {
                 const drawdown = this.peakPnL > 0 ? 100 * (this.runningPnL - this.peakPnL) / this.peakPnL : 0;
                 // Use config if available
                 const threshold = this.config?.risk?.drawdownAlertPct ?? this.drawdownAlertPct;
-                if (this.consecutiveLosses > 2 || drawdown <= -threshold) {
+                if (this.consecutiveLosses >= 3 || drawdown <= -threshold) {
                     await sendAlert(`High-priority: ${this.consecutiveLosses} consecutive losses or drawdown ${drawdown.toFixed(2)}% breached threshold (${threshold}%)`, 'CRITICAL');
                 }
             }
