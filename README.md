@@ -39,6 +39,36 @@ pnpm tsx scripts/backtest-vol-sim.ts --sweep
 
 ## Features
 
+### v2.4.0 Highlights
+- **Self-Tuning Profit Path:** Automated live parameter feedback loop tunes core strategy thresholds every N trades based on real PnL, win rate, and drawdown. See below for details.
+- **Mainnet Pilot Validation:** 10-minute dry-run with optimized parameters and full logging.
+- **Dynamic Sizing Audit:** Unit-tested riskManager sizing logic for realistic volatility.
+- **Metrics & Dashboard:** Prometheus endpoint now exposes parameter update counts for Grafana feedback loop panels.
+
+---
+
+## Self-Tuning Profit Path
+
+The bot features a live feedback loop that automatically tunes key strategy parameters based on real trading performance:
+
+- **How it works:**
+  - After every batch of N confirmed trades (default: 5), the bot runs a mini-sweep of `priceChangeThreshold` and `volumeMultiplier` (±5% around current values).
+  - For each parameter combo, it computes trade count, win rate, net PnL after costs, and max drawdown over the batch.
+  - The best-performing combo is applied live for the next batch, and a `ParameterUpdateEvent` is emitted and counted in metrics.
+
+- **Config Flags:**
+  - `FEEDBACK_BATCH_SIZE` (default: 5): Number of trades per feedback batch.
+  - `FEEDBACK_DELTA_PCT` (default: 0.05): Percent delta for parameter sweep (e.g., ±5%).
+
+- **Metrics:**
+  - Prometheus `/metrics` exposes `parameter_updates_total` for Grafana visualization.
+
+- **Usage:**
+  - Set flags in `.env` or config, or use defaults.
+  - Monitor logs for `[ParameterUpdateEvent]` and dashboard for feedback loop impact.
+
+---
+
 ### v2.3.0 Highlights
 - **Unified Test Suite:** All tests migrated to Vitest; Jest fully removed; ESM & TypeScript support improved; CI/CD modernized with coverage enforcement.
 - **Real On-Chain Cost Modeling:** Trade PnL now accounts for actual Solana transaction fees and swap slippage, fetched live. Trade logs and metrics include all costs.

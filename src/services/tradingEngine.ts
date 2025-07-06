@@ -13,6 +13,7 @@ import { createJupiterApiClient, QuoteGetRequest, SwapPostRequest, QuoteResponse
 import { StrategyCoordinator } from '../strategies/strategyCoordinator';
 import { VolatilitySqueeze } from '../strategies/volatilitySqueeze';
 import MomentumBreakoutStrategy from '../strategies/momentumBreakout';
+import { ParameterFeedbackLoop, FeedbackTrade, FeedbackParams, FeedbackStats } from '../strategies/parameterFeedbackLoop';
 import * as fs from 'fs';
 import * as path from 'path';
 import { RiskManager } from '../riskManager';
@@ -31,6 +32,9 @@ export class TradingEngine {
     private strategyCoordinator: StrategyCoordinator;
     private mainStrategy: VolatilitySqueeze;
     private altStrategy: MomentumBreakoutStrategy;
+    private feedbackLoop: ParameterFeedbackLoop;
+    private feedbackBatchSize: number;
+    private feedbackDeltaPct: number;
 
     private consecutiveLosses: number = 0;
     private maxDrawdownPercent: number = 20; // fallback, will be set from config
@@ -306,6 +310,16 @@ export class TradingEngine {
                 slippageBps,
                 netPnL,
                 timestamp: Date.now()
+            });
+            // --- Feedback Loop: Add trade to parameter feedback ---
+            this.feedbackLoop.addTrade({
+                priceChangeThreshold: this.mainStrategy?.['options']?.priceChangeThreshold ?? 20,
+                volumeMultiplier: this.mainStrategy?.['options']?.volumeMultiplier ?? 2,
+                pnl: typeof netPnL === 'number' ? netPnL : 0,
+                win: typeof netPnL === 'number' ? netPnL > 0 : false,
+                drawdown: this.peakPnL > 0 ? 100 * (this.runningPnL - this.peakPnL) / this.peakPnL : 0,
+                fees: feePaidSol ?? 0,
+                slippage: slippageBps ?? 0
             });
             // --- Consecutive Loss & Drawdown Alerting ---
             if (typeof netPnL === 'number') {

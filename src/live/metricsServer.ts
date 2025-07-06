@@ -9,6 +9,10 @@ import { NotificationManager } from './notificationManager';
 export function startMetricsServer(riskManager: RiskManager, notificationManager: NotificationManager, port = 9469) {
   const app = express();
 
+  let parameterUpdatesTotal = 0;
+  // Expose a method to increment the counter from outside
+  (app as any).incrementParameterUpdates = () => { parameterUpdatesTotal++; };
+
   app.get('/metrics', (req, res) => {
     const metrics = riskManager.getMetrics();
     // Prometheus exposition format
@@ -35,6 +39,7 @@ export function startMetricsServer(riskManager: RiskManager, notificationManager
     }
     output += `bot_emergency_stop ${metrics.emergencyStopActive ? 1 : 0}\n`;
     output += `bot_system_enabled ${metrics.systemEnabled ? 1 : 0}\n`;
+    output += `parameter_updates_total ${parameterUpdatesTotal}\n`;
     res.set('Content-Type', 'text/plain');
     res.send(output);
   });
