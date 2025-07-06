@@ -14,6 +14,11 @@ export interface TradeLogEntry {
     reason: string;
     txid?: string;
     success: boolean;
+    strategyName?: string;
+    feePaidLamports?: number;
+    feePaidSol?: number;
+    slippageBps?: number;
+    netPnL?: number;
 }
 
 export class TradeLogger {
@@ -60,7 +65,7 @@ export class TradeLogger {
         }
         // Write header if file does not exist
         if (!fs.existsSync(this.logFile)) {
-            fs.writeFileSync(this.logFile, 'timestamp,action,token,pairAddress,price,amount,pnl,reason,txid,success\n');
+            fs.writeFileSync(this.logFile, 'timestamp,action,token,pairAddress,price,amount,pnl,reason,txid,success,strategyName,feePaidLamports,feePaidSol,slippageBps,netPnL\n');
         }
     }
 
@@ -78,7 +83,12 @@ export class TradeLogger {
             entry.pnl ?? '',
             entry.reason.replace(/,/g, ';'),
             entry.txid || '',
-            entry.success
+            entry.success,
+            entry.strategyName ?? '',
+            entry.feePaidLamports ?? '',
+            entry.feePaidSol ?? '',
+            entry.slippageBps ?? '',
+            entry.netPnL ?? ''
         ].join(',') + '\n';
         console.log("[tradeLogger] writing row:", row);
         try {

@@ -39,11 +39,42 @@ pnpm tsx scripts/backtest-vol-sim.ts --sweep
 
 ## Features
 
+### v2.3.0 Highlights
+- **Unified Test Suite:** All tests migrated to Vitest; Jest fully removed; ESM & TypeScript support improved; CI/CD modernized with coverage enforcement.
+- **Real On-Chain Cost Modeling:** Trade PnL now accounts for actual Solana transaction fees and swap slippage, fetched live. Trade logs and metrics include all costs.
+- **Stop-Loss & Take-Profit Grid Search:** Automated script sweeps SL/TP parameters using pilot trade data. Best params are applied live and logged.
+- **Loss-Protection Alerts:** Bot triggers high-priority alerts on >2 consecutive losses or drawdown breaches, with full test coverage.
+- **Alternative Strategy Pilot:** Optionally run a secondary strategy (e.g., Momentum Breakout) in parallel for mainnet pilot and cost analysis. Toggle via config.
+- **Metrics & Dashboard:** Metrics endpoint and trade logs now include fees, slippage, netPnL, and strategy attribution for advanced analysis.
+- **Config Flags:** New flags for alternative strategy, parameter sweep, and alert thresholds. See below for usage.
+
+---
+
+## Usage for New Features
+
+### Parameter Sweep & Application
+```sh
+pnpm tsx scripts/sweepStopLossTakeProfit.ts      # Run SL/TP grid search
+pnpm tsx scripts/applySweepParams.ts             # Apply best SL/TP params to config
+```
+
+### Enable Alternative Strategy
+- Add to your `.env` or config:
+  - `ENABLE_ALTERNATIVE_STRATEGY=true`
+- Or in `config.ts`:
+  - `trading: { enableAlternativeStrategy: true }`
+
+### Loss-Protection Alerts
+- Alerts fire on >2 consecutive losses or drawdown > `drawdownAlertPct` (configurable).
+- Alerts use Discord/Telegram as configured in `notificationManager`.
+
+---
+
 ### v2.2.0 Highlights
 - **Dynamic Position Sizing:** Trades are sized based on token volatility and account balance using the integrated RiskManager. No more fixed trade sizes; position adapts to market risk.
 - **Live Parameter Feedback Loop:** The bot automatically sweeps and tunes key strategy parameters (e.g., priceChangeThreshold, volumeMultiplier) every 5 trades, applying the best-performing set live.
 - **Concurrency & Cooldown:** Up to 3 tokens can be traded concurrently, with 60s cooldown enforced per token to avoid rapid re-trading. Managed by StrategyCoordinator.
-- **Metrics & Monitoring:** All trades are logged to `data/trade_log.csv`. A Prometheus-compatible metrics server exposes trade stats, win rate, PnL, drawdown, and parameter changes at `/metrics`.
+- **Metrics & Monitoring:** All trades are logged to `data/trade_log.csv`. Trade logs now include strategy name, fee/slippage/netPnL. A Prometheus-compatible metrics server exposes trade stats, win rate, PnL, drawdown, parameter changes, and all cost metrics at `/metrics`.
 - **Event-Driven Architecture:** Concurrency and trade signal management are handled via events for robust, scalable operation.
 
 ---

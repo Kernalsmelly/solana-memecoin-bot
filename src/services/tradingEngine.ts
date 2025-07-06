@@ -10,6 +10,9 @@ import { tradeLogger, TradeLogEntry } from '../utils/tradeLogger';
 import { sendDiscordSignal, SignalPayload } from '../utils/discordNotifier';
 import { logSignal } from '../utils/signalLogger';
 import { createJupiterApiClient, QuoteGetRequest, SwapPostRequest, QuoteResponse, SwapResponse } from '@jup-ag/api';
+import { StrategyCoordinator } from '../strategies/strategyCoordinator';
+import { VolatilitySqueeze } from '../strategies/volatilitySqueeze';
+import MomentumBreakoutStrategy from '../strategies/momentumBreakout';
 import * as fs from 'fs';
 import * as path from 'path';
 import { RiskManager } from '../riskManager';
@@ -24,6 +27,17 @@ interface PositionInfo {
 }
 
 export class TradingEngine {
+    private enableAlternativeStrategy: boolean = false;
+    private strategyCoordinator: StrategyCoordinator;
+    private mainStrategy: VolatilitySqueeze;
+    private altStrategy: MomentumBreakoutStrategy;
+
+    private consecutiveLosses: number = 0;
+    private maxDrawdownPercent: number = 20; // fallback, will be set from config
+    private runningPnL: number = 0;
+    private peakPnL: number = 0;
+    private drawdownAlertPct: number = 10; // fallback, will be set from config
+
     private riskManager: RiskManager;
     private parameterFeedbackLoop: ParameterFeedbackLoop;
     private volatilitySqueeze: VolatilitySqueeze;
@@ -35,6 +49,14 @@ export class TradingEngine {
     }
 
     // ... other methods ...
+
+    /**
+     * Run strategies for a given OHLCV event. Both main and alt strategies if pilot enabled.
+     */
+    public async handleOHLCV(event: any) {
+        await this.strategyCoordinator.handleOHLCV(event);
+    }
+
 
     private checkSellCriteria(marketData: any): { shouldSell: boolean; reason: string } {
         logger.debug(`[TradingEngine] Checking SELL criteria for ${marketData.mint}...`);
@@ -192,7 +214,30 @@ export class TradingEngine {
             return true;
         }
         try {
-            logger.info(`[TradingEngine] [PROFIT CHECK] Entry conditions logged for ${outputMint.toString()}`);
+            // --- Cost Modeling: Fetch fee estimate ---
+            let feePaidLamports = 0;
+            let feePaidSol = 0;
+            if (marketData?.transaction) {
+                // If transaction is prebuilt (dry-run, test), estimate fee
+                const feeResult = await this.connection.getFeeForMessage(marketData.transaction.message);
+                feePaidLamports = feeResult.value || 0;
+                feePaidSol = feePaidLamports / 1e9;
+            }
+            // --- Slippage (from Jupiter quote or marketData) ---
+            const slippageBps = marketData?.slippageBps ?? marketData?.slippage ?? 0;
+            // --- Log trade with costs ---
+            tradeLogger.log({
+                type: 'BUY',
+                mint: outputMint.toString(),
+                pairAddress,
+                price: marketData?.currentPrice ?? 0,
+                amount: positionSizeSol,
+                feePaidLamports,
+                feePaidSol,
+                slippageBps,
+                timestamp: Date.now()
+            });
+            logger.info(`[TradingEngine] [PROFIT CHECK] Entry conditions logged for ${outputMint.toString()} (fee: ${feePaidSol} SOL, slippage: ${slippageBps}bps)`);
             return true;
         } catch (error: any) {
             logger.error(`[TradingEngine] BUY operation failed for ${outputMint.toString()}: ${error.message}`);
@@ -235,7 +280,51 @@ export class TradingEngine {
             return true;
         }
         try {
-            logger.info(`[TradingEngine] [PROFIT CHECK] Sell conditions logged for ${tokenMint.toString()}`);
+            // --- Cost Modeling: Fetch fee estimate ---
+            let feePaidLamports = 0;
+            let feePaidSol = 0;
+            if (marketData?.transaction) {
+                const feeResult = await this.connection.getFeeForMessage(marketData.transaction.message);
+                feePaidLamports = feeResult.value || 0;
+                feePaidSol = feePaidLamports / 1e9;
+            }
+            // --- Slippage (from Jupiter quote or marketData) ---
+            const slippageBps = marketData?.slippageBps ?? marketData?.slippage ?? 0;
+            // --- Net PnL calculation (example: subtract fee and slippage from raw PnL) ---
+            let netPnL = marketData?.rawPnL ?? 0;
+            netPnL -= feePaidSol * (marketData?.currentPrice ?? 0); // If PnL is in token units, convert fee to same units
+            netPnL -= (slippageBps / 10000) * (marketData?.currentPrice ?? 0) * (marketData?.amount ?? 1);
+            // --- Log trade with costs ---
+            tradeLogger.log({
+                type: 'SELL',
+                mint: tokenMint.toString(),
+                pairAddress,
+                price: marketData?.currentPrice ?? 0,
+                amount: marketData?.amount ?? 0,
+                feePaidLamports,
+                feePaidSol,
+                slippageBps,
+                netPnL,
+                timestamp: Date.now()
+            });
+            // --- Consecutive Loss & Drawdown Alerting ---
+            if (typeof netPnL === 'number') {
+                this.runningPnL += netPnL;
+                if (netPnL < 0) {
+                    this.consecutiveLosses++;
+                } else {
+                    this.consecutiveLosses = 0;
+                }
+                // Drawdown: compare runningPnL to peakPnL
+                if (this.runningPnL > this.peakPnL) this.peakPnL = this.runningPnL;
+                const drawdown = this.peakPnL > 0 ? 100 * (this.runningPnL - this.peakPnL) / this.peakPnL : 0;
+                // Use config if available
+                const threshold = this.config?.risk?.drawdownAlertPct ?? this.drawdownAlertPct;
+                if (this.consecutiveLosses > 2 || drawdown <= -threshold) {
+                    await sendAlert(`High-priority: ${this.consecutiveLosses} consecutive losses or drawdown ${drawdown.toFixed(2)}% breached threshold (${threshold}%)`, 'CRITICAL');
+                }
+            }
+            logger.info(`[TradingEngine] [PROFIT CHECK] Sell conditions logged for ${tokenMint.toString()} (fee: ${feePaidSol} SOL, slippage: ${slippageBps}bps, netPnL: ${netPnL})`);
             return true;
         } catch (error: any) {
             logger.error(`[TradingEngine] SELL operation failed for ${tokenMint.toString()}: ${error.message}`);

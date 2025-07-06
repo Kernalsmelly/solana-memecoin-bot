@@ -1,6 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
-import { TradingEngine } from '../src/live/tradingEngine';
-import { NotificationManager } from '../src/live/notificationManager';
+import { TradingEngine } from '../src/services/tradingEngine';
+import { sendAlert } from '../src/utils/notifications';
+
+vi.mock('../src/utils/notifications', () => ({
+  sendAlert: vi.fn().mockResolvedValue(true)
+}));
 
 describe('TradingEngine alerting', () => {
   it('fires consecutive-loss and drawdown alerts', async () => {
@@ -39,25 +43,37 @@ describe('TradingEngine alerting', () => {
         status: 'open',
       };
       (engine as any).positions.set(token, position);
-      await (engine as any).closePosition(token);
+      // Simulate sell with negative PnL
+      await (engine as any).sellToken({
+        mint: token,
+        currentPrice: 90,
+        amount: 1,
+        pairAddress: '',
+        symbol: token
+      });
     }
     // Check consecutive-loss alert fired
-    expect(notificationManager.notify).toHaveBeenCalledWith(
-      expect.stringContaining('3 Consecutive Losing Trades'),
-      'errors'
+    expect(sendAlert).toHaveBeenCalledWith(
+      expect.stringContaining('consecutive losses'),
+      'CRITICAL'
     );
+
     // Simulate drawdown breach
-    (engine as any).currentBalance = 880; // 12% drawdown
-    (engine as any).highWaterMark = 1000;
-    const token = 'DRAWDOWN';
-    const position: any = {
-      entryPrice: 100,
-      currentPrice: 90,
-      size: 1,
-      status: 'open',
-    };
-    (engine as any).positions.set(token, position);
-    await (engine as any).closePosition(token);
+    (engine as any).runningPnL = 0;
+    (engine as any).peakPnL = 10;
+    (engine as any).consecutiveLosses = 0;
+    // This sell triggers drawdown alert
+    await (engine as any).sellToken({
+      mint: 'DRAWDOWN',
+      currentPrice: 80,
+      amount: 1,
+      pairAddress: '',
+      symbol: 'DRAWDOWN'
+    });
+    expect(sendAlert).toHaveBeenCalledWith(
+      expect.stringContaining('drawdown'),
+      'CRITICAL'
+    );
     // Check drawdown alert fired
     expect(notificationManager.notify).toHaveBeenCalledWith(
       expect.stringContaining('Drawdown Breach'),
