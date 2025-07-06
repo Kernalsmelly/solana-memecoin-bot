@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { getInputMint, USDC_MINT, SOL_MINT } from '../utils/baseCurrency';
 
 export interface JupiterQuote {
   inAmount: number;

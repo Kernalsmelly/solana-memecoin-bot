@@ -339,6 +339,47 @@ export class TradingEngine {
                 }
             }
             logger.info(`[TradingEngine] [PROFIT CHECK] Sell conditions logged for ${tokenMint.toString()} (fee: ${feePaidSol} SOL, slippage: ${slippageBps}bps, netPnL: ${netPnL})`);
+
+            // --- Profit Auto-Swap to USDC Treasury ---
+            const { getBaseCurrency } = await import('../utils/baseCurrency');
+            const { recordProfit, USDC_MINT } = await import('../treasury');
+            if (getBaseCurrency() === 'USDC' && netPnL > 0) {
+                try {
+                    // Swap SOL proceeds to USDC using Jupiter REST (simplified)
+                    const solProceeds = netPnL; // Assuming netPnL is in SOL
+                    const { fetchJupiterQuote } = await import('../orderExecution/jupiterQuote');
+                    const { default: JupiterOrderExecution } = await import('../orderExecution/jupiterOrderExecution');
+                    const quote = await fetchJupiterQuote({
+                        inputMint: 'So11111111111111111111111111111111111111112',
+                        outputMint: USDC_MINT,
+                        amount: Math.floor(solProceeds * 1e9),
+                        slippageBps: 50
+                    });
+                    if (quote && quote.route) {
+                        const orderExec = new JupiterOrderExecution(this.connection, this.wallet);
+                        const swapResult = await orderExec.executeSwap({
+                            inputMint: 'So11111111111111111111111111111111111111112',
+                            outputMint: USDC_MINT,
+                            amountIn: Math.floor(solProceeds * 1e9),
+                            slippageBps: 50,
+                            userPublicKey: this.wallet.publicKey.toString(),
+                            meta: { autoTreasury: true }
+                        });
+                        if (swapResult.success) {
+                            // Assume outAmount from quote is in USDC (6 decimals)
+                            const netUSDC = quote.outAmount / 1e6;
+                            logger.info(`[TreasurySwap] from SOL to USDC: amount=${solProceeds}, netUSDC=${netUSDC}`);
+                            recordProfit(netUSDC);
+                        } else {
+                            logger.warn(`[TreasurySwap] Jupiter swap failed: ${swapResult.reason}`);
+                        }
+                    } else {
+                        logger.warn('[TreasurySwap] No Jupiter quote found for SOL→USDC');
+                    }
+                } catch (treasuryErr) {
+                    logger.error(`[TreasurySwap] Error during auto-swap to USDC treasury: ${treasuryErr}`);
+                }
+            }
             return true;
         } catch (error: any) {
             logger.error(`[TradingEngine] SELL operation failed for ${tokenMint.toString()}: ${error.message}`);

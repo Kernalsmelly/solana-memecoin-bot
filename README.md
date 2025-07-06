@@ -39,6 +39,45 @@ pnpm tsx scripts/backtest-vol-sim.ts --sweep
 
 ## Features
 
+### Multi-Pair & Treasury (v2.6.0)
+
+#### USDC Base Currency Support
+- The bot can now trade with either SOL or USDC as the base currency.
+- Set `BASE_CURRENCY=SOL` (default) or `BASE_CURRENCY=USDC` in your `.env`.
+- For USDC, also set `USDC_MINT=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v` (mainnet USDC mint).
+- All quoting, swap, and order logic will use the configured base for input mints.
+
+#### Automatic Profit Conversion to USDC Treasury
+- When `BASE_CURRENCY=USDC`, any profitable SOL trade will automatically swap proceeds to USDC using Jupiter.
+- Net USDC from the swap is recorded in a persistent treasury at `data/treasury.json`.
+- Example log:
+  ```
+  [TreasurySwap] from SOL to USDC: amount=0.42, netUSDC=17.21
+  ```
+- All treasury updates are atomic and logged for auditability.
+
+#### Treasury File
+- The cumulative USDC treasury is stored in `data/treasury.json`.
+- Use `getTreasuryBalance()` and `recordProfit()` in code to access or update.
+
+#### Running a USDC Mainnet Pilot
+- Set `BASE_CURRENCY=USDC` and your USDC mint in `.env`.
+- Run the bot as usual (see Production Quickstart above).
+- Limit to 3 trades or 10 minutes for pilot validation.
+- Monitor logs for `[OrderSubmitted]`, `[OrderConfirmedEvent]`, `[TreasurySwap]`, `[PnL Summary]`.
+- After the run, verify `data/treasury.json` balance has increased.
+
+#### Test Coverage & Auditability
+- Unit tests verify correct quoting and swap logic for both SOL and USDC base.
+- Integration tests simulate profit swaps and assert correct treasury updates.
+- All treasury activity is logged for full transparency.
+
+### v2.6.0 Highlights
+- **USDC Base Pair Support:** Trade any token with SOL or USDC as base currency. Toggle via `BASE_CURRENCY` env var.
+- **Treasury Auto-Swap:** Profits from SOL trades (when using USDC base) are automatically swapped to USDC and recorded in a persistent treasury.
+- **Treasury Auditability:** All treasury activity is logged and persisted for full audit trail.
+- **Expanded Test Coverage:** Unit and integration tests for multi-pair logic and treasury profit recording.
+
 ### v2.5.0 Highlights
 - **Ensemble Trading:** Runs both volatilitySqueeze and momentumBreakout in parallel, with dynamic capital allocation and weighted scheduling based on live ROI and volatility.
 - **Per-Strategy Metrics:** Prometheus metrics for trades, PnL, and win rate per strategy; Grafana-ready for side-by-side comparison.

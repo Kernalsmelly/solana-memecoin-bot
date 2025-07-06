@@ -1,4 +1,5 @@
 import { Connection, PublicKey, Transaction, Keypair, sendAndConfirmTransaction, VersionedTransaction, ParsedAccountData } from '@solana/web3.js';
+import { getInputMint, USDC_MINT, SOL_MINT } from '../utils/baseCurrency';
 import { createJupiterApiClient, QuoteResponse, SwapResponse, Instruction, SwapRequest } from '@jup-ag/api';
 import { TokenInfo } from '@solana/spl-token-registry';
 import JSBI from 'jsbi';

@@ -1,4 +1,5 @@
 import { EventEmitter } from 'events';
+import { getInputMint, USDC_MINT, SOL_MINT } from '../utils/baseCurrency';
 import { Connection, PublicKey, Transaction } from '@solana/web3.js';
 import axios from 'axios';
 import logger from '../utils/logger';
