@@ -1,3 +1,8 @@
+## v2.2.1
+- Fix: tradingEngine.ts file corruption (removed hidden/encoding chars)
+- All trading logic and core tests pass
+- Note: Some integration/contract tests require Vitest/Jest runner unification
+
 # Changelog
 
 ## [2.1.0] - 2025-07-04
