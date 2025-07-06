@@ -39,6 +39,42 @@ pnpm tsx scripts/backtest-vol-sim.ts --sweep
 
 ## Features
 
+### v2.5.0 Highlights
+- **Ensemble Trading:** Runs both volatilitySqueeze and momentumBreakout in parallel, with dynamic capital allocation and weighted scheduling based on live ROI and volatility.
+- **Per-Strategy Metrics:** Prometheus metrics for trades, PnL, and win rate per strategy; Grafana-ready for side-by-side comparison.
+- **Mainnet Ensemble Pilot:** Validated ensemble performance with concurrent strategies on mainnet.
+
+---
+
+## Ensemble Trading
+
+The bot supports running multiple alpha strategies in parallel, orchestrated by the StrategyCoordinator:
+
+- **How it works:**
+  - Both `volatilitySqueeze` and `momentumBreakout` strategies can be enabled and emit trade signals independently.
+  - The coordinator tracks each strategy’s recent net PnL and win rate, and computes a weight proportional to ROI/volatility.
+  - Capital is allocated to each strategy as:
+    - `capitalForStrategy = totalBalance × (strategyWeight ÷ totalWeight)`
+    - Each strategy is capped by its own `MAX_EXPOSURE_USD`.
+  - Trades are scheduled in a weighted round-robin, so higher-performing strategies get more allocation.
+
+- **Config Flags:**
+  - `ENABLE_MOMENTUM` (default: true): Enable the momentumBreakout strategy.
+  - `STRAT_WEIGHTS_INTERVAL` (default: 10): Number of trades to use for computing per-strategy weights.
+
+- **Metrics:**
+  - `/metrics` exposes:
+    - `trades_total{strategy="..."}`
+    - `net_pnl{strategy="..."}`
+    - `win_rate{strategy="..."}`
+  - Use Grafana to compare strategy performance side-by-side and monitor ensemble health.
+
+- **Usage:**
+  - Enable/disable strategies and tune weights via config or environment.
+  - Monitor logs and dashboard for per-strategy events and performance.
+
+---
+
 ### v2.4.0 Highlights
 - **Self-Tuning Profit Path:** Automated live parameter feedback loop tunes core strategy thresholds every N trades based on real PnL, win rate, and drawdown. See below for details.
 - **Mainnet Pilot Validation:** 10-minute dry-run with optimized parameters and full logging.

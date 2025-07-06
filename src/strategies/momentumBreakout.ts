@@ -8,10 +8,19 @@ export class MomentumBreakoutStrategy extends EventEmitter implements Strategy {
   public name = 'momentumBreakout';
   public enabled = true;
   public cooldownSec = 300;
-  private priceHistory: Record<string, { prices: number[], maxLen: number }> = {};
-  private maxHistory = 20;
+  private priceHistory: Record<string, { prices: { price: number, timestamp: number }[], maxLen: number }> = {};
+  private maxHistory = 120; // 120 minutes for 1h+ buffer
+  private momentumThreshold: number;
+  private rollingWindowMs: number = 60 * 60 * 1000; // 1 hour
 
-  constructor(options: { cooldownSec?: number, maxHistory?: number } = {}) {
+  constructor(options: { cooldownSec?: number, maxHistory?: number, momentumThreshold?: number } = {}) {
+    super();
+    if (options.cooldownSec) this.cooldownSec = options.cooldownSec;
+    if (options.maxHistory) this.maxHistory = options.maxHistory;
+    this.momentumThreshold = typeof options.momentumThreshold === 'number'
+      ? options.momentumThreshold
+      : (Number(process.env.MOMENTUM_THRESHOLD) || 1.0); // default 1%
+  }
     super();
     if (options.cooldownSec) this.cooldownSec = options.cooldownSec;
     if (options.maxHistory) this.maxHistory = options.maxHistory;
@@ -19,29 +28,31 @@ export class MomentumBreakoutStrategy extends EventEmitter implements Strategy {
 
   async handleOHLCV(event: any): Promise<void> {
     const token = event.tokenSymbol || event.address;
-    if (!token || typeof event.close !== 'number') return;
+    if (!token || typeof event.close !== 'number' || typeof event.timestamp !== 'number') return;
     if (!this.priceHistory[token]) {
       this.priceHistory[token] = { prices: [], maxLen: this.maxHistory };
     }
     const history = this.priceHistory[token];
-    history.prices.push(event.close);
+    history.prices.push({ price: event.close, timestamp: event.timestamp });
     if (history.prices.length > history.maxLen) history.prices.shift();
-    if (history.prices.length < 5) return; // Not enough data
-    const analysis = await analyzeMomentum(
-      history.prices.map((price, i) => ({
-        timestamp: event.timestamp - (history.prices.length - i - 1) * 60000,
-        price,
-        volume: typeof event.volume === 'number' ? event.volume : 0
-      })),
-      event.close
-    );
-    if (analysis.signal === 'BUY') {
+    // 1h rolling high: filter for last 60m
+    const cutoff = event.timestamp - this.rollingWindowMs;
+    const windowPrices = history.prices.filter(p => p.timestamp >= cutoff);
+    if (windowPrices.length < 5) return; // Not enough data
+    const high = Math.max(...windowPrices.map(p => p.price));
+    const threshold = high * (1 + this.momentumThreshold / 100);
+    if (event.close >= threshold) {
       this.emit('patternMatch', {
         address: token,
         timestamp: event.timestamp,
         strategy: 'momentumBreakout',
         suggestedSOL: 1,
-        details: analysis
+        details: {
+          close: event.close,
+          high,
+          momentumThreshold: this.momentumThreshold,
+          percentAboveHigh: ((event.close - high) / high) * 100
+        }
       });
     }
   }

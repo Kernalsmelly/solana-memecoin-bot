@@ -53,6 +53,27 @@ export interface TradeExecution {
 }
 
 export class RiskManager extends EventEmitter {
+  /**
+   * Allocate capital for a strategy based on ensemble weights and per-strategy max exposure caps.
+   * @param strategy Strategy name
+   * @param weights Record of {strategy: weight}
+   * @param totalBalance Total SOL balance
+   * @param perStratMaxUsd Record of {strategy: maxUsd}
+   * @param solUsdPrice Current SOL/USD price
+   */
+  public getCapitalForStrategy(
+    strategy: string,
+    weights: Record<string, number>,
+    totalBalance: number,
+    perStratMaxUsd: Record<string, number>,
+    solUsdPrice: number
+  ): number {
+    const totalWeight = Object.values(weights).reduce((a, b) => a + b, 0) || 1;
+    const rawAlloc = totalBalance * ((weights[strategy] || 0) / totalWeight);
+    const maxExposureSol = perStratMaxUsd[strategy] ? perStratMaxUsd[strategy] / solUsdPrice : Infinity;
+    return Math.min(rawAlloc, maxExposureSol);
+  }
+
     /**
      * Compute recommended position size (SOL) based on volatility and balance.
      * sizeSOL = min(maxExposureSol, balance * riskPct / sigma)

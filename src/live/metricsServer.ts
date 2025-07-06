@@ -17,6 +17,14 @@ export function startMetricsServer(riskManager: RiskManager, notificationManager
     const metrics = riskManager.getMetrics();
     // Prometheus exposition format
     let output = '';
+    // Per-strategy metrics
+    if (metrics.strategies) {
+      for (const [strategy, s] of Object.entries(metrics.strategies)) {
+        output += `trades_total{strategy="${strategy}"} ${s.tradesTotal ?? 0}\n`;
+        output += `net_pnl{strategy="${strategy}"} ${s.netPnl ?? 0}\n`;
+        output += `win_rate{strategy="${strategy}"} ${s.winRate ?? 0}\n`;
+      }
+    }
     output += `bot_balance ${metrics.currentBalance}\n`;
     output += `bot_drawdown ${metrics.drawdown}\n`;
     output += `bot_daily_pnl ${metrics.dailyPnL}\n`;
