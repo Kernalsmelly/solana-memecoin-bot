@@ -1,6 +1,6 @@
 export interface TradeLogEntry {
     timestamp: string;
-    action: 'BUY' | 'SELL' | 'SKIP';
+    action: 'buy' | 'sell' | 'skip';
     token: string;
     pairAddress?: string;
     price: number;

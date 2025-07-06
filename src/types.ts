@@ -1,5 +1,8 @@
 // src/types.ts
 
+// Action type for trade actions
+export type Action = 'buy' | 'sell' | 'skip';
+
 // PatternType: All supported pattern strings
 export type PatternType =
   | 'Mega Pump and Dump'
@@ -112,7 +115,7 @@ export interface TradingSignal {
 // TradeHistoryEntry for trade history logging
 export interface TradeHistoryEntry {
     timestamp: number | string;
-    action: 'buy' | 'sell';
+    action: Action;
     tokenAddress: string;
     tokenSymbol?: string;
     quantity: number;

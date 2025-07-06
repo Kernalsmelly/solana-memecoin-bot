@@ -1,4 +1,5 @@
 import { Connection } from '@solana/web3.js';
+export declare function getNetworkClusterUrl(): string;
 declare class ConnectionManager {
     private static instance;
     private connection;

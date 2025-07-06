@@ -1,46 +1,24 @@
 {
   "compilerOptions": {
-    /* Base Options: */
-    "esModuleInterop": true, // Enables compatibility with CommonJS modules
-    "skipLibCheck": true, // Skip type checking of declaration files (speeds up compilation)
-    "target": "ES2022", // Target latest stable ECMAScript version
-    "allowJs": true, // Allow JavaScript files to be compiled
-    "resolveJsonModule": true, // Allow importing JSON files
-    "moduleDetection": "force", // Treat files as modules even without imports/exports
-    "isolatedModules": true, // Ensure files can be safely transpiled individually
-
-    /* Strictness */
-    "strict": true, // Enable all strict type-checking options
-    "noUncheckedIndexedAccess": true, // Prevent unsafe access to object properties using bracket notation
-    "checkJs": true, // Type check JavaScript files based on JSDoc annotations
-
-    /* If NOT transpiling with TypeScript: */
-    // "module": "preserve", // Keep import/export statements as is (for bundlers like esbuild)
-    // "noEmit": true, // Do not emit output files (compilation is handled by another tool)
-
-    /* If your code runs in the DOM: */
-    // "lib": ["es2022", "dom", "dom.iterable"],
-
-     /* If your code doesn't run in the DOM: */
-     "lib": ["es2020", "dom"], // Use ES2020 and DOM standard libraries
-
-    /* Module Resolution Options: */
-    "module": "CommonJS", // Use CommonJS module system (standard for Node.js)
-    "moduleResolution": "node", // Use Node.js style module resolution
-    
-    
-    "outDir": "./dist", // Output directory for compiled JavaScript
-    
-
-    /* Source Map Options: */
-    "sourceMap": true, // Generate source maps for debugging
-
-    /* Type declaration options */
-    "declaration": true, // Generate corresponding '.d.ts' file.
-    "declarationMap": true, // Generates a source map for each corresponding '.d.ts' file.
-    "types": ["node"] // Explicitly include node types
-
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "target": "ES2022",
+    "allowJs": true,
+    "resolveJsonModule": true,
+    "moduleDetection": "force",
+    "isolatedModules": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "checkJs": true,
+    "lib": ["es2020", "dom"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "outDir": "./dist",
+    "sourceMap": true,
+    "declaration": true,
+    "declarationMap": true,
+    "types": ["node"]
   },
-  "include": ["src/**/*", "scripts/**/*"], // Include all files in src and scripts directories
-  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"] // Exclude node_modules, output directory, and test files
+  "include": ["src/**/*", "scripts/**/*"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]
 }

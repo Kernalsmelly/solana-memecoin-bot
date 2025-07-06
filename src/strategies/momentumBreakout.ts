@@ -2,6 +2,8 @@ import { EventEmitter } from 'events';
 import { analyzeMomentum } from './rocMomentum';
 import { Strategy } from './strategyCoordinator';
 
+import { Strategy } from '../strategy/StrategyCoordinator';
+
 export class MomentumBreakoutStrategy extends EventEmitter implements Strategy {
   public name = 'momentumBreakout';
   public enabled = true;
@@ -26,7 +28,11 @@ export class MomentumBreakoutStrategy extends EventEmitter implements Strategy {
     if (history.prices.length > history.maxLen) history.prices.shift();
     if (history.prices.length < 5) return; // Not enough data
     const analysis = await analyzeMomentum(
-      history.prices.map((price, i) => ({ timestamp: event.timestamp - (history.prices.length - i - 1) * 60000, price })),
+      history.prices.map((price, i) => ({
+        timestamp: event.timestamp - (history.prices.length - i - 1) * 60000,
+        price,
+        volume: typeof event.volume === 'number' ? event.volume : 0
+      })),
       event.close
     );
     if (analysis.signal === 'BUY') {
@@ -38,6 +44,13 @@ export class MomentumBreakoutStrategy extends EventEmitter implements Strategy {
         details: analysis
       });
     }
+  }
+  // Implement the required execute method for Strategy interface
+  public async execute(token: string): Promise<void> {
+    // In a real implementation, fetch OHLCV data and call handleOHLCV
+    // For now, just log or call handleOHLCV with a stub event
+    console.log(`[MomentumBreakoutStrategy] Executing strategy for token: ${token}`);
+    // Optionally: await this.handleOHLCV({ tokenSymbol: token, timestamp: Date.now(), close: 0 });
   }
 }
 

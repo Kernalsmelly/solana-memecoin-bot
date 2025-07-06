@@ -19,6 +19,9 @@ export interface Config {
         establishedMinLiquidity?: number;
         priceChangePercentNew?: number;
         priceChangePercentEstablished?: number;
+        priceChangeThreshold?: number;
+        volumeMultiplier?: number;
+        riskPct?: number;
         maxPositions?: number;
         maxPositionValueUsd?: number;
         maxCashAllocationPercent?: number;

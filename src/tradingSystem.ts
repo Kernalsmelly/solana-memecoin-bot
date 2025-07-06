@@ -1,5 +1,4 @@
 // src/tradingSystem.ts
-
 import { Connection, PublicKey } from '@solana/web3.js';
 import { Position, TradingSignal, TradeOrder } from './types';
 import { LiveOrderExecution } from './orderExecution';
@@ -24,8 +23,8 @@ export class TradingSystem {
 
     constructor(connection: Connection) {
         // Register both MomentumBreakoutStrategy and VolatilitySqueeze for pilot
-        const momentumBreakout = new MomentumBreakoutStrategy({ cooldownSec: 300 });
-        const squeeze = new VolatilitySqueeze({ priceChangeThreshold: 20, volumeMultiplier: 2 });
+        const momentumBreakout: Strategy = new MomentumBreakoutStrategy({ cooldownSec: 300 });
+        const squeeze: Strategy = new VolatilitySqueeze({ priceChangeThreshold: 20, volumeMultiplier: 2 });
         this.strategyCoordinator = new StrategyCoordinator({
             strategies: [momentumBreakout, squeeze],
             enabledStrategies: ['momentumBreakout', 'volatilitySqueeze'],
@@ -69,14 +68,12 @@ export class TradingSystem {
 
         this.setupEventListeners();
     }
-
     private setupEventListeners(): void {
         this.tokenMonitor.on('newToken', this.handleNewToken.bind(this));
         this.tokenMonitor.on('tokenUpdate', this.handleTokenUpdate.bind(this));
         this.tokenMonitor.on('patternDetected', this.handlePatternDetected.bind(this));
         this.tokenMonitor.on('error', this.handleError.bind(this));
     }
-
     private async handleNewToken(metrics: any): Promise<void> {
         try {
             // Validate contract
@@ -87,7 +84,6 @@ export class TradingSystem {
                 logger.info('Skipping high risk token', { address: metrics.address, issues: analysis.issues });
                 return;
             }
-
             // Add to monitor
             await this.tokenMonitor.addToken(metrics);
 
@@ -95,7 +91,6 @@ export class TradingSystem {
             logger.error('Error handling new token:', error instanceof Error ? error.message : 'Unknown error');
         }
     }
-
     private async handleTokenUpdate(metrics: any): Promise<void> {
         try {
             // Update token metrics
@@ -106,12 +101,10 @@ export class TradingSystem {
             if (position) {
                 await this.updatePosition(position, metrics.price);
             }
-
         } catch (error) {
             logger.error('Error handling token update:', error instanceof Error ? error.message : 'Unknown error');
         }
     }
-
     private async handlePatternDetected(pattern: any): Promise<void> {
         try {
             // Store the pattern for later dispatch
@@ -122,42 +115,9 @@ export class TradingSystem {
             logger.error('[DEBUG] Error handling pattern:', error instanceof Error ? error.message : 'Unknown error');
         }
     }
-
-    // [Legacy implementation below for reference, now replaced by concurrency coordinator]
-    /*
-        try {
-            logger.info('[DEBUG] handlePatternDetected called', { pattern });
-            // Generate trading signal
-            const signal: TradingSignal = {
-                tokenAddress: pattern.tokenAddress,
-                price: pattern.metrics.price,
-                stopLoss: pattern.metrics.price * 0.95, // 5% stop loss
-                positionSize: this.calculatePositionSize(pattern.metrics.liquidity),
-                confidence: pattern.confidence,
-                timestamp: Date.now(),
-                timeframe: '1h',
-                signalType: 'buy' // Fixed missing signalType
-            };
-            logger.info('[DEBUG] TradingSignal generated', { signal });
-
-            // FORCE TRADE: Always execute the signal for debugging
-            if (this.canOpenPosition()) {
-                logger.info('[DEBUG] Attempting to execute trade', { signal });
-                await this.executeSignal(signal);
-                logger.info('[DEBUG] Trade execution attempted', { signal });
-            } else {
-                logger.info('[DEBUG] Cannot open position, skipping trade', { signal });
-            }
-
-        } catch (error) {
-            logger.error('[DEBUG] Error handling pattern:', error instanceof Error ? error.message : 'Unknown error');
-        }
-    }
-
     private handleError(error: Error): void {
         logger.error('Trading system error:', error.message);
     }
-
     private async executeSignal(signal: TradingSignal): Promise<void> {
         try {
             const order: TradeOrder = {
@@ -193,7 +153,6 @@ export class TradingSystem {
             logger.error('Error executing signal:', error instanceof Error ? error.message : 'Unknown error');
         }
     }
-
     private calculatePositionSize(liquidity: number): number {
         const maxSize = Math.min(
             1000 * 0.1, // Stub: Max 10% of balance
@@ -201,11 +160,9 @@ export class TradingSystem {
         );
         return Math.min(maxSize, 1000); // Hard cap at $1000
     }
-
     private canOpenPosition(): boolean {
         return true; // Stub: Always allow opening positions
     }
-
     private async updatePosition(position: Position, currentPrice: number): Promise<void> {
         try {
             position.currentPrice = currentPrice;
@@ -216,20 +173,17 @@ export class TradingSystem {
                 await this.closePosition(position, 'Stop loss hit');
                 return;
             }
-
             // Check take profit
             if (currentPrice >= position.takeProfit) {
                 await this.closePosition(position, 'Take profit hit');
                 return;
             }
-
             this.persistenceManager.savePosition(position);
 
         } catch (error) {
             logger.error('Error updating position:', error instanceof Error ? error.message : 'Unknown error');
         }
     }
-
     private async closePosition(position: Position, reason: string): Promise<void> {
         try {
             const order: TradeOrder = {
@@ -255,7 +209,6 @@ export class TradingSystem {
             logger.error('Error closing position:', error instanceof Error ? error.message : 'Unknown error');
         }
     }
-
     private updateRiskMetrics(): void {
         const positions: Position[] = []; // Stub: No state.positions
         const activePositions: Position[] = [];
@@ -275,12 +228,10 @@ export class TradingSystem {
         // Persist risk metrics if needed
         this.persistenceManager.saveRiskMetrics(metrics); // Persist stub metrics
     }
-
     private calculateDrawdown(): number {
         // Stub: Drawdown calculation not available without state
         return 0;
     }
-
     private calculateWinRate(): number {
         const closedPositions: Position[] = []; // Stub: No state.positions
         if (closedPositions.length === 0) return 0;
@@ -288,28 +239,22 @@ export class TradingSystem {
         const winners = closedPositions.filter((p: Position) => (p.pnl ?? 0) > 0);
         return winners.length / closedPositions.length;
     }
-
     public getPosition(tokenAddress: string): Position | undefined {
         return undefined; // Stub: Not implemented
     }
-
     public getAllPositions(): Position[] {
         return []; // Stub: Not implemented
     }
-
     public getActivePositions(): Position[] {
         return []; // Stub: Not implemented
     }
-
     public getRiskMetrics() {
         return {}; // Stub: Not implemented
     }
-
     public start(): void {
         logger.info('Trading system started');
         this.tokenMonitor.clearOldData();
     }
-
     public stop(): void {
         logger.info('Trading system stopped');
     }

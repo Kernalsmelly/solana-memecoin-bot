@@ -1,3 +1,4 @@
+import { describe, it, expect, vi } from 'vitest';
 import { TradingEngine } from '../src/live/tradingEngine';
 import { NotificationManager } from '../src/live/notificationManager';
 
@@ -15,8 +16,8 @@ describe('TradingEngine alerting', () => {
     };
     // Mock NotificationManager
     const notificationManager = {
-      notifyTrade: jest.fn(),
-      notify: jest.fn()
+      notifyTrade: vi.fn(),
+      notify: vi.fn()
     } as unknown as NotificationManager;
     // Create engine
     const engine = new TradingEngine({

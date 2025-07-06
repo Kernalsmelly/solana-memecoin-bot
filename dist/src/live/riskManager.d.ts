@@ -39,6 +39,16 @@ export interface TradeExecution {
     errorMessage?: string;
 }
 export declare class RiskManager extends EventEmitter {
+    /**
+     * Compute recommended position size (SOL) based on volatility and balance.
+     * sizeSOL = min(maxExposureSol, balance * riskPct / sigma)
+     * @param tokenSymbol Token symbol
+     * @param balance Available SOL balance
+     * @param riskPct Fraction of balance to risk (e.g. 0.01 = 1%)
+     * @param maxExposureSol Max allowed position size (SOL)
+     * @param windowMs Rolling window for volatility (default 30min)
+     */
+    getDynamicPositionSizeSol(tokenSymbol: string, balance: number, riskPct?: number, maxExposureSol?: number, windowMs?: number): number;
     readonly config: RiskManagerConfig;
     private initialBalance;
     private currentBalance;
@@ -53,6 +63,14 @@ export declare class RiskManager extends EventEmitter {
     private tradeExecutions;
     private emergencyStopActive;
     private systemEnabled;
+    /**
+     * Compute recommended position size (USD) for a token, based on rolling volatility, balance, and liquidity.
+     * - Caps by MAX_EXPOSURE_USD (env/config)
+     * - Caps by maxLiquidityPercent (of available liquidity)
+     * - Reduces size if volatility is high
+     * Usage: riskManager.getPositionSizeUSD('SOL', price, balance, liquidityUSD)
+     */
+    getPositionSizeUSD(tokenSymbol: string, currentPrice: number, balance: number, liquidityUSD: number): number;
     constructor(config: RiskManagerConfig, initialState?: Partial<RiskMetrics> | null);
     /**
      * Returns the configured maximum position value in USD.
@@ -70,8 +88,10 @@ export declare class RiskManager extends EventEmitter {
     canOpenPosition(size: number, tokenSymbol: string, currentPrice: number): boolean;
     getMetrics(): RiskMetrics & {
         pnl: number;
+        totalFeesPaid?: number;
+        totalSlippagePaid?: number;
     };
-    updateBalance(newBalance: number): void;
+    updateBalance(newBalance: number): Promise<void>;
     recordTrade(pnl: number): void;
     incrementActivePositions(): void;
     decrementActivePositions(): void;
@@ -81,7 +101,7 @@ export declare class RiskManager extends EventEmitter {
     triggerCircuitBreaker(reason: CircuitBreakerReason, message?: string): void;
     resetCircuitBreaker(reason: CircuitBreakerReason): void;
     resetAllCircuitBreakers(): void;
-    triggerEmergencyStop(reason: string): void;
+    triggerEmergencyStop(reason: string): Promise<void>;
     resetEmergencyStop(): void;
     disableSystem(): void;
     enableSystem(): void;

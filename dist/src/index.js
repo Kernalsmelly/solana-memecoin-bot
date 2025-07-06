@@ -37,10 +37,11 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 console.log('Cascade index.ts test: started');
-const dotenv = __importStar(require("dotenv"));
-const path_1 = __importDefault(require("path")); // Import path module
-// Load .env file from project root first thing
-dotenv.config({ path: path_1.default.resolve(process.cwd(), '.env') });
+const path_1 = __importDefault(require("path"));
+const dotenv_1 = __importDefault(require("dotenv"));
+dotenv_1.default.config({ path: path_1.default.resolve(__dirname, "../.env") });
+console.log("Loading .env from:", path_1.default.resolve(__dirname, "../.env"));
+console.log("PRIVATE KEY ENV ▶", process.env.WALLET_SECRET_BASE58);
 // Global error handlers
 process.on('unhandledRejection', (reason, promise) => {
     if (reason instanceof Error) {
@@ -119,7 +120,7 @@ async function main() {
         // Decode Private Key and create Wallet
         const privateKeyString = config_1.config.solana.walletPrivateKey.trim(); // Correct property name
         if (!privateKeyString) {
-            throw new Error('SOLANA_PRIVATE_KEY is missing or empty in config.');
+            throw new Error('WALLET_SECRET_BASE58 is missing or empty in config.');
         }
         const privateKeyBytes = bs58_1.default.decode(privateKeyString);
         keypair = web3_js_1.Keypair.fromSecretKey(privateKeyBytes);

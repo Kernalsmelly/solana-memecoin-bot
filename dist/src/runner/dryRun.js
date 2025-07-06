@@ -47,7 +47,12 @@ async function pollBirdeye() {
         }
     }
     catch (e) {
-        console.error('Error polling Birdeye:', e.message);
+        if (e instanceof Error) {
+            console.error('Error polling Birdeye:', e.message);
+        }
+        else {
+            console.error('Error polling Birdeye:', e);
+        }
     }
     if (!found) {
         pollTimer = setTimeout(pollBirdeye, POLL_INTERVAL);

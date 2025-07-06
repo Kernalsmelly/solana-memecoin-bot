@@ -187,7 +187,7 @@ cp .env.example .env
 BIRDEYE_API_KEY=your_birdeye_api_key
 
 # Wallet Configuration
-WALLET_PRIVATE_KEY=your_wallet_private_key
+WALLET_SECRET_BASE58=your_base58_encoded_private_key
 WALLET_ADDRESS=your_wallet_address
 
 ---

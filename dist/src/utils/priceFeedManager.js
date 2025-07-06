@@ -31,7 +31,7 @@ class PriceFeedManager {
                 address,
                 close: Number(d.priceUsd),
                 volume: Number(d.volume24h),
-                liquidity: Number(d.liquidity?.usd || 0),
+                // liquidity: Number(d.liquidity?.usd || 0),
                 timestamp: Date.now()
             };
         }

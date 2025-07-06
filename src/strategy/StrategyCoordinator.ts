@@ -1,8 +1,14 @@
 import EventEmitter from 'events';
 
+export interface Strategy {
+  name: string;
+  execute: (token: string) => Promise<void>;
+}
+
 export interface StrategyCoordinatorOptions {
   maxConcurrent: number;
   cooldownMs: number;
+  strategies: Strategy[];
 }
 
 /**

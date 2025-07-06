@@ -50,6 +50,8 @@ class PerformanceDashboard {
     dataDir;
     refreshInterval;
     performanceHistory = [];
+    tradeHistory = [];
+    pnlSeries = [];
     constructor(options) {
         this.app = (0, express_1.default)();
         this.riskManager = options.riskManager;
@@ -66,6 +68,46 @@ class PerformanceDashboard {
         const app = this.app;
         // Serve static assets
         app.use(express_1.default.static(path.join(__dirname, '../../public')));
+        // Monitoring endpoints
+        app.get('/api/trades', (req, res) => {
+            res.json(this.tradeHistory.slice(-100));
+        });
+        app.get('/api/pnl', (req, res) => {
+            res.json(this.pnlSeries.slice(-100));
+        });
+        app.get('/metrics', (req, res) => {
+            // Prometheus format
+            const metrics = this.riskManager.getMetrics();
+            // Trades/sec (last 5 min)
+            const now = Date.now();
+            const tradesLast5m = (this.tradeHistory || []).filter(t => now - t.timestamp < 5 * 60 * 1000);
+            const tradesPerSec = tradesLast5m.length / 300;
+            // Avg PnL
+            const pnls = (this.tradeHistory || []).map(t => t.pnl).filter(p => typeof p === 'number');
+            const avgPnl = pnls.length ? pnls.reduce((a, b) => a + b, 0) / pnls.length : 0;
+            // Drawdown pct
+            const drawdownPct = metrics.drawdownMax && metrics.highWaterMark ? (metrics.drawdownMax / metrics.highWaterMark) * 100 : 0;
+            // RPC error count (example, should be incremented elsewhere)
+            const rpcErrorCount = global['rpcErrorCount'] || 0;
+            let output = '';
+            output += `trades_executed_total ${metrics.tradesExecuted || 0}\n`;
+            output += `trades_per_sec ${tradesPerSec}\n`;
+            output += `avg_pnl ${avgPnl}\n`;
+            output += `drawdown_max ${metrics.drawdownMax || 0}\n`;
+            output += `drawdown_pct ${drawdownPct}\n`;
+            output += `rpc_error_count ${rpcErrorCount}\n`;
+            // Add RPC/API call metrics
+            try {
+                const { getRpcCallMetricsPrometheus } = require('./rpcUsageTracker');
+                output += getRpcCallMetricsPrometheus() + '\n';
+            }
+            catch (e) { }
+            res.set('Content-Type', 'text/plain');
+            res.send(output);
+        });
+        app.get('/health', (req, res) => {
+            res.json({ status: 'ok', time: new Date().toISOString() });
+        });
         // API routes
         app.get('/api/metrics', (req, res) => {
             const metrics = this.riskManager.getMetrics();
@@ -84,6 +126,14 @@ class PerformanceDashboard {
                 circuitBreakers,
                 lastUpdated: new Date().toISOString()
             });
+        });
+        app.get('/api/pattern-events', (req, res) => {
+            // Example: { pumpDump: 3, smartTrap: 1, squeeze: 2 }
+            res.json(this.patternEventCounts || {});
+        });
+        app.get('/api/pending-exits', (req, res) => {
+            // Example: [{ address, stopLoss, takeProfit, entryPrice, timestamp }]
+            res.json(this.pendingExits || []);
         });
         // Main dashboard HTML
         app.get('/', (req, res) => {

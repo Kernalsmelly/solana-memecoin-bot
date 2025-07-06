@@ -21,6 +21,9 @@ export declare class TradingEngine extends EventEmitter {
     constructor(config: TradingEngineConfig);
     processSignal(signal: TradingSignal): Promise<void>;
     private openPosition;
+    private consecutiveLosses;
+    private totalFeesPaid;
+    private totalSlippagePaid;
     private closePosition;
     getRiskMetrics(): RiskMetrics;
     getPositions(): Position[];

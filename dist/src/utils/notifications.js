@@ -36,6 +36,9 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.sendPatternMatchAlert = sendPatternMatchAlert;
+exports.sendExitFilledAlert = sendExitFilledAlert;
+exports.sendExitTimeoutAlert = sendExitTimeoutAlert;
 exports.sendAlert = sendAlert;
 const dotenv = __importStar(require("dotenv"));
 const axios_1 = __importDefault(require("axios"));
@@ -52,6 +55,22 @@ const DEFAULT_OPTIONS = {
  * @param level Alert level (INFO, WARNING, ERROR, CRITICAL)
  * @param options Notification options
  */
+async function sendPatternMatchAlert(event) {
+    const msg = `🚦 PatternMatchEvent: *${event.strategy || 'unknown'}*\nToken: \`${event.address}\`\nSuggested SOL: ${event.suggestedSOL}\nDetails: ${JSON.stringify(event.details)}`;
+    return sendAlert(msg, 'INFO');
+}
+async function sendExitFilledAlert(event) {
+    const msg = `🏁 ExitFilledEvent: *${event.exitType}*\nToken: \`${event.address}\`\nEntry: ${event.entryPrice}\nExit: ${event.exitPrice}\nTime: ${new Date(event.timestamp).toLocaleString()}`;
+    return sendAlert(msg, 'INFO');
+}
+async function sendExitTimeoutAlert(event) {
+    const msg = `⏰ ExitTimeoutEvent
+Token: ${event.address}
+Reason: ${event.reason}
+Entry: ${event.entryPrice}
+Time: ${new Date(event.timestamp).toLocaleString()}`;
+    return sendAlert(msg, 'WARNING');
+}
 async function sendAlert(message, level = 'INFO', options = DEFAULT_OPTIONS) {
     const { useDiscord, useTelegram, includeTimestamp } = { ...DEFAULT_OPTIONS, ...options };
     let success = true;

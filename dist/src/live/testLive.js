@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const newCoinDetector_1 = require("../demo/newCoinDetector");
 const tradingEngine_1 = require("./tradingEngine");
 const notificationManager_1 = require("./notificationManager");
+const metricsServer_1 = require("./metricsServer");
 const logger_1 = __importDefault(require("../utils/logger"));
 const dotenv_1 = __importDefault(require("dotenv"));
 dotenv_1.default.config();
@@ -30,6 +31,9 @@ async function main() {
         maxDrawdown: 20,
         notificationManager
     });
+    // Start Prometheus metrics server
+    // @ts-ignore
+    (0, metricsServer_1.startMetricsServer)(tradingEngine.riskManager, notificationManager, 9469);
     // Initialize coin detector
     const detector = new newCoinDetector_1.NewCoinDetector({
         minLiquidity: 5000,
@@ -44,6 +48,13 @@ async function main() {
     });
     // Start monitoring
     await detector.startMonitoring();
+    // Force close all open positions every 10 seconds
+    setInterval(() => {
+        for (const position of tradingEngine.getPositions()) {
+            // Force a price update below stop loss
+            tradingEngine.updatePrice(position.tokenAddress, position.stopLoss - 0.00001);
+        }
+    }, 10000);
     // Cleanup on exit
     process.on('SIGINT', async () => {
         await detector.stopMonitoring();

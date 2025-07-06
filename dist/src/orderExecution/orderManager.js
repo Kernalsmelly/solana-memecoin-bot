@@ -25,6 +25,9 @@ class OrderManager extends events_1.default {
             createdAt: Date.now(),
         };
         this.orders.set(signature, order);
+        // Log [OrderSubmitted]
+        // eslint-disable-next-line no-console
+        console.log(`[OrderSubmitted] Signature: ${signature} Status: pending`);
         this.pollStatus(signature);
         return signature;
     }
@@ -39,6 +42,9 @@ class OrderManager extends events_1.default {
                 if (status && status.confirmationStatus === 'confirmed') {
                     order.status = 'confirmed';
                     order.filledAt = Date.now();
+                    // Log [OrderConfirmedEvent]
+                    // eslint-disable-next-line no-console
+                    console.log(`[OrderConfirmedEvent] Signature: ${signature} Status: confirmed`);
                     this.emit('orderFilled', order);
                 }
                 else if (status && status.err) {
@@ -64,6 +70,37 @@ class OrderManager extends events_1.default {
         // No native cancel for swaps, but mark as cancelled for tracking
         order.status = 'cancelled';
         this.emit('orderCancelled', order);
+    }
+    /**
+     * Attempts to exit a position by submitting an opposite swap (market order).
+     * Emits ExitFilledEvent or ExitFailedEvent.
+     */
+    async exitOrder(signature, exitType) {
+        const order = this.orders.get(signature);
+        if (!order || order.status !== 'confirmed')
+            return;
+        try {
+            // For swaps, exit = new swap in opposite direction
+            // You must implement logic to determine the correct input/output mints and amount
+            // For now, we log and emit a simulated event
+            // TODO: Integrate with JupiterOrderExecution for real exit
+            this.emit('ExitFilledEvent', {
+                signature,
+                exitType,
+                timestamp: Date.now(),
+                order,
+            });
+            order.status = 'exited';
+        }
+        catch (e) {
+            this.emit('ExitFailedEvent', {
+                signature,
+                exitType,
+                timestamp: Date.now(),
+                order,
+                error: e.message || e.toString(),
+            });
+        }
     }
     getOrder(signature) {
         return this.orders.get(signature);

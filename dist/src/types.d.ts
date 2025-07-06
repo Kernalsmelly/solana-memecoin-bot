@@ -1,3 +1,4 @@
+export type Action = 'buy' | 'sell' | 'skip';
 export type PatternType = 'Mega Pump and Dump' | 'Volatility Squeeze' | 'Smart Money Trap' | 'Algorithmic Stop Hunt' | 'Smart Money Reversal' | 'Volume Divergence' | 'Hidden Accumulation' | 'Wyckoff Spring' | 'Liquidity Grab' | 'FOMO Cycle' | 'Volatility Breakout' | 'Mean Reversion';
 export interface PatternDetectorConfig {
     tokenDiscovery: any;
@@ -70,7 +71,7 @@ export interface TradingSignal {
 }
 export interface TradeHistoryEntry {
     timestamp: number | string;
-    action: string;
+    action: Action;
     tokenAddress: string;
     tokenSymbol?: string;
     quantity: number;

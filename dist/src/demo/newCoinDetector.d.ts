@@ -14,6 +14,7 @@ export declare class NewCoinDetector extends EventEmitter {
     constructor(config?: Partial<CoinDetectorConfig>);
     startMonitoring(): Promise<void>;
     stopMonitoring(): Promise<void>;
+    private randomPubkey;
     private generateMockData;
 }
 export {};

@@ -73,6 +73,10 @@ export interface Config {
     establishedMinLiquidity?: number; // Min liquidity for established tokens
     priceChangePercentNew?: number; // Price change % for new tokens
     priceChangePercentEstablished?: number; // Price change % for established tokens
+    // --- Custom Trading Parameters ---
+    priceChangeThreshold?: number;
+    volumeMultiplier?: number;
+    riskPct?: number;
     // --- Position Management ---
     maxPositions?: number; // Max open positions
     maxPositionValueUsd?: number; // Max value per position
@@ -192,6 +196,10 @@ export const config: Config = {
     establishedMinLiquidity: 100000, // Minimum $100k liquidity for established
     priceChangePercentNew: 1, // Require at least 1% price change for new tokens
     priceChangePercentEstablished: 2, // Require at least 2% price change for established
+    // --- Custom Trading Parameters ---
+    priceChangeThreshold: getEnvAsNumber('PRICE_CHANGE_THRESHOLD', 2),
+    volumeMultiplier: getEnvAsNumber('VOLUME_MULTIPLIER', 1.5),
+    riskPct: getEnvAsNumber('RISK_PCT', 1),
     // --- Position Management ---
     maxPositions: getEnvAsNumber('MAX_POSITIONS', 3), // Max 3 open positions
     maxPositionValueUsd: getEnvAsNumber('MAX_POSITION_VALUE_USD', 50), // $50 per position
@@ -213,8 +221,6 @@ export const config: Config = {
     maxPositionSizeUsd: getEnvAsNumber('MAX_POSITION_SIZE_USD', 50),
     txConfirmationTimeoutMs: getEnvAsNumber('TRANSACTION_CONFIRMATION_TIMEOUT_MS', 20000),
     txPriorityFeeMicroLamports: getEnvAsNumber('TRANSACTION_PRIORITY_FEE_MICRO_LAMPORTS', 10000),
-    slippagePercent: 0.2, // 0.2% slippage for cost modeling
-    feePerTradeSol: 0.000005, // 5,000 lamports (0.000005 SOL) typical Solana tx fee
   },
   solana: {
     rpcEndpoint: getEnv('QUICKNODE_RPC_URL', 'https://api.mainnet-beta.solana.com'),
@@ -250,24 +256,11 @@ export const config: Config = {
     maxDrawdownPercent: getEnvAsNumber('MAX_DRAWDOWN_PERCENT'),
     volatilityThreshold: getEnvAsNumber('VOLATILITY_THRESHOLD'),
     defaultStopLossPercent: 1, // Tuned by parameter sweep 2025-07-05
-    // ... other risk params
-  },
-  sellCriteria: {
-    minSellLiquidity: undefined,
-    minSellBuyRatio: undefined,
-    stopLossPercent: 1, // Tuned by parameter sweep 2025-07-05
-    takeProfitPercent: 1, // Tuned by parameter sweep 2025-07-05
-  },
-    priceDeviationThreshold: getEnvAsNumber('PRICE_DEVIATION_THRESHOLD'),
-    defaultStopLossPercent: getEnvAsNumber('DEFAULT_STOP_LOSS_PERCENT', 10),
-    trailingStopEnabled: getEnvAsBoolean('TRAILING_STOP_ENABLED', false),
-    trailingStopActivationPercent: getEnvAsNumber('TRAILING_STOP_ACTIVATION_PERCENT', 5),
-    trailingStopTrailPercent: getEnvAsNumber('TRAILING_STOP_TRAIL_PERCENT', 2),
-    maxPortfolioAllocationPercent: getEnvAsNumber('MAX_PORTFOLIO_ALLOCATION_PERCENT', 50),
-    maxTradesPerMinute: getEnvAsNumber('MAX_TRADES_PER_MINUTE'),
-    maxTradesPerHour: getEnvAsNumber('MAX_TRADES_PER_HOUR'),
-    maxTradesPerDay: getEnvAsNumber('MAX_TRADES_PER_DAY'),
-    minSuccessRate: getEnvAsNumber('MIN_SUCCESS_RATE')
+    priceDeviationThreshold: getEnvAsNumber('PRICE_DEVIATION_THRESHOLD', 10),
+    maxTradesPerMinute: getEnvAsNumber('MAX_TRADES_PER_MINUTE', 10),
+    maxTradesPerHour: getEnvAsNumber('MAX_TRADES_PER_HOUR', 100),
+    maxTradesPerDay: getEnvAsNumber('MAX_TRADES_PER_DAY', 1000),
+    minSuccessRate: getEnvAsNumber('MIN_SUCCESS_RATE', 50)
   },
   tokenMonitor: {
     minLiquidityUsd: getEnvAsNumber('MIN_LIQUIDITY_USD', 5000),
@@ -277,8 +270,8 @@ export const config: Config = {
     wsEndpoint: getEnv('WS_URL', 'wss://public-api.birdeye.so/socket'),
     reconnectInterval: getEnvAsNumber('WS_RECONNECT_DELAY', 5000),
     maxRetries: getEnvAsNumber('WS_RECONNECT_ATTEMPTS', 5),
-    pollingIntervalSeconds: getEnvAsNumber('POLLING_INTERVAL_SECONDS', 30), // Added polling interval
-    maxSignaturesToStore: getEnvAsNumber('MAX_SIGNATURES_TO_STORE', 10000) // Added max signatures
+    pollingIntervalSeconds: getEnvAsNumber('POLLING_INTERVAL_SECONDS', 30),
+    maxSignaturesToStore: getEnvAsNumber('MAX_SIGNATURES_TO_STORE', 10000)
   },
   debug: {
     verbose: getEnvAsBoolean('DEBUG', false),
@@ -287,9 +280,9 @@ export const config: Config = {
   sellCriteria: {
     minSellLiquidity: getEnvAsNumber('MIN_SELL_LIQUIDITY'),
     minSellBuyRatio: getEnvAsNumber('MIN_SELL_BUY_RATIO'),
-    stopLossPercent: 0.01,
-    takeProfitPercent: 0.01,
-  },
+    stopLossPercent: getEnvAsNumber('STOP_LOSS_PERCENT', 1), // Tuned by parameter sweep 2025-07-05
+    takeProfitPercent: getEnvAsNumber('TAKE_PROFIT_PERCENT', 1) // Tuned by parameter sweep 2025-07-05
+  }
 };
 
 // --- Analytics/Notification Config ---

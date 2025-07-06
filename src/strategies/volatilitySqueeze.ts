@@ -10,7 +10,16 @@ interface VolatilitySqueezeOptions {
   checkIntervalMs: number;       // How often to check
 }
 
-export class VolatilitySqueeze extends EventEmitter {
+import { Strategy } from '../strategy/StrategyCoordinator';
+
+export class VolatilitySqueeze extends EventEmitter implements Strategy {
+  public name = 'volatilitySqueeze';
+  public async execute(token: string): Promise<void> {
+    // In a real implementation, fetch and analyze OHLCV data for the token
+    // For now, just log or call check()
+    console.log(`[VolatilitySqueeze] Executing strategy for token: ${token}`);
+    // Optionally: await this.check();
+  }
   public setParams(params: Partial<VolatilitySqueezeOptions>) {
     if (params.priceChangeThreshold !== undefined) this.options.priceChangeThreshold = params.priceChangeThreshold;
     if (params.volumeMultiplier !== undefined) this.options.volumeMultiplier = params.volumeMultiplier;

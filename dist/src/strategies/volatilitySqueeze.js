@@ -9,6 +9,19 @@ const logger_1 = __importDefault(require("../utils/logger"));
 const axios_1 = __importDefault(require("axios"));
 const mockPriceFeed_1 = require("../utils/mockPriceFeed");
 class VolatilitySqueeze extends events_1.EventEmitter {
+    name = 'volatilitySqueeze';
+    async execute(token) {
+        // In a real implementation, fetch and analyze OHLCV data for the token
+        // For now, just log or call check()
+        console.log(`[VolatilitySqueeze] Executing strategy for token: ${token}`);
+        // Optionally: await this.check();
+    }
+    setParams(params) {
+        if (params.priceChangeThreshold !== undefined)
+            this.options.priceChangeThreshold = params.priceChangeThreshold;
+        if (params.volumeMultiplier !== undefined)
+            this.options.volumeMultiplier = params.volumeMultiplier;
+    }
     options;
     lastCheckTime;
     interval;

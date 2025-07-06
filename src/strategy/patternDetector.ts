@@ -31,7 +31,10 @@ export class PatternDetector extends EventEmitter {
     super();
     this.tokenDiscovery = config.tokenDiscovery;
     this.riskManager = config.riskManager;
-    this.maxTokenAge = config.maxTokenAge || 48; // 48 hours max age
+    // Defensive guards for pattern detection config
+    this.maxTokenAge = (typeof config.maxTokenAge === 'number' && !isNaN(config.maxTokenAge)) ? config.maxTokenAge : 48; // 48 hours max age
+    // Add similar guards for priceChangeThreshold, volumeMultiplier, riskPct if used in this class
+
     this.minLiquidity = config.minLiquidity || 50000; // $50K min liquidity
     this.maxPositionValue = config.maxPositionValue || 100; // $100 max position
     

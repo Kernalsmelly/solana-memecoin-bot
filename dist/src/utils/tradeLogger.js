@@ -90,9 +90,12 @@ class TradeLogger {
         }
     }
     log(entry) {
+        console.log("[tradeLogger] called with:", entry);
+        const filePath = this.logFile;
+        console.log("[tradeLogger] writing to", filePath);
         const row = [
             entry.timestamp,
-            entry.action,
+            entry.action.toUpperCase(), // log as uppercase for emphasis
             entry.token,
             entry.pairAddress || '',
             entry.price,
@@ -102,11 +105,14 @@ class TradeLogger {
             entry.txid || '',
             entry.success
         ].join(',') + '\n';
+        console.log("[tradeLogger] writing row:", row);
         try {
             fs.appendFileSync(this.logFile, row);
+            console.log("[tradeLogger] write success");
         }
         catch (error) {
             logger_1.default.error('Failed to write to trade log', error);
+            console.error('[tradeLogger] write error:', error);
         }
     }
     /**

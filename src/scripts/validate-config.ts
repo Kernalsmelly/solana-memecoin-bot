@@ -120,7 +120,7 @@ async function main() {
 function validateRequiredEnvVars() {
   const requiredVars = [
     { name: 'SOLANA_RPC_URL', description: 'Solana RPC endpoint' },
-    { name: 'SOLANA_PRIVATE_KEY', description: 'Private key for the trading wallet' },
+    { name: 'WALLET_SECRET_BASE58', description: 'Base58 private key for the trading wallet' },
     // { name: 'BIRDEYE_API_KEY', description: 'API key for Birdeye' }, // Removed requirement as Birdeye is not used
   ];
   
@@ -190,12 +190,12 @@ async function validateSolanaConnection() {
 }
 
 async function validateWallet() {
-  const privateKeyString = process.env.SOLANA_PRIVATE_KEY;
-  if (!privateKeyString) return; // Already reported as error
+  const base58Key = process.env.WALLET_SECRET_BASE58;
+  if (!base58Key) return; // Already reported as error
   
   try {
     // Validate private key format
-    const privateKey = bs58.decode(privateKeyString);
+    const privateKey = bs58.decode(base58Key);
     if (privateKey.length !== 64) {
       results.push({
         name: 'Wallet Private Key',
@@ -211,7 +211,7 @@ async function validateWallet() {
       try {
         const connection = new Connection(rpcUrl, 'confirmed');
         const secretKeyBytes = bs58.decode(privateKeyString);
-        const account = Keypair.fromSecretKey(secretKeyBytes);
+        const account = Keypair.fromSecretKey(privateKey);
         const balance = await connection.getBalance(account.publicKey);
         
         if (balance === 0) {

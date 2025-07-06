@@ -1,3 +1,4 @@
+import { describe, it, expect, vi } from 'vitest';
 import { TradingEngine } from '../src/live/tradingEngine';
 import { NotificationManager } from '../src/live/notificationManager';
 import { Connection } from '@solana/web3.js';
@@ -13,12 +14,12 @@ describe('TradingEngine PnL computation', () => {
     };
     // Mock NotificationManager
     const notificationManager = {
-      notifyTrade: jest.fn(),
-      notify: jest.fn()
+      notifyTrade: vi.fn(),
+      notify: vi.fn()
     } as unknown as NotificationManager;
     // Mock Connection
     const connection = {
-      getFeeForMessage: jest.fn().mockResolvedValue({ value: 8000 }) // 8,000 lamports = 0.000008 SOL
+      getFeeForMessage: vi.fn().mockResolvedValue({ value: 8000 }) // 8,000 lamports = 0.000008 SOL
     } as unknown as Connection;
 
     // Create engine

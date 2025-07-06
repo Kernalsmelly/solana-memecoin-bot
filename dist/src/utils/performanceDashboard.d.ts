@@ -13,6 +13,8 @@ export declare class PerformanceDashboard {
     private dataDir;
     private refreshInterval;
     private performanceHistory;
+    private tradeHistory;
+    private pnlSeries;
     constructor(options: DashboardOptions);
     private setupRoutes;
     start(): Promise<void>;

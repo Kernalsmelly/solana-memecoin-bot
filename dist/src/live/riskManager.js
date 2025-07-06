@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -19,6 +52,33 @@ var CircuitBreakerReason;
     CircuitBreakerReason["CONTRACT_RISK"] = "CONTRACT_RISK";
 })(CircuitBreakerReason || (exports.CircuitBreakerReason = CircuitBreakerReason = {}));
 class RiskManager extends events_1.EventEmitter {
+    /**
+     * Compute recommended position size (SOL) based on volatility and balance.
+     * sizeSOL = min(maxExposureSol, balance * riskPct / sigma)
+     * @param tokenSymbol Token symbol
+     * @param balance Available SOL balance
+     * @param riskPct Fraction of balance to risk (e.g. 0.01 = 1%)
+     * @param maxExposureSol Max allowed position size (SOL)
+     * @param windowMs Rolling window for volatility (default 30min)
+     */
+    getDynamicPositionSizeSol(tokenSymbol, balance, riskPct = 0.01, maxExposureSol = 1, windowMs = 30 * 60 * 1000) {
+        // Gather price history for token
+        const history = this.priceHistory.get(tokenSymbol) || [];
+        const now = Date.now();
+        const cutoff = now - windowMs;
+        const windowPrices = history.filter(h => h.timestamp >= cutoff).map(h => h.price);
+        if (windowPrices.length < 2)
+            return Math.min(maxExposureSol, balance * riskPct); // fallback: no volatility info
+        // Compute rolling stddev (sigma)
+        const mean = windowPrices.reduce((a, b) => a + b, 0) / windowPrices.length;
+        const variance = windowPrices.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / (windowPrices.length - 1);
+        const sigma = Math.sqrt(variance);
+        if (sigma === 0)
+            return Math.min(maxExposureSol, balance * riskPct); // no volatility
+        const size = Math.min(maxExposureSol, (balance * riskPct) / sigma);
+        logger_1.default.info(`[RiskManager] getDynamicPositionSizeSol: sizeSOL=${size.toFixed(4)} (maxExposure=${maxExposureSol}, balance=${balance}, riskPct=${riskPct}, sigma=${sigma.toFixed(6)})`);
+        return size;
+    }
     config;
     initialBalance;
     currentBalance;
@@ -37,6 +97,38 @@ class RiskManager extends events_1.EventEmitter {
     // Emergency stop
     emergencyStopActive;
     systemEnabled;
+    /**
+     * Compute recommended position size (USD) for a token, based on rolling volatility, balance, and liquidity.
+     * - Caps by MAX_EXPOSURE_USD (env/config)
+     * - Caps by maxLiquidityPercent (of available liquidity)
+     * - Reduces size if volatility is high
+     * Usage: riskManager.getPositionSizeUSD('SOL', price, balance, liquidityUSD)
+     */
+    getPositionSizeUSD(tokenSymbol, currentPrice, balance, liquidityUSD) {
+        const MAX_EXPOSURE_USD = Number(process.env.MAX_EXPOSURE_USD || this.config.maxPositionValueUsd || 20);
+        const maxLiquidityPercent = Number(process.env.MAX_LIQUIDITY_PCT || this.config.maxLiquidityPercent || 0.05);
+        // Rolling 30min volatility (σ)
+        const now = Date.now();
+        const windowMs = 30 * 60 * 1000;
+        const history = (this.priceHistory.get(tokenSymbol) || []).filter(p => now - p.timestamp <= windowMs);
+        const prices = history.map(p => p.price);
+        const mean = prices.reduce((a, b) => a + b, 0) / (prices.length || 1);
+        const variance = prices.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / (prices.length || 1);
+        const sigma = Math.sqrt(variance);
+        // Volatility risk fraction: scale down if σ > 2%
+        let riskFraction = 1.0;
+        if (sigma / mean > 0.02)
+            riskFraction = 0.5;
+        if (sigma / mean > 0.05)
+            riskFraction = 0.2;
+        // Compute size
+        const sizeByExposure = MAX_EXPOSURE_USD;
+        const sizeByBalance = balance * riskFraction * currentPrice;
+        const sizeByLiquidity = liquidityUSD * maxLiquidityPercent;
+        const sizeUSD = Math.max(1, Math.min(sizeByExposure, sizeByBalance, sizeByLiquidity));
+        logger_1.default.info(`[RiskManager] sizeUSD=${sizeUSD.toFixed(2)} (exposure=${sizeByExposure}, balance=${sizeByBalance}, liquidity=${sizeByLiquidity}, σ=${sigma.toFixed(4)})`);
+        return sizeUSD;
+    }
     constructor(config, initialState = null) {
         super();
         this.config = {
@@ -174,8 +266,14 @@ class RiskManager extends events_1.EventEmitter {
         }
         return true;
     }
+    // Optionally expects this.tradingEngine to be set externally
     getMetrics() {
         const effectiveHighWaterMark = Math.max(this.highWaterMark, this.currentBalance);
+        // Optionally include totalFeesPaid and totalSlippagePaid if present on this.tradingEngine
+        const extraMetrics = this.tradingEngine ? {
+            totalFeesPaid: this.tradingEngine.totalFeesPaid,
+            totalSlippagePaid: this.tradingEngine.totalSlippagePaid
+        } : {};
         return {
             currentBalance: this.currentBalance,
             highWaterMark: effectiveHighWaterMark,
@@ -195,10 +293,11 @@ class RiskManager extends events_1.EventEmitter {
                 hour: this.getTradeCountInWindow(60 * 60 * 1000),
                 day: this.getTradeCountInWindow(24 * 60 * 60 * 1000)
             },
-            pnl: this.currentBalance - this.initialBalance
+            pnl: this.currentBalance - this.initialBalance,
+            ...extraMetrics
         };
     }
-    updateBalance(newBalance) {
+    async updateBalance(newBalance) {
         if (this.initialBalance === 0) {
             this.initialBalance = newBalance;
             this.dailyStartBalance = newBalance;
@@ -311,11 +410,13 @@ class RiskManager extends events_1.EventEmitter {
             this.resetCircuitBreaker(reason);
         });
     }
-    triggerEmergencyStop(reason) {
+    async triggerEmergencyStop(reason) {
         if (!this.emergencyStopActive) {
             this.emergencyStopActive = true;
             this.triggerCircuitBreaker(CircuitBreakerReason.EMERGENCY_STOP, reason);
-            logger_1.default.error(`EMERGENCY STOP ACTIVATED: ${reason}`);
+            logger_1.default.error(`[EMERGENCY_STOP] Trading halted: ${reason}`);
+            const { sendAlert } = await Promise.resolve().then(() => __importStar(require('../utils/notifications')));
+            sendAlert && sendAlert(`🚨 EMERGENCY STOP: Trading halted. Reason: ${reason}`, 'CRITICAL');
             this.emit('emergencyStop', reason); // For test compatibility
             this.emit('emergencyStop', { reason, timestamp: Date.now() });
         }

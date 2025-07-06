@@ -10,6 +10,9 @@ interface AlertOptions {
  * @param level Alert level (INFO, WARNING, ERROR, CRITICAL)
  * @param options Notification options
  */
+export declare function sendPatternMatchAlert(event: any): Promise<boolean>;
+export declare function sendExitFilledAlert(event: any): Promise<boolean>;
+export declare function sendExitTimeoutAlert(event: any): Promise<boolean>;
 export declare function sendAlert(message: string, level?: AlertLevel, options?: AlertOptions): Promise<boolean>;
 export default sendAlert;
 //# sourceMappingURL=notifications.d.ts.map

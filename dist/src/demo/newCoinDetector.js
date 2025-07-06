@@ -1,7 +1,12 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.NewCoinDetector = void 0;
 const events_1 = require("events");
+const bs58_1 = __importDefault(require("bs58"));
+const crypto_1 = __importDefault(require("crypto"));
 class NewCoinDetector extends events_1.EventEmitter {
     config;
     detectionHistory;
@@ -30,12 +35,17 @@ class NewCoinDetector extends events_1.EventEmitter {
             this.intervalId = undefined;
         }
     }
+    // Helper to generate a valid Solana base58 public key
+    randomPubkey() {
+        const bytes = crypto_1.default.randomBytes(32);
+        return bs58_1.default.encode(bytes);
+    }
     generateMockData() {
         const mockTokens = [
             {
                 symbol: 'MOCK1',
-                address: '0x1234...abcd',
-                poolAddress: 'Pool1...', // Added placeholder
+                address: this.randomPubkey(),
+                poolAddress: this.randomPubkey(),
                 priceUsd: 0.00001234,
                 volume24h: 50000,
                 liquidity: 25000,
@@ -45,9 +55,9 @@ class NewCoinDetector extends events_1.EventEmitter {
             },
             {
                 symbol: 'MOCK2',
-                address: '0x5678...efgh',
-                poolAddress: 'Pool2...', // Added placeholder
-                priceUsd: 0.00000789,
+                address: this.randomPubkey(),
+                poolAddress: this.randomPubkey(),
+                priceUsd: 0.00005678,
                 volume24h: 75000,
                 liquidity: 35000,
                 holders: 250,
@@ -71,6 +81,7 @@ class NewCoinDetector extends events_1.EventEmitter {
                 // Generate trading signal
                 const signal = {
                     tokenAddress: token.address,
+                    tokenSymbol: token.symbol,
                     price: token.priceUsd * (1 + Math.random() * 0.05),
                     stopLoss: token.priceUsd * 0.9,
                     positionSize: Math.min(50, token.liquidity * 0.01),

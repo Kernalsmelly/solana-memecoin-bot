@@ -66,9 +66,13 @@ class DataBroker {
         for (const [key, fn] of sources) {
             try {
                 const res = await queues[key].add(() => fn(address));
-                if (isValid(res)) {
-                    cache.set(address, res);
-                    return res;
+                if (res && isValid(res)) {
+                    const result = res;
+                    cache.set(address, result);
+                    return result;
+                }
+                else {
+                    throw new Error('Invalid data result');
                 }
             }
             catch (err) {

@@ -96,7 +96,7 @@ function main() {
     // Group trades by poolAddress or token
     const poolTradeStats = {};
     for (const t of trades) {
-        if (t.action !== 'BUY' && t.action !== 'SELL')
+        if (t.action !== 'buy' && t.action !== 'sell')
             continue;
         const key = t.pairAddress || t.token;
         if (!key)
@@ -285,7 +285,7 @@ function parameterSweep(pools, trades) {
     const vlRatioRange = [0.01, 0.02, 0.05, 0.08, 0.1];
     const poolTradeStats = {};
     for (const t of trades) {
-        if (t.action !== 'BUY' && t.action !== 'SELL')
+        if (t.action !== 'buy' && t.action !== 'sell')
             continue;
         const key = t.pairAddress || t.token;
         if (!key)

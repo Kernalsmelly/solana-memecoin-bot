@@ -1,10 +1,10 @@
-import { Connection, Transaction } from '@solana/web3.js';
+import { Connection, Transaction, VersionedTransaction } from '@solana/web3.js';
 import { Signer } from './signer';
 import EventEmitter from 'events';
 export interface Order {
     signature: string;
-    status: 'pending' | 'confirmed' | 'failed' | 'cancelled';
-    tx: Transaction;
+    status: 'pending' | 'confirmed' | 'failed' | 'cancelled' | 'exited';
+    tx: Transaction | VersionedTransaction;
     createdAt: number;
     filledAt?: number;
     error?: string;
@@ -21,9 +21,14 @@ export declare class OrderManager extends EventEmitter {
     private pollInterval;
     private poller?;
     constructor(connection: Connection, signer: Signer);
-    placeOrder(tx: Transaction): Promise<string>;
+    placeOrder(tx: Transaction | VersionedTransaction): Promise<string>;
     private pollStatus;
     cancelOrder(signature: string): Promise<void>;
+    /**
+     * Attempts to exit a position by submitting an opposite swap (market order).
+     * Emits ExitFilledEvent or ExitFailedEvent.
+     */
+    exitOrder(signature: string, exitType: 'stopLoss' | 'takeProfit'): Promise<void>;
     getOrder(signature: string): Order | undefined;
 }
 //# sourceMappingURL=orderManager.d.ts.map

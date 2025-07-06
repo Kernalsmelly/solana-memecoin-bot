@@ -10,18 +10,18 @@ jobs:
         with:
           node-version: 18
       - name: Install dependencies
-        run: npm install
+        run: pnpm install
       - name: Lint
         run: npm run lint || echo "Lint errors (non-blocking)"
       - name: Build
         run: npm run build || echo "Build step skipped (non-blocking)"
       - name: Run tests with coverage
-        run: npx vitest run --coverage --reporter verbose
+        run: pnpm run test -- --coverage --reporter verbose
       - name: Enforce minimum coverage
         run: |
-          COVERAGE=$(npx vitest run --coverage --reporter json-summary | grep total | grep lines | awk '{print $3}' | tr -d ',')
-          if [ "$(echo "$COVERAGE < 70" | bc)" -eq 1 ]; then
-            echo "Coverage $COVERAGE% is below threshold (70%)" && exit 1
+          COVERAGE=$(pnpm run test -- --coverage --reporter json-summary | grep total | grep lines | awk '{print $3}' | tr -d ',')
+          if [ "$(echo "$COVERAGE < 80" | bc)" -eq 1 ]; then
+            echo "Coverage $COVERAGE% is below threshold (80%)" && exit 1
           fi
       - name: Mainnet dry-run simulation (fail on warning/error)
         env:

@@ -6,11 +6,11 @@ declare global {
 }
 
 
-import * as dotenv from 'dotenv';
-import path from 'path'; // Import path module
-
-// Load .env file from project root first thing
-dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+import path from "path";
+import dotenv from "dotenv";
+dotenv.config({ path: path.resolve(__dirname, "../.env") });
+console.log("Loading .env from:", path.resolve(__dirname, "../.env"));
+console.log("PRIVATE KEY ENV ▶", process.env.WALLET_SECRET_BASE58);
 
 // Global error handlers
 process.on('unhandledRejection', (reason, promise) => {
@@ -105,7 +105,7 @@ async function main() {
         // Decode Private Key and create Wallet
         const privateKeyString = config.solana.walletPrivateKey.trim(); // Correct property name
         if (!privateKeyString) {
-            throw new Error('SOLANA_PRIVATE_KEY is missing or empty in config.');
+            throw new Error('WALLET_SECRET_BASE58 is missing or empty in config.');
         }
         const privateKeyBytes = bs58.decode(privateKeyString);
         keypair = Keypair.fromSecretKey(privateKeyBytes);

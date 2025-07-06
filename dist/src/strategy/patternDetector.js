@@ -26,7 +26,9 @@ class PatternDetector extends events_1.EventEmitter {
         super();
         this.tokenDiscovery = config.tokenDiscovery;
         this.riskManager = config.riskManager;
-        this.maxTokenAge = config.maxTokenAge || 48; // 48 hours max age
+        // Defensive guards for pattern detection config
+        this.maxTokenAge = (typeof config.maxTokenAge === 'number' && !isNaN(config.maxTokenAge)) ? config.maxTokenAge : 48; // 48 hours max age
+        // Add similar guards for priceChangeThreshold, volumeMultiplier, riskPct if used in this class
         this.minLiquidity = config.minLiquidity || 50000; // $50K min liquidity
         this.maxPositionValue = config.maxPositionValue || 100; // $100 max position
         // Define criteria for pattern recognition - optimized based on performance metrics
@@ -221,7 +223,7 @@ class PatternDetector extends events_1.EventEmitter {
             // Squeeze: bandWidth is very low (e.g. < 0.06 by default)
             const isSqueeze = bandWidth < squeezeThreshold;
             // Breakout: use currentPrice if provided, else last price in history
-            const breakout = (typeof currentPrice === 'number' ? currentPrice : prices[prices.length - 1]) > upper;
+            const breakout = (typeof currentPrice === 'number' ? currentPrice : (prices?.[prices.length - 1] ?? 0)) > upper;
             // Squeeze strength: inverse of bandWidth (capped at 1)
             const squeezeStrength = Math.min(1, squeezeThreshold / (bandWidth + 1e-8));
             return { isSqueeze, breakout, squeezeStrength, bandWidth };

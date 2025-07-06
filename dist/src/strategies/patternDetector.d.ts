@@ -10,7 +10,10 @@ export declare class PatternDetector extends EventEmitter {
     private windows;
     private windowMs;
     private smaWindowMs;
-    handleOHLCV(event: OHLCVEvent): void;
+    private pumpDumpWindowMs;
+    handleOHLCV(event: OHLCVEvent & {
+        buyRatio?: number;
+    }): void;
     private checkSqueeze;
 }
 //# sourceMappingURL=patternDetector.d.ts.map
