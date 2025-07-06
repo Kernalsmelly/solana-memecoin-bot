@@ -269,7 +269,7 @@ function detectVolatilitySqueeze(
               pattern,
               confidence,
               signalType: 'buy',
-              // meta: { squeezeStrength, bandWidth, period, squeezeThreshold }
+              meta: { squeezeStrength, bandWidth, period, squeezeThreshold }
             };
           }
           continue;

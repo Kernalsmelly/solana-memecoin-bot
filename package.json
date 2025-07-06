@@ -1,6 +1,6 @@
 {
   "name": "solmemebot",
-  "version": "1.0.0",
+  "version": "2.2.1",
   "description": "Solana memecoin trading bot with advanced pattern detection",
   "main": "src/live/testLive.ts",
   "engines": {

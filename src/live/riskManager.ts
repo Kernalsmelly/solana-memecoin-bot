@@ -53,6 +53,32 @@ export interface TradeExecution {
 }
 
 export class RiskManager extends EventEmitter {
+    /**
+     * Compute recommended position size (SOL) based on volatility and balance.
+     * sizeSOL = min(maxExposureSol, balance * riskPct / sigma)
+     * @param tokenSymbol Token symbol
+     * @param balance Available SOL balance
+     * @param riskPct Fraction of balance to risk (e.g. 0.01 = 1%)
+     * @param maxExposureSol Max allowed position size (SOL)
+     * @param windowMs Rolling window for volatility (default 30min)
+     */
+    public getDynamicPositionSizeSol(tokenSymbol: string, balance: number, riskPct = 0.01, maxExposureSol = 1, windowMs = 30 * 60 * 1000): number {
+        // Gather price history for token
+        const history = this.priceHistory.get(tokenSymbol) || [];
+        const now = Date.now();
+        const cutoff = now - windowMs;
+        const windowPrices = history.filter(h => h.timestamp >= cutoff).map(h => h.price);
+        if (windowPrices.length < 2) return Math.min(maxExposureSol, balance * riskPct); // fallback: no volatility info
+        // Compute rolling stddev (sigma)
+        const mean = windowPrices.reduce((a, b) => a + b, 0) / windowPrices.length;
+        const variance = windowPrices.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / (windowPrices.length - 1);
+        const sigma = Math.sqrt(variance);
+        if (sigma === 0) return Math.min(maxExposureSol, balance * riskPct); // no volatility
+        const size = Math.min(maxExposureSol, (balance * riskPct) / sigma);
+        logger.info(`[RiskManager] getDynamicPositionSizeSol: sizeSOL=${size.toFixed(4)} (maxExposure=${maxExposureSol}, balance=${balance}, riskPct=${riskPct}, sigma=${sigma.toFixed(6)})`);
+        return size;
+    }
+
     public readonly config: RiskManagerConfig;
     private initialBalance: number;
     private currentBalance: number;
@@ -75,6 +101,37 @@ export class RiskManager extends EventEmitter {
     // Emergency stop
     private emergencyStopActive: boolean;
     private systemEnabled: boolean;
+
+    /**
+     * Compute recommended position size (USD) for a token, based on rolling volatility, balance, and liquidity.
+     * - Caps by MAX_EXPOSURE_USD (env/config)
+     * - Caps by maxLiquidityPercent (of available liquidity)
+     * - Reduces size if volatility is high
+     * Usage: riskManager.getPositionSizeUSD('SOL', price, balance, liquidityUSD)
+     */
+    public getPositionSizeUSD(tokenSymbol: string, currentPrice: number, balance: number, liquidityUSD: number): number {
+        const MAX_EXPOSURE_USD = Number(process.env.MAX_EXPOSURE_USD || this.config.maxPositionValueUsd || 20);
+        const maxLiquidityPercent = Number(process.env.MAX_LIQUIDITY_PCT || this.config.maxLiquidityPercent || 0.05);
+        // Rolling 30min volatility (σ)
+        const now = Date.now();
+        const windowMs = 30 * 60 * 1000;
+        const history = (this.priceHistory.get(tokenSymbol) || []).filter(p => now - p.timestamp <= windowMs);
+        const prices = history.map(p => p.price);
+        const mean = prices.reduce((a, b) => a + b, 0) / (prices.length || 1);
+        const variance = prices.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / (prices.length || 1);
+        const sigma = Math.sqrt(variance);
+        // Volatility risk fraction: scale down if σ > 2%
+        let riskFraction = 1.0;
+        if (sigma / mean > 0.02) riskFraction = 0.5;
+        if (sigma / mean > 0.05) riskFraction = 0.2;
+        // Compute size
+        const sizeByExposure = MAX_EXPOSURE_USD;
+        const sizeByBalance = balance * riskFraction * currentPrice;
+        const sizeByLiquidity = liquidityUSD * maxLiquidityPercent;
+        const sizeUSD = Math.max(1, Math.min(sizeByExposure, sizeByBalance, sizeByLiquidity));
+        logger.info(`[RiskManager] sizeUSD=${sizeUSD.toFixed(2)} (exposure=${sizeByExposure}, balance=${sizeByBalance}, liquidity=${sizeByLiquidity}, σ=${sigma.toFixed(4)})`);
+        return sizeUSD;
+    }
 
     constructor(config: RiskManagerConfig, initialState: Partial<RiskMetrics> | null = null) {
         super();
@@ -233,8 +290,14 @@ export class RiskManager extends EventEmitter {
         return true;
     }
 
-    public getMetrics(): RiskMetrics & { pnl: number } {
+    // Optionally expects this.tradingEngine to be set externally
+    public getMetrics(): RiskMetrics & { pnl: number, totalFeesPaid?: number, totalSlippagePaid?: number } {
         const effectiveHighWaterMark = Math.max(this.highWaterMark, this.currentBalance);
+        // Optionally include totalFeesPaid and totalSlippagePaid if present on this.tradingEngine
+        const extraMetrics = (this as any).tradingEngine ? {
+            totalFeesPaid: (this as any).tradingEngine.totalFeesPaid,
+            totalSlippagePaid: (this as any).tradingEngine.totalSlippagePaid
+        } : {};
         return {
             currentBalance: this.currentBalance,
             highWaterMark: effectiveHighWaterMark,
@@ -254,11 +317,12 @@ export class RiskManager extends EventEmitter {
                 hour: this.getTradeCountInWindow(60 * 60 * 1000),
                 day: this.getTradeCountInWindow(24 * 60 * 60 * 1000)
             },
-            pnl: this.currentBalance - this.initialBalance
+            pnl: this.currentBalance - this.initialBalance,
+            ...extraMetrics
         };
     }
 
-    public updateBalance(newBalance: number) {
+    public async updateBalance(newBalance: number) {
         if (this.initialBalance === 0) {
             this.initialBalance = newBalance;
             this.dailyStartBalance = newBalance;
@@ -397,13 +461,14 @@ export class RiskManager extends EventEmitter {
         });
     }
     
-    public triggerEmergencyStop(reason: string) {
+    public async triggerEmergencyStop(reason: string) {
         if (!this.emergencyStopActive) {
             this.emergencyStopActive = true;
             this.triggerCircuitBreaker(CircuitBreakerReason.EMERGENCY_STOP, reason);
             
-            logger.error(`EMERGENCY STOP ACTIVATED: ${reason}`);
-            
+            logger.error(`[EMERGENCY_STOP] Trading halted: ${reason}`);
+            const { sendAlert } = await import('../utils/notifications');
+            sendAlert && sendAlert(`🚨 EMERGENCY STOP: Trading halted. Reason: ${reason}`, 'CRITICAL');
             this.emit('emergencyStop', reason); // For test compatibility
             this.emit('emergencyStop', { reason, timestamp: Date.now() });
         }

@@ -81,10 +81,12 @@ async function main() {
         }
       }
     }
-    results.sort((a, b) => b.sharpe - a.sharpe);
-    const top3 = results.slice(0, 3);
-    fs.writeFileSync('sweep-report.json', JSON.stringify(top3, null, 2));
-    logger.info('Sweep complete. Top 3 configs:', top3);
+    const topConfigs = results.sort((a, b) => b.sharpe - a.sharpe).slice(0, 3);
+    fs.writeFileSync('sweep-report.json', JSON.stringify(topConfigs, null, 2));
+    const configDir = path.resolve(__dirname, '../config');
+    if (!fs.existsSync(configDir)) fs.mkdirSync(configDir);
+    fs.writeFileSync(path.join(configDir, 'auto-params.json'), JSON.stringify(topConfigs, null, 2));
+    logger.info('Sweep complete. Top 3 configs:', topConfigs);
     return;
   }
 
