@@ -41,6 +41,39 @@ pnpm tsx scripts/backtest-vol-sim.ts --sweep
 
 ### Multi-Pair & Treasury (v2.6.0)
 
+### Profit Tuning (v2.5.2)
+
+#### Grid-Optimized Parameters
+- **STOP_LOSS_PCT:** 1
+- **TAKE_PROFIT_PCT:** 1
+- **RISK_PCT:** 0.002
+- Selected by grid search over the last 50 trades for best win rate and net PnL.
+
+#### Dynamic Sizing Formula
+- Trade size is dynamically set as:
+  ```ts
+  sizeSOL = Math.min(maxExposureSol, balance * riskPct / σ30m)
+  ```
+- See `__tests__/dynamicSizing.test.ts` for verification.
+
+#### Provider Resilience
+- Pluggable provider chain: free RPC → paid RPC → fallback.
+- On provider failure, the bot logs a switch and continues trading without data gaps.
+- Example logs:
+  ```
+  [ProviderSwitch] Switching to backup provider: QUICKNODE_RPC_URL
+  [ProviderSwitch] Switching to fallback provider: HELIUS_RPC_URL
+  [ParameterUpdateEvent] { "STOP_LOSS_PCT":1, "TAKE_PROFIT_PCT":1, "RISK_PCT":0.002 }
+  ```
+
+#### Cost Modeling & Alerts
+- PnL calculations subtract on-chain fees and slippage (see `__tests__/pnlCostModel.test.ts`).
+- Alerts fire after ≥3 consecutive losses (`__tests__/consecutiveLossAlert.test.ts`).
+
+#### Release
+- This tuning is released as **v2.5.2**.
+
+
 #### USDC Base Currency Support
 - The bot can now trade with either SOL or USDC as the base currency.
 - Set `BASE_CURRENCY=SOL` (default) or `BASE_CURRENCY=USDC` in your `.env`.
