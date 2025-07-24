@@ -77,7 +77,7 @@ export async function fetchTokenMetrics(tokenAddress: string, poolAddress?: stri
       if (response.data?.market_data?.current_price?.usd) {
         return {
           address: tokenAddress,
-          symbol: response.data.symbol.toUpperCase(),
+          symbol: String(response.data.symbol).toUpperCase(),
           name: response.data.name,
           priceUsd: response.data.market_data.current_price.usd,
           liquidity: undefined,

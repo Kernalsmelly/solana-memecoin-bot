@@ -1,9 +1,9 @@
+// Using Vitest fake timers to stabilize concurrency/cooldown tests
 import { StrategyCoordinator } from '../../strategy/StrategyCoordinator';
-import { expect, test, vi } from 'vitest';
+import { expect, test, vi, beforeEach, afterEach } from 'vitest';
 
-function wait(ms: number) {
-  return new Promise((res) => setTimeout(res, ms));
-}
+beforeEach(() => { vi.useFakeTimers(); });
+afterEach(() => { vi.useRealTimers(); });
 
 test('StrategyCoordinator concurrency & cooldown', async () => {
   const coordinator = new StrategyCoordinator({ maxConcurrent: 3, cooldownMs: 300 }); // 300ms cooldown for test
@@ -12,36 +12,40 @@ test('StrategyCoordinator concurrency & cooldown', async () => {
   const dispatchOrder: string[] = [];
   let overlapDetected = false;
 
-  coordinator.on('tokenDispatch', async (token) => {
+  coordinator.on('tokenDispatch', (token) => {
     dispatchOrder.push(token);
     if (active.has(token)) overlapDetected = true;
     active.add(token);
     // Simulate execution time
-    await wait(100);
-    active.delete(token);
-    coordinator.completeToken(token);
+    setTimeout(() => {
+      active.delete(token);
+      coordinator.completeToken(token);
+    }, 100);
   });
 
   // Rapidly enqueue all tokens
   tokens.forEach((t) => coordinator.enqueueToken(t));
 
-  // Wait for all to process (each batch 100ms, cooldown 300ms)
-  await wait(1500);
+  // Process all initial dispatches and completions
+  vi.advanceTimersByTime(100); // First batch completes
+  vi.advanceTimersByTime(300); // Cooldowns expire, next batch dispatched
+  vi.advanceTimersByTime(100); // Second batch completes
+  vi.advanceTimersByTime(300); // Cooldowns expire
+  vi.advanceTimersByTime(100); // Final completions
 
   // Assertions
   expect(overlapDetected).toBe(false);
   expect(dispatchOrder.length).toBe(tokens.length);
-  // At no time should more than 3 tokens be active
   expect(coordinator.getStatus().active.length).toBeLessThanOrEqual(3);
 
   // Try to re-enqueue a token before cooldown expires (should NOT dispatch)
   coordinator.enqueueToken('A');
-  await wait(100); // Should not dispatch again
+  vi.advanceTimersByTime(100); // Should not dispatch again
   expect(dispatchOrder.filter(t => t === 'A').length).toBe(1);
 
   // Wait for cooldown to expire, then enqueue again (should dispatch)
-  await wait(300); // After cooldown
+  vi.advanceTimersByTime(300); // After cooldown
   coordinator.enqueueToken('A');
-  await wait(200);
+  vi.advanceTimersByTime(100);
   expect(dispatchOrder.filter(t => t === 'A').length).toBe(2);
 });

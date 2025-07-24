@@ -31,9 +31,10 @@ export class StrategyCoordinator extends EventEmitter {
    * Call when a new token is discovered or signaled for trading
    */
   enqueueToken(token: string) {
-    // Prevent enqueue if token is active, queued, or on cooldown
+    // Prevent enqueue if token is active or already queued
     if (this.activeTokens.has(token) || this.queue.includes(token)) return;
-    if (this.isOnCooldown(token)) return; // Do NOT queue if on cooldown
+    // If on cooldown, do not enqueue
+    if (this.isOnCooldown(token)) return;
     this.queue.push(token);
     this.tryDispatch();
   }
@@ -59,8 +60,13 @@ export class StrategyCoordinator extends EventEmitter {
 
   private tryDispatch() {
     while (this.activeTokens.size < this.maxConcurrent && this.queue.length > 0) {
-      const token = this.queue.shift()!;
-      if (this.isOnCooldown(token) || this.activeTokens.has(token)) continue;
+      const token = this.queue[0];
+      if (this.isOnCooldown(token) || this.activeTokens.has(token)) {
+        // If the token at the front is not ready, break (don't cycle)
+        break;
+      }
+      // Token is ready for dispatch
+      this.queue.shift();
       this.activeTokens.add(token);
       this.emit('tokenDispatch', token);
     }

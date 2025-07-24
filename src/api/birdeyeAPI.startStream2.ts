@@ -1,8 +1,4 @@
-/**
- * startStream sets up a Birdeye WebSocket stream for real-time token data.
- * If USE_PREMIUM_DATA is disabled, this yields mock data for tests/CI.
- * @param cb Callback invoked with token snapshot data
- */
+// (diagnostic stub for ESM import crash)
 export function startStream(cb?: (snap: any) => void) {
   const usePremium = process.env.USE_PREMIUM_DATA === 'true';
   if (!usePremium && cb) {

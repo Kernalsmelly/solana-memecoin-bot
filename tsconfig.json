@@ -1,24 +1,23 @@
 {
   "compilerOptions": {
-    "esModuleInterop": true,
-    "skipLibCheck": true,
     "target": "ES2022",
-    "allowJs": true,
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "resolveJsonModule": true,
-    "moduleDetection": "force",
-    "isolatedModules": true,
+    "esModuleInterop": true,
     "strict": true,
+    "outDir": "dist",
+    "isolatedModules": true,
+    "allowJs": true,
+    "skipLibCheck": true,
     "noUncheckedIndexedAccess": true,
     "checkJs": true,
     "lib": ["es2020", "dom"],
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "outDir": "./dist",
     "sourceMap": true,
     "declaration": true,
     "declarationMap": true,
     "types": ["node"]
   },
-  "include": ["src/**/*", "scripts/**/*"],
+  "include": ["src", "scripts"],
   "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]
 }

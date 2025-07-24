@@ -75,13 +75,13 @@ export class TradeLogger {
     console.log("[tradeLogger] writing to", filePath);
         const row = [
             entry.timestamp,
-            entry.action.toUpperCase(), // log as uppercase for emphasis
+            String(entry.action).toUpperCase(), // log as uppercase for emphasis
             entry.token,
             entry.pairAddress || '',
             entry.price,
             entry.amount ?? '',
             entry.pnl ?? '',
-            entry.reason.replace(/,/g, ';'),
+            String(entry.reason).replace(/,/g, ';'),
             entry.txid || '',
             entry.success,
             entry.strategyName ?? '',

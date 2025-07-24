@@ -33,8 +33,8 @@ describe('Treasury Profit Auto-Swap Integration', () => {
     const netPnL = 1; // 1 SOL
     const solProceeds = netPnL;
     // Simulate auto-swap logic
-    const { fetchJupiterQuote } = require('../src/orderExecution/jupiterQuote');
-    const JupiterOrderExecution = require('../src/orderExecution/jupiterOrderExecution').default;
+    const { fetchJupiterQuote } = await import('../src/orderExecution/jupiterQuote');
+    const JupiterOrderExecution = (await import('../src/orderExecution/jupiterOrderExecution')).default;
     const quote = await fetchJupiterQuote({
       inputMint: 'So11111111111111111111111111111111111111112',
       outputMint: USDC_MINT,

@@ -1,11 +1,20 @@
+var alerts = [];
+vi.mock('../src/utils/notifications', () => {
+  return {
+    sendAlert: (msg, level) => {
+      // eslint-disable-next-line no-console
+      console.log('[TEST DEBUG] sendAlert called with:', msg, level);
+      alerts.push(msg);
+    }
+  };
+});
+
 import { describe, it, expect, vi } from 'vitest';
 import { TradingEngine } from '../src/services/tradingEngine';
 
-// Mock sendAlert
-const alerts: string[] = [];
-vi.mock('../src/services/alertManager', () => ({
-  sendAlert: (msg: string) => alerts.push(msg)
-}));
+beforeEach(() => {
+  alerts.length = 0;
+});
 
 describe('TradingEngine consecutive-loss alert', () => {
   it('fires only after >=3 consecutive losses', async () => {

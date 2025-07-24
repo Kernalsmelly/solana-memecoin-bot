@@ -9,8 +9,7 @@ describe('ContractValidator', () => {
   const testAddress = '11111111111111111111111111111111' // valid Solana public key
 
   beforeEach(() => {
-    validator = new ContractValidator()
-    ;(validator as any).connection = createMockConnection({})
+    validator = new ContractValidator(createMockConnection({}))
   })
 
   afterEach(() => {
