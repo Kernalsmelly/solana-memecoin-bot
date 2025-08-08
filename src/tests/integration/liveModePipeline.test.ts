@@ -5,7 +5,9 @@ import { OrderManager } from '../../orderExecution/orderManager';
 
 // Mock Connection to ensure no real RPC calls
 class FakeConnection {
-  getSignatureStatuses = vi.fn().mockResolvedValue({ value: [{ confirmationStatus: 'confirmed' }] });
+  getSignatureStatuses = vi
+    .fn()
+    .mockResolvedValue({ value: [{ confirmationStatus: 'confirmed' }] });
   getRecentBlockhash = vi.fn().mockResolvedValue({ feeCalculator: { lamportsPerSignature: 5000 } });
   sendRawTransaction = vi.fn().mockResolvedValue('mock_sig');
 }

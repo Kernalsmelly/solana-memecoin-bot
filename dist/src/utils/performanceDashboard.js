@@ -1,48 +1,11 @@
-"use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.PerformanceDashboard = void 0;
-const express_1 = __importDefault(require("express"));
-const http = __importStar(require("http"));
-const path = __importStar(require("path"));
-const fs = __importStar(require("fs"));
-const logger_1 = __importDefault(require("./logger"));
-class PerformanceDashboard {
+import express from 'express';
+import * as http from 'http';
+import * as path from 'path';
+import * as fs from 'fs';
+import logger from './logger.js';
+export class PerformanceDashboard {
+    patternEventCounts = {};
+    pendingExits = [];
     app;
     server = null;
     riskManager;
@@ -53,7 +16,7 @@ class PerformanceDashboard {
     tradeHistory = [];
     pnlSeries = [];
     constructor(options) {
-        this.app = (0, express_1.default)();
+        this.app = express();
         this.riskManager = options.riskManager;
         this.port = options.port || 3000;
         this.dataDir = options.dataDir || './data/performance';
@@ -67,7 +30,7 @@ class PerformanceDashboard {
     setupRoutes() {
         const app = this.app;
         // Serve static assets
-        app.use(express_1.default.static(path.join(__dirname, '../../public')));
+        app.use(express.static(path.join(__dirname, '../../public')));
         // Monitoring endpoints
         app.get('/api/trades', (req, res) => {
             res.json(this.tradeHistory.slice(-100));
@@ -80,13 +43,15 @@ class PerformanceDashboard {
             const metrics = this.riskManager.getMetrics();
             // Trades/sec (last 5 min)
             const now = Date.now();
-            const tradesLast5m = (this.tradeHistory || []).filter(t => now - t.timestamp < 5 * 60 * 1000);
+            const tradesLast5m = (this.tradeHistory || []).filter((t) => now - t.timestamp < 5 * 60 * 1000);
             const tradesPerSec = tradesLast5m.length / 300;
             // Avg PnL
-            const pnls = (this.tradeHistory || []).map(t => t.pnl).filter(p => typeof p === 'number');
+            const pnls = (this.tradeHistory || []).map((t) => t.pnl).filter((p) => typeof p === 'number');
             const avgPnl = pnls.length ? pnls.reduce((a, b) => a + b, 0) / pnls.length : 0;
             // Drawdown pct
-            const drawdownPct = metrics.drawdownMax && metrics.highWaterMark ? (metrics.drawdownMax / metrics.highWaterMark) * 100 : 0;
+            const drawdownPct = metrics.drawdownMax && metrics.highWaterMark
+                ? (metrics.drawdownMax / metrics.highWaterMark) * 100
+                : 0;
             // RPC error count (example, should be incremented elsewhere)
             const rpcErrorCount = global['rpcErrorCount'] || 0;
             let output = '';
@@ -124,7 +89,7 @@ class PerformanceDashboard {
             res.json({
                 status: systemEnabled ? (emergencyStop ? 'EMERGENCY_STOP' : 'RUNNING') : 'DISABLED',
                 circuitBreakers,
-                lastUpdated: new Date().toISOString()
+                lastUpdated: new Date().toISOString(),
             });
         });
         app.get('/api/pattern-events', (req, res) => {
@@ -143,7 +108,7 @@ class PerformanceDashboard {
     start() {
         return new Promise((resolve) => {
             this.server = http.createServer(this.app).listen(this.port, () => {
-                logger_1.default.info(`Performance dashboard running on port ${this.port}`);
+                logger.info(`Performance dashboard running on port ${this.port}`);
                 // Start metrics collection
                 this.startMetricsCollection();
                 resolve();
@@ -159,7 +124,7 @@ class PerformanceDashboard {
                 if (err) {
                     return reject(err);
                 }
-                logger_1.default.info('Performance dashboard stopped');
+                logger.info('Performance dashboard stopped');
                 resolve();
             });
         });
@@ -172,7 +137,7 @@ class PerformanceDashboard {
                 const timestamp = new Date().toISOString();
                 const performancePoint = {
                     timestamp,
-                    ...metrics
+                    ...metrics,
                 };
                 this.performanceHistory.push(performancePoint);
                 // Truncate history to avoid memory issues
@@ -186,7 +151,7 @@ class PerformanceDashboard {
                 }
             }
             catch (error) {
-                logger_1.default.error('Error collecting metrics', error);
+                logger.error('Error collecting metrics', error);
             }
         }, this.refreshInterval);
     }
@@ -195,13 +160,12 @@ class PerformanceDashboard {
             const date = new Date().toISOString().split('T')[0];
             const filePath = path.join(this.dataDir, `performance-${date}.json`);
             fs.writeFileSync(filePath, JSON.stringify(this.performanceHistory, null, 2));
-            logger_1.default.debug('Performance data saved to disk', { file: filePath });
+            logger.debug('Performance data saved to disk', { file: filePath });
         }
         catch (error) {
-            logger_1.default.error('Error saving performance data', error);
+            logger.error('Error saving performance data', error);
         }
     }
 }
-exports.PerformanceDashboard = PerformanceDashboard;
-exports.default = PerformanceDashboard;
+export default PerformanceDashboard;
 //# sourceMappingURL=performanceDashboard.js.map

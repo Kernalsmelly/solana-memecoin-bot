@@ -11,7 +11,10 @@ export interface HeliusTokenMetadata {
   [key: string]: any;
 }
 
-export async function fetchHeliusTokenMetadata(address: string, heliusApiKey: string): Promise<HeliusTokenMetadata | null> {
+export async function fetchHeliusTokenMetadata(
+  address: string,
+  heliusApiKey: string,
+): Promise<HeliusTokenMetadata | null> {
   try {
     const url = `https://api.helius.xyz/v0/token-metadata?api-key=${heliusApiKey}`;
     const res = await axios.post(url, {

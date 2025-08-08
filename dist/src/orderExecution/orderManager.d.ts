@@ -1,5 +1,5 @@
 import { Connection, Transaction, VersionedTransaction } from '@solana/web3.js';
-import { Signer } from './signer';
+import { Signer } from './signer.js';
 import EventEmitter from 'events';
 export interface Order {
     signature: string;

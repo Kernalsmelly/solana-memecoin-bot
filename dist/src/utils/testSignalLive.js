@@ -1,12 +1,7 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-const dotenv_1 = __importDefault(require("dotenv"));
-dotenv_1.default.config();
-const discordNotifier_1 = require("./discordNotifier");
-const signalLogger_1 = require("./signalLogger");
+import dotenv from 'dotenv';
+dotenv.config();
+import { sendDiscordSignal } from './discordNotifier.js';
+import { logSignal } from './signalLogger.js';
 // This test script does NOT import or use config.ts.
 (async () => {
     const payload = {
@@ -27,8 +22,8 @@ const signalLogger_1 = require("./signalLogger");
         },
         timestamp: Date.now(),
     };
-    await (0, discordNotifier_1.sendDiscordSignal)(payload);
-    (0, signalLogger_1.logSignal)(payload);
+    await sendDiscordSignal(payload);
+    logSignal(payload);
     console.log('Manual test signal sent to Discord and signals.log!');
 })();
 //# sourceMappingURL=testSignalLive.js.map

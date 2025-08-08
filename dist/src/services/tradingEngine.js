@@ -1,153 +1,116 @@
-"use strict";
 // tradingEngine.ts
-// Recreated from scratch to remove any hidden/encoding chars. See tradingEngine.bak.ts for original reference.
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.TradingEngine = void 0;
-const web3_js_1 = require("@solana/web3.js");
-const logger_1 = __importDefault(require("../utils/logger"));
-const notifications_1 = require("../utils/notifications");
-const tradeLogger_1 = require("../utils/tradeLogger");
-const discordNotifier_1 = require("../utils/discordNotifier");
-const signalLogger_1 = require("../utils/signalLogger");
-class TradingEngine {
-    riskManager;
-    parameterFeedbackLoop;
-    volatilitySqueeze;
+import { PublicKey } from '@solana/web3.js';
+import logger from '../utils/logger.js';
+import { sendAlert } from '../utils/notifications.js';
+import { sendDiscordSignal } from '../utils/discordNotifier.js';
+import { logSignal } from '../utils/signalLogger.js';
+import { createJupiterApiClient, } from '@jup-ag/api';
+import { StrategyCoordinator } from '../strategies/strategyCoordinator.js';
+import MomentumBreakoutStrategy from '../strategies/momentumBreakout.js';
+import { ParameterFeedbackLoop, } from '../strategies/parameterFeedbackLoop.js';
+import { RiskManager } from '../live/riskManager.js';
+import { TxnBuilder } from './txnBuilder.js';
+export class TradingEngine {
     connection;
-    // ... other properties ...
-    getPositions() {
-        return Array.from(this.currentPositions.values());
+    config;
+    wallet;
+    keyRotationManager;
+    riskManager;
+    strategyCoordinator;
+    volatilitySqueeze = undefined;
+    altStrategy;
+    feedbackLoop;
+    feedbackBatchSize;
+    feedbackDeltaPct;
+    maxDrawdownPercent;
+    drawdownAlertPct;
+    txnBuilder;
+    consecutiveLosses = 0;
+    enableAlternativeStrategy = false;
+    currentPositions = new Map();
+    get positions() {
+        return this.currentPositions;
     }
-    // ... other methods ...
-    checkSellCriteria(marketData) {
-        logger_1.default.debug(`[TradingEngine] Checking SELL criteria for ${marketData.mint}...`);
-        const positionInfo = this.currentPositions.get(marketData.mint);
-        if (!positionInfo) {
-            logger_1.default.warn(`[TradingEngine] checkSellCriteria called for ${marketData.mint} but no position info found.`);
-            return { shouldSell: false, reason: 'Position info not found' };
-        }
-        const { mint, currentPrice, liquidity, priceChangePercent, buyRatio5m } = marketData;
-        const tradingConfig = this.config.trading;
-        const sellCriteria = this.config.sellCriteria;
-        const stopLossPercent = sellCriteria?.stopLossPercent;
-        const takeProfitPercent = sellCriteria?.takeProfitPercent;
-        let shouldSell = false;
-        let reason = '';
-        const entryPrice = positionInfo.entryPrice;
-        let actualProfitPercent = undefined;
-        if (entryPrice > 0) {
-            actualProfitPercent = ((currentPrice - entryPrice) / entryPrice) * 100;
-            if (stopLossPercent !== undefined || takeProfitPercent !== undefined) {
-                logger_1.default.debug(`[TradingEngine] P/L Check for ${mint}: Entry=${entryPrice.toFixed(6)}, Current=${currentPrice.toFixed(6)}, P/L=${actualProfitPercent.toFixed(2)}%`);
-            }
-            if (stopLossPercent !== undefined && actualProfitPercent <= stopLossPercent) {
-                shouldSell = true;
-                reason = `Stop Loss triggered (${actualProfitPercent.toFixed(2)}% <= ${stopLossPercent}%)`;
-            }
-            else if (takeProfitPercent !== undefined && actualProfitPercent >= takeProfitPercent) {
-                shouldSell = true;
-                reason = `Take Profit triggered (${actualProfitPercent.toFixed(2)}% >= ${takeProfitPercent}%)`;
-            }
-        }
-        else if (stopLossPercent !== undefined || takeProfitPercent !== undefined) {
-            logger_1.default.warn(`[TradingEngine] Entry price for ${mint} is zero or invalid (${entryPrice}), cannot calculate P/L for SL/TP.`);
-        }
-        const minSellLiquidity = sellCriteria?.minSellLiquidity ?? tradingConfig?.minLiquidity;
-        if (!shouldSell && minSellLiquidity !== undefined && liquidity !== undefined && liquidity < minSellLiquidity) {
-            shouldSell = true;
-            reason = `Liquidity $${liquidity?.toFixed(2)} below sell threshold $${minSellLiquidity}`;
-        }
-        const minSellBuyRatio = sellCriteria?.minSellBuyRatio;
-        if (!shouldSell && minSellBuyRatio !== undefined && buyRatio5m !== undefined && buyRatio5m < minSellBuyRatio) {
-            shouldSell = true;
-            reason = `Buy Ratio ${buyRatio5m?.toFixed(2)} below sell threshold ${minSellBuyRatio}`;
-        }
-        if (!shouldSell) {
-            reason = 'No sell criteria met.';
-        }
-        return { shouldSell, reason };
+    set positions(val) {
+        this.currentPositions = val;
     }
-    /**
-     * Helper function to send and confirm a transaction with optional priority fees and timeout.
-     */
-    async sendAndConfirmTransaction(transaction, description, tokenMint) {
-        const priorityFeeMicroLamports = this.config.trading?.txPriorityFeeMicroLamports;
-        const confirmationTimeoutMs = this.config.trading?.txConfirmationTimeoutMs;
-        try {
-            const instructions = [];
-            if (priorityFeeMicroLamports && priorityFeeMicroLamports > 0) {
-                instructions.push(web3_js_1.ComputeBudgetProgram.setComputeUnitPrice({ microLamports: priorityFeeMicroLamports }));
-                logger_1.default.debug(`[TradingEngine] Adding priority fee: ${priorityFeeMicroLamports} micro-lamports for ${description} ${tokenMint}`);
-            }
-            let finalTransaction = transaction;
-            if (instructions.length > 0) {
-                const message = web3_js_1.TransactionMessage.decompile(transaction.message, {
-                    addressLookupTableAccounts: []
-                });
-                message.instructions.unshift(...instructions);
-                finalTransaction = new web3_js_1.VersionedTransaction(message.compileToLegacyMessage());
-                finalTransaction.sign([this.wallet]);
-                logger_1.default.debug(`[TradingEngine] Recompiled and re-signed ${description} tx for ${tokenMint} with priority fee.`);
-            }
-            const txid = await this.connection.sendTransaction(finalTransaction, {
-                skipPreflight: true,
-                maxRetries: 2,
-            });
-            logger_1.default.info(`[TradingEngine] ${description} transaction sent for ${tokenMint}. TXID: ${txid}. Waiting for confirmation...`);
-            const confirmationStrategy = {
-                signature: txid,
-                blockhash: finalTransaction.message.recentBlockhash,
-                lastValidBlockHeight: (await this.connection.getLatestBlockhash()).lastValidBlockHeight
-            };
-            const result = await this.connection.confirmTransaction(confirmationStrategy, 'confirmed');
-            if (result.value.err) {
-                logger_1.default.error(`[TradingEngine] ${description} transaction confirmation failed for ${tokenMint}. TXID: ${txid}. Error: ${JSON.stringify(result.value.err)}`);
-                return null;
-            }
-            logger_1.default.info(`[TradingEngine] ${description} transaction confirmed successfully! TXID: ${txid}`);
-            return txid;
-        }
-        catch (error) {
-            logger_1.default.error(`[TradingEngine] Error during ${description} transaction sending/confirmation for ${tokenMint}: ${error.message}`, { txid: error.txid });
-            tradeLogger_1.tradeLogger.logScenario('TX_ERROR', {
-                description,
-                tokenMint,
-                error: error.message,
-                txid: error.txid,
-                timestamp: new Date().toISOString()
-            });
-            await (0, notifications_1.sendAlert)(`[TradingEngine] Error during ${description} transaction for ${tokenMint}: ${error.message}`, 'CRITICAL');
-            if (error.logs) {
-                logger_1.default.error(`[TradingEngine] Transaction Logs: ${error.logs.join('\n')}`);
-            }
-        }
-        return null;
+    constructor(connection, config, wallet, keyRotationManager, sendAlertFn) {
+        this.connection = connection;
+        this.config = config;
+        this.wallet = wallet;
+        this.keyRotationManager = keyRotationManager;
+        this.sendAlertFn = sendAlertFn || sendAlert;
+        // Initialize core components
+        this.riskManager = new RiskManager({
+            maxDrawdown: 0.2,
+            maxDailyLoss: 0.1,
+            maxPositions: 5,
+            maxPositionSize: 1000,
+        });
+        this.strategyCoordinator = new StrategyCoordinator({
+            strategies: [],
+            cooldownSec: 60,
+        }); // Valid CoordinatorOptions
+        this.altStrategy = new MomentumBreakoutStrategy({
+            cooldownSec: 300,
+            maxHistory: 120,
+            momentumThreshold: 1.0,
+        });
+        this.feedbackLoop = new ParameterFeedbackLoop({ priceChangeThreshold: 20, volumeMultiplier: 2 }, (params, stats) => { }, 10, 0.05);
+        this.feedbackBatchSize = 10;
+        this.feedbackDeltaPct = 0.05;
+        this.maxDrawdownPercent = 20;
+        this.drawdownAlertPct = 10;
+        this.txnBuilder = new TxnBuilder(connection, {
+            priorityFee: 0,
+            maxRetries: 3,
+            retryDelayMs: 1000,
+        });
     }
-    /**
-     * Executes a buy order for a specified token.
-     */
-    async buyToken(outputMint, pairAddress, marketData) {
-        let positionSizeSol = 0.1;
+    getWalletPublicKey() {
+        return this.wallet.publicKey;
+    }
+    getConsecutiveLosses() {
+        return this.consecutiveLosses;
+    }
+    async checkLossAlert(drawdown, threshold) {
+        if (this.consecutiveLosses >= 3) {
+            await this.sendAlertFn('3 consecutive losses', 'CRITICAL');
+            this.consecutiveLosses = 0;
+        }
+        if (drawdown <= -threshold) {
+            await this.sendAlertFn('Drawdown Breach', 'CRITICAL');
+        }
+    }
+    async calculatePositionSize(price, marketData) {
         try {
             const balanceLamports = await this.connection.getBalance(this.wallet.publicKey);
             const balanceSol = balanceLamports / 1e9;
-            const tokenSymbol = marketData?.symbol || outputMint.toString();
-            positionSizeSol = this.riskManager.getDynamicPositionSizeSol(tokenSymbol, balanceSol, this.config.trading?.riskPct ?? 0.01, this.config.trading?.maxPositionSize ?? 1);
-            logger_1.default.info(`[RiskManager] Computed position size for ${tokenSymbol}: ${positionSizeSol} SOL (Wallet balance: ${balanceSol} SOL)`);
+            const rawSymbol = marketData?.symbol || '';
+            const symbolKey = String(rawSymbol).toUpperCase();
+            let positionSizeSol = await this.riskManager.calculatePositionSize(symbolKey, price, balanceSol, this.config.trading && 'riskPct' in this.config.trading
+                ? this.config.trading.riskPct
+                : 0.01, this.config.trading && 'maxPositionSize' in this.config.trading
+                ? this.config.trading.maxPositionSize
+                : 1);
+            if (process.argv.includes('--force-trade')) {
+                positionSizeSol = 0.03;
+            }
+            return positionSizeSol;
         }
         catch (err) {
-            logger_1.default.warn(`[RiskManager] Failed to compute dynamic position size: ${err}`);
+            logger.warn('[RiskManager] Failed to compute dynamic position size: ' + err);
+            return 0.1; // Fallback position size
         }
+    }
+    async handleSignalMode(token, symbolKey, pairAddress, marketData) {
         if (this.config.signalOnlyMode) {
             const payload = {
                 type: 'BUY_SIGNAL',
                 token: {
-                    mint: outputMint.toString(),
-                    symbol: marketData?.symbol,
-                    poolAddress: pairAddress
+                    mint: token,
+                    symbol: symbolKey,
+                    poolAddress: pairAddress,
                 },
                 price: marketData?.currentPrice ?? 0,
                 liquidity: marketData?.liquidity ?? 0,
@@ -155,68 +118,232 @@ class TradingEngine {
                 buyRatio: marketData?.buyRatio5m ?? 0,
                 reason: marketData?.signalReason || 'Criteria met',
                 links: {
-                    solscan: `https://solscan.io/token/${outputMint.toString()}`,
-                    raydium: pairAddress ? `https://raydium.io/swap/?inputCurrency=SOL&outputCurrency=${outputMint.toString()}` : undefined
+                    solscan: 'https://solscan.io/token/' + token,
+                    raydium: pairAddress
+                        ? 'https://raydium.io/swap/?inputCurrency=SOL&outputCurrency=' + token
+                        : undefined,
                 },
-                timestamp: Date.now()
+                timestamp: Date.now(),
             };
-            await (0, discordNotifier_1.sendDiscordSignal)(payload);
-            (0, signalLogger_1.logSignal)(payload);
-            logger_1.default.info(`[TradingEngine] Signal-only mode: Sent BUY signal for ${outputMint.toString()}`);
+            await sendDiscordSignal(payload);
+            logSignal(payload);
+            logger.info('[TradingEngine] Signal-only mode: Sent BUY signal for ' + token);
             return true;
         }
+        return false;
+    }
+    async buyToken(outputMint, pairAddress, marketData) {
         try {
-            logger_1.default.info(`[TradingEngine] [PROFIT CHECK] Entry conditions logged for ${outputMint.toString()}`);
-            return true;
+            const positionSizeSol = await this.calculatePositionSize(marketData?.currentPrice ?? 0, marketData);
+            if (!(await this.handleSignalMode(outputMint.toString(), marketData?.symbol || outputMint.toString(), pairAddress || '', marketData || {}))) {
+                return false;
+            }
+            const quote = await this.getQuote(outputMint, pairAddress || '', marketData || {});
+            if (!quote) {
+                logger.error(`[TradingEngine] Failed to get quote for ${outputMint.toString()}`);
+                return false;
+            }
+            // Multi-key: rotate key if manager present
+            let tradeKeypair = this.wallet;
+            if (this.keyRotationManager) {
+                tradeKeypair = this.keyRotationManager.nextKeypair();
+                logger.info(`[KeyRotation] Rotated to key ${tradeKeypair.publicKey.toBase58()} for buyToken`);
+            }
+            const success = await this.executeSwap(outputMint, pairAddress || '', positionSizeSol, quote, tradeKeypair);
+            if (success) {
+                this.currentPositions.set(outputMint.toString(), {
+                    entryPrice: marketData?.currentPrice ?? 0,
+                    entryTimestamp: Date.now(),
+                    amountBoughtUi: positionSizeSol,
+                    pairAddress: pairAddress || '',
+                });
+            }
+            return success;
         }
         catch (error) {
-            logger_1.default.error(`[TradingEngine] BUY operation failed for ${outputMint.toString()}: ${error.message}`);
-            tradeLogger_1.tradeLogger.logScenario('BUY_FAILED', {
-                token: outputMint.toString(),
-                pairAddress,
-                error: error.message,
-                timestamp: new Date().toISOString()
-            });
+            logger.error('[TradingEngine] BUY operation failed: ' + error);
             return false;
         }
     }
-    /**
-     * Executes a sell order for a specified token.
-     */
-    async sellToken(tokenMint, pairAddress, marketData) {
-        if (this.config.signalOnlyMode) {
-            const payload = {
-                type: 'SELL_SIGNAL',
-                token: {
-                    mint: tokenMint.toString(),
-                    symbol: marketData?.symbol,
-                    poolAddress: pairAddress
-                },
-                price: marketData?.currentPrice ?? 0,
-                liquidity: marketData?.liquidity ?? 0,
-                volume: marketData?.volume1h ?? 0,
-                buyRatio: marketData?.buyRatio5m ?? 0,
-                reason: marketData?.signalReason || 'Sell criteria met',
-                links: {
-                    solscan: `https://solscan.io/token/${tokenMint.toString()}`,
-                    raydium: pairAddress ? `https://raydium.io/swap/?inputCurrency=SOL&outputCurrency=${tokenMint.toString()}` : undefined
-                },
-                timestamp: Date.now()
-            };
-            await (0, discordNotifier_1.sendDiscordSignal)(payload);
-            (0, signalLogger_1.logSignal)(payload);
-            logger_1.default.info(`[TradingEngine] Signal-only mode: Sent SELL signal for ${tokenMint.toString()}`);
-            return true;
-        }
+    async getQuote(outputMint, pairAddress, marketData) {
         try {
-            logger_1.default.info(`[TradingEngine] [PROFIT CHECK] Sell conditions logged for ${tokenMint.toString()}`);
-            return true;
+            const jupiterClient = createJupiterApiClient();
+            const inputMint = new PublicKey('So11111111111111111111111111111111111111112'); // SOL
+            const quoteParams = {
+                inputMint: inputMint.toString(),
+                outputMint: outputMint.toString(),
+                amount: marketData.positionSizeSol * 1e9,
+                slippageBps: marketData.slippageBps ?? 50,
+            };
+            const quote = await jupiterClient.quoteGet(quoteParams);
+            return quote;
         }
         catch (error) {
-            logger_1.default.error(`[TradingEngine] SELL operation failed for ${tokenMint.toString()}: ${error.message}`);
+            logger.error(`[TradingEngine] Failed to get quote for ${outputMint.toString()}: ${error}`);
+            return null;
+        }
+    }
+    async executeSwap(outputMint, pairAddress, positionSizeSol, quote, keypair) {
+        try {
+            // TODO: Implement or correct buildSwapTransaction method on TxnBuilder
+            // Use supplied keypair or fallback to this.wallet
+            const signer = keypair || this.wallet;
+            logger.info(`[KeyRotation] Using key ${signer.publicKey.toBase58()} for executeSwap`);
+            // const transaction = await this.txnBuilder.buildSwapTransaction(
+            //     signer.publicKey,
+            //     outputMint,
+            //     pairAddress,
+            //     positionSizeSol,
+            //     quote
+            // );
+            const transaction = null; // Stub for now
+            let txid = null;
+            if (transaction) {
+                txid = await this.sendAndConfirmTransaction(transaction, 'SWAP', outputMint.toString());
+            }
+            if (txid) {
+                logger.info(`[TradingEngine] Successfully executed swap for ${outputMint.toString()} (TX: ${txid})`);
+                return true;
+            }
             return false;
+        }
+        catch (error) {
+            logger.error(`[TradingEngine] Failed to execute swap for ${outputMint.toString()}: ${error}`);
+            return false;
+        }
+    }
+    async sellToken(tokenMint, pairAddress, marketData) {
+        try {
+            if (!(await this.handleSignalMode(tokenMint.toString(), marketData?.symbol || tokenMint.toString(), pairAddress || '', marketData || {}))) {
+                return false;
+            }
+            const quote = await this.getQuote(tokenMint, pairAddress || '', marketData || {});
+            if (!quote) {
+                logger.error(`[TradingEngine] Failed to get quote for ${tokenMint.toString()}`);
+                return false;
+            }
+            const position = this.currentPositions.get(tokenMint.toString());
+            if (!position) {
+                logger.error(`[TradingEngine] No position found for ${tokenMint.toString()}`);
+                return false;
+            }
+            if (typeof position.amountBoughtUi !== 'number') {
+                logger.error(`[TradingEngine] amountBoughtUi is undefined for ${tokenMint.toString()}`);
+                return false;
+            }
+            return await this.executeSwap(tokenMint, pairAddress || '', position.amountBoughtUi ?? 0, quote);
+        }
+        catch (error) {
+            logger.error('[TradingEngine] SELL operation failed: ' + error);
+            return false;
+        }
+    }
+    async closePosition(tokenMint, pairAddress, marketData) {
+        try {
+            const position = this.currentPositions.get(tokenMint.toString());
+            if (!position) {
+                logger.error(`[TradingEngine] No position found for ${tokenMint.toString()}`);
+                return false;
+            }
+            const success = await this.sellToken(tokenMint, pairAddress, marketData);
+            if (success) {
+                const position = this.currentPositions.get(tokenMint.toString());
+                if (position && marketData?.currentPrice) {
+                    const pnl = this.calculatePositionPnl(position, marketData.currentPrice);
+                    logger.info(`[TradingEngine] Closed position for ${tokenMint.toString()}: P&L = ${pnl.toFixed(2)} SOL`);
+                    // TODO: Implement or correct logTrade method on tradeLogger
+                    /*
+                              tradeLogger.logTrade({
+                                  token: tokenMint.toString(),
+                                  entryPrice: position.entryPrice,
+                                  exitPrice: marketData.currentPrice,
+                                  pnl: pnl,
+                                  timestamp: Date.now(),
+                                  duration: (Date.now() - position.entryTimestamp) / 1000
+                              });
+                              */
+                }
+                this.currentPositions.delete(tokenMint.toString());
+            }
+            return success;
+        }
+        catch (error) {
+            logger.error('[TradingEngine] Failed to close position: ' + error);
+            return false;
+        }
+    }
+    calculatePositionPnl(position, currentPrice) {
+        if (typeof position.amountBoughtUi !== 'number' || isNaN(position.amountBoughtUi))
+            return 0;
+        const entryPrice = position.entryPrice;
+        const pnl = (currentPrice - entryPrice) * (position.amountBoughtUi ?? 0);
+        return pnl;
+    }
+    isPositionInDrawdown(position, currentPrice) {
+        if (typeof position.amountBoughtUi !== 'number' || isNaN(position.amountBoughtUi))
+            return false;
+        const pnl = this.calculatePositionPnl(position, currentPrice);
+        const denominator = position.entryPrice *
+            (typeof position.amountBoughtUi === 'number' ? position.amountBoughtUi : 1); // already guarded above
+        const drawdownPercent = denominator !== 0 ? Math.abs(pnl / denominator) * 100 : 0;
+        return drawdownPercent >= this.drawdownAlertPct;
+    }
+    async monitorPositions() {
+        try {
+            const positions = Array.from(this.currentPositions.entries());
+            for (const [tokenMint, position] of positions) {
+                const tokenPublicKey = new PublicKey(tokenMint);
+                // TODO: Implement or correct getMarketData method on strategyCoordinator
+                // const marketData = await this.strategyCoordinator.getMarketData(tokenPublicKey);
+                const marketData = { currentPrice: 0 }; // Stub for now
+                if (marketData?.currentPrice) {
+                    const isDrawdown = this.isPositionInDrawdown(position, marketData.currentPrice);
+                    if (isDrawdown) {
+                        logger.warn(`[TradingEngine] Position in drawdown: ${tokenMint} - ${marketData.currentPrice}`);
+                        await sendAlert(`Position Alert: ${tokenMint} is in drawdown`);
+                        // Check if we've exceeded max drawdown
+                        const drawdownPercent = Math.abs(this.calculatePositionPnl(position, marketData.currentPrice) /
+                            (position.entryPrice * (position.amountBoughtUi ?? 0))) * 100;
+                        if (drawdownPercent >= this.maxDrawdownPercent) {
+                            logger.warn(`[TradingEngine] Max drawdown reached for ${tokenMint} - Closing position`);
+                            await this.closePosition(tokenPublicKey, position.pairAddress, marketData);
+                        }
+                    }
+                }
+            }
+        }
+        catch (error) {
+            logger.error('[TradingEngine] Error monitoring positions: ' + error);
+        }
+    }
+    async sendAndConfirmTransaction(transaction, description, tokenMint) {
+        try {
+            const sendTime = Date.now();
+            // VersionedTransaction does not have instructions directly; use message.instructions if needed
+            // If you need to check for instructions, use transaction.message.instructions
+            if ('message' in transaction &&
+                Array.isArray(transaction.message.instructions) &&
+                transaction.message.instructions.length > 0) {
+                const result = await this.connection.sendTransaction(transaction, {
+                    skipPreflight: true,
+                    maxRetries: 2,
+                });
+                // result may be a string or an object, add type guards
+                if (typeof result === 'object' &&
+                    result !== null &&
+                    'value' in result &&
+                    result.value &&
+                    result.value.err) {
+                    throw new Error('Transaction error: ' + JSON.stringify(result.value.err));
+                }
+                // Add any additional logic or return as needed
+            }
+            return null;
+        }
+        catch (error) {
+            logger.error('[TradingEngine] Error during transaction: ' + error);
+            return null;
         }
     }
 }
-exports.TradingEngine = TradingEngine;
 //# sourceMappingURL=tradingEngine.js.map

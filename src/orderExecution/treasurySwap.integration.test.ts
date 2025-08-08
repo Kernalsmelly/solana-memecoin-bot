@@ -12,14 +12,14 @@ vi.mock('./jupiterQuote.ts', () => ({
     outAmount: 1000000, // 1 USDC (6 decimals)
     price: 1,
     route: { dummy: true },
-    tx: {}
-  })
+    tx: {},
+  }),
 }));
 vi.mock('./jupiterOrderExecution.ts', () => ({
   __esModule: true,
   default: vi.fn().mockImplementation(() => ({
-    executeSwap: vi.fn().mockResolvedValue({ success: true })
-  }))
+    executeSwap: vi.fn().mockResolvedValue({ success: true }),
+  })),
 }));
 
 describe('Treasury Profit Auto-Swap Integration', () => {
@@ -37,7 +37,7 @@ describe('Treasury Profit Auto-Swap Integration', () => {
       inputMint: 'So11111111111111111111111111111111111111112',
       outputMint: USDC_MINT,
       amount: Math.floor(solProceeds * 1e9),
-      slippageBps: 50
+      slippageBps: 50,
     });
     expect(quote).toBeTruthy();
     const orderExec = new JupiterOrderExecution({}, {});
@@ -47,7 +47,7 @@ describe('Treasury Profit Auto-Swap Integration', () => {
       amountIn: Math.floor(solProceeds * 1e9),
       slippageBps: 50,
       userPublicKey: 'dummy',
-      meta: { autoTreasury: true }
+      meta: { autoTreasury: true },
     });
     expect(swapResult.success).toBe(true);
     treasury.recordProfit(quote.outAmount / 1e6);

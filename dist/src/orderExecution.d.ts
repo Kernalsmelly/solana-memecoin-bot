@@ -1,5 +1,5 @@
 import { Connection, Keypair } from '@solana/web3.js';
-import { TradeOrder, OrderExecutionResult, OrderExecution } from './types';
+import { TradeOrder, OrderExecutionResult, OrderExecution } from './/types.js';
 export interface OrderExecutionConfig {
     slippageBps?: number;
 }

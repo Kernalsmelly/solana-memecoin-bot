@@ -11,8 +11,34 @@ export interface MockToken {
   createdAt: number;
 }
 
-const SYMBOLS = ['BONK', 'SAMO', 'WIF', 'DOGE', 'PEPE', 'SHIB', 'FLOKI', 'MOON', 'RUG', 'SCAM', 'HYPE', 'MEME'];
-const NAMES = ['Bonk', 'Samoyed', 'DogWifHat', 'Dogecoin', 'Pepe', 'Shiba', 'Floki', 'Moon', 'Rugpull', 'Scammy', 'HypeCoin', 'MemeToken'];
+const SYMBOLS = [
+  'BONK',
+  'SAMO',
+  'WIF',
+  'DOGE',
+  'PEPE',
+  'SHIB',
+  'FLOKI',
+  'MOON',
+  'RUG',
+  'SCAM',
+  'HYPE',
+  'MEME',
+];
+const NAMES = [
+  'Bonk',
+  'Samoyed',
+  'DogWifHat',
+  'Dogecoin',
+  'Pepe',
+  'Shiba',
+  'Floki',
+  'Moon',
+  'Rugpull',
+  'Scammy',
+  'HypeCoin',
+  'MemeToken',
+];
 
 function randomSymbol() {
   const symbol = SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)] ?? 'MOCK';
@@ -60,7 +86,7 @@ export class MockTokenDiscovery extends EventEmitter {
       name: randomName(),
       decimals: randomDecimals(),
       liquidity: randomLiquidity(),
-      createdAt: Date.now()
+      createdAt: Date.now(),
     };
     this.tokens.push(token);
     this.emit('tokenDiscovered', token);

@@ -10,10 +10,17 @@ export interface BatchPerformance {
     totalPnL: number;
     sharpeLike: number;
 }
-/**
- * Manages parameter sweeps, batch assignment, and performance tracking
- */
 export declare class ParameterSweepManager extends EventEmitter {
+    /**
+     * Runs a full parameter sweep using sweep ranges from .env, simulates trades, and returns the best params.
+     * @param tradesCount Number of trades per combo
+     * @param simulate Callback to simulate trades for given params (returns array of PnLs)
+     */
+    static runSweepFromEnv(tradesCount: number, simulate: (params: SweepParams, n: number) => Promise<number[]>): Promise<{
+        bestParams: SweepParams;
+        bestStats: BatchPerformance;
+        allResults: BatchPerformance[];
+    }>;
     private paramGrid;
     private batchSize;
     private batchResults;

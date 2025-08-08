@@ -1,4 +1,4 @@
-import { TokenMetrics } from '../types';
+import { TokenMetrics } from '../types.js';
 /**
  * Scores a token opportunity based on liquidity, volume, volatility, price action, buy ratio, age, and trending/social signals.
  * Returns a numeric score and breakdown.

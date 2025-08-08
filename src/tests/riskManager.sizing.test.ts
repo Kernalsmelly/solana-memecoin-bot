@@ -1,4 +1,6 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+vi.mock('../utils/logger', () => import('./mocks/mockLogger'));
+
 import { RiskManager } from '../live/riskManager';
 
 describe('RiskManager.getDynamicPositionSizeSol', () => {
@@ -10,7 +12,7 @@ describe('RiskManager.getDynamicPositionSizeSol', () => {
       maxDrawdown: 0.2,
       maxDailyLoss: 0.1,
       maxPositions: 5,
-      maxPositionSize: 10
+      maxPositionSize: 10,
     });
     // Reset price history
     // @ts-ignore
@@ -27,7 +29,10 @@ describe('RiskManager.getDynamicPositionSizeSol', () => {
     const now = Date.now();
     const prices = [8, 10, 12, 10, 10]; // mean=10, stddev~1.58
     // @ts-ignore
-    riskManager.priceHistory.set(token, prices.map((p, i) => ({ price: p, timestamp: now - i * 1000 })));
+    riskManager.priceHistory.set(
+      token,
+      prices.map((p, i) => ({ price: p, timestamp: now - i * 1000 })),
+    );
     const size = riskManager.getDynamicPositionSizeSol(token, 100, 0.02, 3);
     // balance*riskPct = 2, sigma=sqrt(2) ≈ 1.4142 => 2/1.4142 ≈ 1.4142, maxExposure=3
     expect(size).toBeCloseTo(1.4142, 4);
@@ -45,7 +50,10 @@ describe('RiskManager.getDynamicPositionSizeSol', () => {
   it('handles zero sigma (flat price)', () => {
     const now = Date.now();
     // @ts-ignore
-    riskManager.priceHistory.set(token, [10,10,10,10].map((p,i) => ({ price: p, timestamp: now-i*1000 })));
+    riskManager.priceHistory.set(
+      token,
+      [10, 10, 10, 10].map((p, i) => ({ price: p, timestamp: now - i * 1000 })),
+    );
     const size = riskManager.getDynamicPositionSizeSol(token, 50, 0.1, 10);
     expect(size).toBeCloseTo(5, 6); // fallback: balance*riskPct
   });

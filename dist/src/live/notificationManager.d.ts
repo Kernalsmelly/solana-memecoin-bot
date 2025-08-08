@@ -1,4 +1,4 @@
-import { PatternDetection, Position, RiskMetrics } from '../types';
+import { PatternDetection, RiskMetrics } from '../types.js';
 interface DiscordConfig {
     webhookUrl: string;
 }
@@ -19,7 +19,7 @@ export declare class NotificationManager {
     private notifyLevel;
     constructor(config: NotificationConfig);
     notifyPattern(pattern: PatternDetection): Promise<void>;
-    notifyTrade(type: 'open' | 'close', position: Position): Promise<void>;
+    notifyTrade(trade: any): Promise<void>;
     notifyRisk(metrics: RiskMetrics): Promise<void>;
     notifyError(error: string | Error): Promise<void>;
     notifyInfo(message: string): Promise<void>;

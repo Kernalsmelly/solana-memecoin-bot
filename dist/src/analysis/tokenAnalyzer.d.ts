@@ -35,7 +35,7 @@ export declare class TokenAnalyzer {
     private cacheManager;
     constructor({ minLiquidity, // Minimum liquidity in USD
     minHolders, // Minimum holder count
-    cacheTimeMs }?: {
+    cacheTimeMs, }?: {
         minLiquidity?: number | undefined;
         minHolders?: number | undefined;
         cacheTimeMs?: number | undefined;

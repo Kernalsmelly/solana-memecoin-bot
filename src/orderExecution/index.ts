@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import logger from '../utils/logger';
+import logger from '../utils/logger.js';
 
 export interface DryRunSwapParams {
   inputMint: string;
@@ -60,13 +60,13 @@ export class DryRunOrderExecution extends EventEmitter {
         amountIn: params.amountIn,
         user: params.userPublicKey,
         timestamp: unsignedTx.timestamp,
-        meta: params.meta || {}
+        meta: params.meta || {},
       });
     }
     return {
       success: true,
       simulated: true,
-      txLog: unsignedTx
+      txLog: unsignedTx,
     };
   }
 }

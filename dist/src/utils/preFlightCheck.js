@@ -1,53 +1,14 @@
-"use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.runPreFlightCheck = runPreFlightCheck;
-const web3_js_1 = require("@solana/web3.js");
-const logger_1 = __importDefault(require("./logger"));
-const verifyConfig_1 = __importDefault(require("./verifyConfig"));
-const notifications_1 = require("./notifications");
-const os = __importStar(require("os"));
+import { Connection } from '@solana/web3.js';
+import logger from './logger.js';
+import verifyConfig from './verifyConfig.js';
+import { sendAlert } from './notifications.js';
+import * as os from 'os';
 /**
  * Comprehensive pre-flight check before live trading
  * Validates all system components, configuration, and environment
  */
-async function runPreFlightCheck() {
-    logger_1.default.info('Running pre-flight check before launch');
+export async function runPreFlightCheck() {
+    logger.info('Running pre-flight check before launch');
     const result = {
         pass: true,
         criticalIssues: [],
@@ -57,27 +18,27 @@ async function runPreFlightCheck() {
             systemMemory: {
                 total: 0,
                 free: 0,
-                percentFree: 0
+                percentFree: 0,
             },
             systemCpu: {
                 cores: 0,
-                load: []
+                load: [],
             },
             networkLatency: {
                 rpc: 0,
-                birdeyeApi: null
+                birdeyeApi: null,
             },
             walletStatus: {
                 solBalance: 0,
                 usdcBalance: 0,
-                totalValueUsd: 0
-            }
-        }
+                totalValueUsd: 0,
+            },
+        },
     };
     try {
         // Step 1: Verify configuration
-        logger_1.default.info('Checking environment configuration...');
-        const configResult = await (0, verifyConfig_1.default)();
+        logger.info('Checking environment configuration...');
+        const configResult = await verifyConfig();
         if (!configResult.isValid) {
             result.pass = false;
             result.criticalIssues.push('Configuration validation failed');
@@ -97,7 +58,7 @@ async function runPreFlightCheck() {
             result.warnings.push(`RPC latency is high: ${configResult.rpcStatus.latency}ms`);
         }
         // Step 2: Check system resources
-        logger_1.default.info('Checking system resources...');
+        logger.info('Checking system resources...');
         // CPU check
         const cpuCores = os.cpus().length;
         const loadAvg = os.loadavg();
@@ -115,7 +76,7 @@ async function runPreFlightCheck() {
         }
         result.metrics.systemCpu = {
             cores: cpuCores,
-            load: loadAvg
+            load: loadAvg,
         };
         if (cpuCores < 2) {
             result.warnings.push(`Low CPU core count: ${cpuCores}. Recommended: 2+ cores`);
@@ -125,21 +86,22 @@ async function runPreFlightCheck() {
         const freeMem = os.freemem();
         const percentFree = (freeMem / totalMem) * 100;
         result.metrics.systemMemory = {
-            total: Math.round(totalMem / (1024 * 1024 * 1024) * 10) / 10, // GB
-            free: Math.round(freeMem / (1024 * 1024 * 1024) * 10) / 10, // GB
-            percentFree: Math.round(percentFree)
+            total: Math.round((totalMem / (1024 * 1024 * 1024)) * 10) / 10, // GB
+            free: Math.round((freeMem / (1024 * 1024 * 1024)) * 10) / 10, // GB
+            percentFree: Math.round(percentFree),
         };
-        if (totalMem < 4 * 1024 * 1024 * 1024) { // 4GB
+        if (totalMem < 4 * 1024 * 1024 * 1024) {
+            // 4GB
             result.warnings.push(`Low system memory: ${result.metrics.systemMemory.total}GB. Recommended: 4GB+`);
         }
         if (percentFree < 20) {
             result.warnings.push(`Low available memory: ${percentFree.toFixed(1)}% free`);
         }
         // Step 3: Network connectivity and latency tests
-        logger_1.default.info('Testing network connectivity and latency...');
+        logger.info('Testing network connectivity and latency...');
         // RPC latency
         if (process.env.RPC_ENDPOINT) {
-            const connection = new web3_js_1.Connection(process.env.RPC_ENDPOINT);
+            const connection = new Connection(process.env.RPC_ENDPOINT);
             const rpcStartTime = Date.now();
             try {
                 await connection.getSlot();
@@ -172,7 +134,7 @@ async function runPreFlightCheck() {
         //   }
         // }
         // Step 4: Wallet check
-        logger_1.default.info('Checking wallet status...');
+        logger.info('Checking wallet status...');
         if (process.env.PRIVATE_KEY) {
             try {
                 // const walletReport = await manageFunds({ action: 'check' });
@@ -193,13 +155,13 @@ async function runPreFlightCheck() {
             }
         }
         // Step 5: Contract validation check
-        logger_1.default.info('Testing contract validation...');
+        logger.info('Testing contract validation...');
         // Step 6: Notification system test
-        logger_1.default.info('Testing notification system...');
+        logger.info('Testing notification system...');
         let notificationSuccess = false;
         if (process.env.DISCORD_WEBHOOK_URL || process.env.TELEGRAM_BOT_TOKEN) {
             try {
-                await (0, notifications_1.sendAlert)('Pre-flight check running - Testing notification system', 'INFO');
+                await sendAlert('Pre-flight check running - Testing notification system', 'INFO');
                 notificationSuccess = true;
             }
             catch (error) {
@@ -215,10 +177,10 @@ async function runPreFlightCheck() {
             result.warnings.push(`System clock appears to be out of sync (${timeDrift}ms drift)`);
         }
         // Step 8: Prepare report
-        logger_1.default.info('Pre-flight check completed', {
+        logger.info('Pre-flight check completed', {
             pass: result.pass,
             criticalIssues: result.criticalIssues.length,
-            warnings: result.warnings.length
+            warnings: result.warnings.length,
         });
         // Final recommendation on trading parameters
         if (result.criticalIssues.length === 0 && result.warnings.length <= 2) {
@@ -235,13 +197,13 @@ async function runPreFlightCheck() {
             const statusMessage = result.pass
                 ? '✅ Pre-flight check PASSED - System ready for trading'
                 : '❌ Pre-flight check FAILED - Review issues before trading';
-            await (0, notifications_1.sendAlert)(statusMessage, result.pass ? 'INFO' : 'WARNING');
+            await sendAlert(statusMessage, result.pass ? 'INFO' : 'WARNING');
         }
         return result;
     }
     catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        logger_1.default.error('Pre-flight check failed with error', { error: errorMessage });
+        logger.error('Pre-flight check failed with error', { error: errorMessage });
         result.pass = false;
         result.criticalIssues.push(`Pre-flight check error: ${errorMessage}`);
         return result;
@@ -257,11 +219,11 @@ if (require.main === module) {
             console.log(`OVERALL STATUS: ${result.pass ? '✅ PASS' : '❌ FAIL'}`);
             if (result.criticalIssues.length > 0) {
                 console.log('\n🚨 CRITICAL ISSUES:');
-                result.criticalIssues.forEach(issue => console.log(` - ${issue}`));
+                result.criticalIssues.forEach((issue) => console.log(` - ${issue}`));
             }
             if (result.warnings.length > 0) {
                 console.log('\n⚠️ WARNINGS:');
-                result.warnings.forEach(warning => console.log(` - ${warning}`));
+                result.warnings.forEach((warning) => console.log(` - ${warning}`));
             }
             console.log('\n📊 SYSTEM METRICS:');
             if (!result.metrics?.systemCpu) {
@@ -280,7 +242,7 @@ if (require.main === module) {
             console.log(` - Total Value: $${result.metrics.walletStatus.totalValueUsd}`);
             if (result.recommendations.length > 0) {
                 console.log('\n💡 RECOMMENDATIONS:');
-                result.recommendations.forEach(rec => console.log(` - ${rec}`));
+                result.recommendations.forEach((rec) => console.log(` - ${rec}`));
             }
             console.log('\n===========================================\n');
             process.exit(result.pass ? 0 : 1);
@@ -291,5 +253,5 @@ if (require.main === module) {
         }
     })();
 }
-exports.default = runPreFlightCheck;
+export default runPreFlightCheck;
 //# sourceMappingURL=preFlightCheck.js.map

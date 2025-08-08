@@ -5,7 +5,9 @@ import * as path from 'path';
 import { parse } from 'csv-parse/sync';
 
 // Helper to format USD
-function usd(n: number) { return `$${n.toFixed(2)}`; }
+function usd(n: number) {
+  return `$${n.toFixed(2)}`;
+}
 
 // Load missed opportunity results
 const missedFile = path.resolve(__dirname, '..', '..', 'data', 'missed_opportunities.csv');
@@ -25,10 +27,15 @@ function generateReport() {
     return;
   }
   // Top missed pools by best simulated P/L
-  const topMissed = missed.slice().sort((a: any, b: any) => Number(b.pnlBest1h) - Number(a.pnlBest1h)).slice(0, 10);
+  const topMissed = missed
+    .slice()
+    .sort((a: any, b: any) => Number(b.pnlBest1h) - Number(a.pnlBest1h))
+    .slice(0, 10);
   console.log('\n=== Missed Opportunity Report ===');
   topMissed.forEach((r: any, i: any) => {
-    console.log(`${i+1}. ${r.token} | Pool: ${r.poolAddress} | Entry: $${Number(r.detectionPrice).toFixed(6)} | Best1h: $${Number(r.best1h).toFixed(6)} | BestP/L: ${usd(Number(r.pnlBest1h))}`);
+    console.log(
+      `${i + 1}. ${r.token} | Pool: ${r.poolAddress} | Entry: $${Number(r.detectionPrice).toFixed(6)} | Best1h: $${Number(r.best1h).toFixed(6)} | BestP/L: ${usd(Number(r.pnlBest1h))}`,
+    );
   });
   const totalMissedBest1h = missed.reduce((a: any, r: any) => a + Number(r.pnlBest1h), 0);
   const totalMissed15m = missed.reduce((a: any, r: any) => a + Number(r.pnl15m), 0);
@@ -41,8 +48,12 @@ function generateReport() {
   if (leaderboard.length) {
     const best = leaderboard[0];
     console.log('\n=== Parameter Leaderboard (Best Config) ===');
-    console.log(`minLiquidity: $${best.minLiquidity}, minVolume: $${best.minVolume}, minVLratio: ${best.minVLratio}`);
-    console.log(`Detected: ${best.detected}, Traded: ${best.tradedPools}, Total P/L: ${usd(Number(best.totalPL))}, Avg P/L: ${usd(Number(best.avgPL))}, WinRate: ${(Number(best.winRate)*100).toFixed(2)}%`);
+    console.log(
+      `minLiquidity: $${best.minLiquidity}, minVolume: $${best.minVolume}, minVLratio: ${best.minVLratio}`,
+    );
+    console.log(
+      `Detected: ${best.detected}, Traded: ${best.tradedPools}, Total P/L: ${usd(Number(best.totalPL))}, Avg P/L: ${usd(Number(best.avgPL))}, WinRate: ${(Number(best.winRate) * 100).toFixed(2)}%`,
+    );
   }
 }
 

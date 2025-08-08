@@ -1,21 +1,15 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.TokenDiscovery = void 0;
-const events_1 = require("events");
-const RpcRotator_1 = require("../integrations/data-hub/RpcRotator");
-const tokenAnalyzer_1 = require("../analysis/tokenAnalyzer");
-const logger_1 = __importDefault(require("../utils/logger"));
-const memoryManager_1 = require("../utils/memoryManager");
-const heliusAPI_1 = require("../api/heliusAPI");
-const mockTokenDiscovery_1 = require("../utils/mockTokenDiscovery");
-const cache_1 = require("../utils/cache");
-const rateLimiter_1 = require("../utils/rateLimiter");
-const ws_1 = __importDefault(require("ws"));
+import { EventEmitter } from 'events';
+import { RpcRotator } from '../integrations/data-hub/RpcRotator.js';
+import { TokenAnalyzer } from '../analysis/tokenAnalyzer.js';
+import logger from '../utils/logger.js';
+import { MemoryManager } from '../utils/memoryManager.js';
+import { fetchHeliusTokenMetadata } from '../api/heliusAPI.js';
+import { mockTokenDiscovery } from '../utils/mockTokenDiscovery.js';
+import { LRUCache } from '../utils/cache.js';
+import { RateLimiter } from '../utils/rateLimiter.js';
+import WebSocket from 'ws';
 // Token discovery class for processing token events
-class TokenDiscovery extends events_1.EventEmitter {
+export class TokenDiscovery extends EventEmitter {
     rpcRotator;
     tokenAnalyzer;
     riskManager;
@@ -36,25 +30,34 @@ class TokenDiscovery extends events_1.EventEmitter {
     ANALYSIS_THROTTLE_MS;
     BLACKLIST;
     useMockDiscovery = false;
-    tokenCache = new cache_1.LRUCache({ maxSize: 1000, ttl: 60 * 60 * 1000 }); // 1 hour TTL
-    rateLimiter = new rateLimiter_1.RateLimiter();
+    tokenCache = new LRUCache({
+        maxSize: 1000,
+        ttl: 60 * 60 * 1000,
+    }); // 1 hour TTL
+    rateLimiter = new RateLimiter();
     ws = null;
     wsBackoff = 1000;
     wsConnected = false;
     constructor(options = {}, riskManager) {
         super();
-        this.rpcRotator = new RpcRotator_1.RpcRotator();
+        this.rpcRotator = new RpcRotator();
         this.riskManager = riskManager;
         // Hybrid logic: use mock discovery if no Birdeye/Helius API key
         // Use env var for min liquidity if present
-        const envMinLiq = process.env.MIN_LIQUIDITY_USD ? Number(process.env.MIN_LIQUIDITY_USD) : undefined;
+        const envMinLiq = process.env.MIN_LIQUIDITY_USD
+            ? Number(process.env.MIN_LIQUIDITY_USD)
+            : undefined;
         const minLiquidity = envMinLiq || options.minLiquidity || 10000;
         this.MIN_LIQUIDITY = minLiquidity;
         // Use mock discovery ONLY if not mainnet/live mode
-        this.useMockDiscovery = !process.env.BIRDEYE_API_KEY && !process.env.HELIUS_API_KEY && process.env.LIVE_MODE !== 'true' && process.env.NETWORK !== 'mainnet';
+        this.useMockDiscovery =
+            !process.env.BIRDEYE_API_KEY &&
+                !process.env.HELIUS_API_KEY &&
+                process.env.LIVE_MODE !== 'true' &&
+                process.env.NETWORK !== 'mainnet';
         if (this.useMockDiscovery) {
-            logger_1.default.warn('[TokenDiscovery] No API key found, using mock token discovery.');
-            mockTokenDiscovery_1.mockTokenDiscovery.on('tokenDiscovered', (token) => {
+            logger.warn('[TokenDiscovery] No API key found, using mock token discovery.');
+            mockTokenDiscovery.on('tokenDiscovered', (token) => {
                 // Forward as BirdeyeTokenData shape for compatibility
                 const birdeyeToken = {
                     address: token.address,
@@ -69,12 +72,12 @@ class TokenDiscovery extends events_1.EventEmitter {
                 };
                 this.emit('tokenDiscovered', birdeyeToken);
             });
-            mockTokenDiscovery_1.mockTokenDiscovery.start(30000); // Emit every 30s
+            mockTokenDiscovery.start(30000); // Emit every 30s
         }
         // Initialize token analyzer
-        this.tokenAnalyzer = new tokenAnalyzer_1.TokenAnalyzer({
+        this.tokenAnalyzer = new TokenAnalyzer({
             minLiquidity: minLiquidity,
-            minHolders: 10 // Default
+            minHolders: 10, // Default
         });
         // Set configuration options with defaults
         this.MIN_LIQUIDITY = minLiquidity;
@@ -87,12 +90,14 @@ class TokenDiscovery extends events_1.EventEmitter {
         // Start cleanup interval
         this.startCleanupInterval();
         // Fallback: If no real token discovered in X seconds, emit TEST_TARGET_TOKEN
-        const fallbackSecs = process.env.TOKEN_DISCOVERY_FALLBACK_SECS ? Number(process.env.TOKEN_DISCOVERY_FALLBACK_SECS) : 60;
+        const fallbackSecs = process.env.TOKEN_DISCOVERY_FALLBACK_SECS
+            ? Number(process.env.TOKEN_DISCOVERY_FALLBACK_SECS)
+            : 60;
         const testTargetToken = process.env.TEST_TARGET_TOKEN;
         if (testTargetToken) {
             setTimeout(() => {
                 if (this.tokensDiscovered.size === 0) {
-                    logger_1.default.warn(`[TokenDiscovery] No real tokens found after ${fallbackSecs}s, emitting TEST_TARGET_TOKEN`);
+                    logger.warn(`[TokenDiscovery] No real tokens found after ${fallbackSecs}s, emitting TEST_TARGET_TOKEN`);
                     this.emit('tokenDiscovered', {
                         address: testTargetToken,
                         symbol: 'TEST',
@@ -109,7 +114,7 @@ class TokenDiscovery extends events_1.EventEmitter {
     }
     // Start token discovery
     async start() {
-        logger_1.default.info('TokenDiscovery started');
+        logger.info('TokenDiscovery started');
         const birdeyeWSUrl = 'wss://token-price.birdeye.so';
         const heliusApiKey = process.env.HELIUS_API_KEY;
         let reconnectAttempts = 0;
@@ -121,11 +126,11 @@ class TokenDiscovery extends events_1.EventEmitter {
                 catch { }
                 this.ws = null;
             }
-            logger_1.default.info(`[TokenDiscovery] Connecting to Birdeye WS...`);
-            this.ws = new ws_1.default(birdeyeWSUrl);
+            logger.info(`[TokenDiscovery] Connecting to Birdeye WS...`);
+            this.ws = new WebSocket(birdeyeWSUrl);
             this.wsConnected = false;
             this.ws.on('open', () => {
-                logger_1.default.info('[TokenDiscovery] Birdeye WS connected');
+                logger.info('[TokenDiscovery] Birdeye WS connected');
                 this.wsConnected = true;
                 this.wsBackoff = 1000;
                 reconnectAttempts = 0;
@@ -136,7 +141,7 @@ class TokenDiscovery extends events_1.EventEmitter {
                     if (!event.address)
                         return;
                     // LRU cache check
-                    let cached = this.tokenCache.get(event.address);
+                    const cached = this.tokenCache.get(event.address);
                     if (cached) {
                         this.emit('tokenDiscovered', cached);
                         return;
@@ -155,7 +160,7 @@ class TokenDiscovery extends events_1.EventEmitter {
                     // If missing symbol/name/decimals, try Helius fallback
                     if ((!token.symbol || !token.name || !token.decimals) && heliusApiKey) {
                         if (await this.rateLimiter.canMakeRequest('helius')) {
-                            const heliusMeta = await (0, heliusAPI_1.fetchHeliusTokenMetadata)(token.address, heliusApiKey);
+                            const heliusMeta = await fetchHeliusTokenMetadata(token.address, heliusApiKey);
                             if (heliusMeta) {
                                 token = { ...token, ...heliusMeta };
                             }
@@ -165,60 +170,98 @@ class TokenDiscovery extends events_1.EventEmitter {
                     this.emit('tokenDiscovered', token);
                 }
                 catch (err) {
-                    logger_1.default.debug('[TokenDiscovery] WS event parse error', err);
+                    logger.debug('[TokenDiscovery] WS event parse error', err);
                 }
             });
             this.ws.on('close', () => {
-                logger_1.default.warn('[TokenDiscovery] Birdeye WS closed, will reconnect');
+                logger.warn('[TokenDiscovery] Birdeye WS closed, will reconnect');
                 this.wsConnected = false;
                 reconnectAttempts++;
                 setTimeout(connectWS, Math.min(60000, this.wsBackoff * Math.pow(2, reconnectAttempts)));
             });
             this.ws.on('error', (err) => {
-                logger_1.default.debug('[TokenDiscovery] Birdeye WS error', err);
+                logger.debug('[TokenDiscovery] Birdeye WS error', err);
                 if (!this.wsConnected) {
                     this.ws?.close();
                 }
             });
         };
         connectWS();
+        // --- Raydium Pool-Init Listener (fast path) ---
+        // Raydium AMM program v4 mainnet: 5quB4rL6Aq6T1vQGZyQxkQxwJ5u1VvQwQwQwQwQwQwQw
+        // (Use real program ID in production)
+        const raydiumProgramId = '5quB4rL6Aq6T1vQGZyQxkQxwJ5u1VvQwQwQwQwQwQwQw';
+        const raydiumWS = new WebSocket('wss://api.mainnet-beta.solana.com');
+        raydiumWS.on('open', () => {
+            // Subscribe to logs for Raydium program
+            raydiumWS.send(JSON.stringify({
+                jsonrpc: '2.0',
+                id: 1,
+                method: 'logsSubscribe',
+                params: [{ mentions: [raydiumProgramId] }, { commitment: 'confirmed' }],
+            }));
+        });
+        raydiumWS.on('message', (data) => {
+            try {
+                const msg = JSON.parse(data.toString());
+                const logs = msg?.params?.result?.value?.logs || [];
+                // Look for pool-init keywords
+                if (logs.some((l) => l.includes('InitializePool') || l.includes('AddLiquidity'))) {
+                    const signature = msg?.params?.result?.value?.signature || '';
+                    // Minimal pool info for now
+                    const event = {
+                        address: signature,
+                        symbol: 'RAYDIUM_POOL',
+                        name: 'Raydium Pool',
+                        decimals: 9,
+                        liquidity: 0,
+                        volume: 0,
+                        price: 0,
+                        createdAt: Date.now(),
+                    };
+                    this.emit('tokenDiscovered', event);
+                    logger.info('[Raydium] Pool-init detected', { signature });
+                }
+            }
+            catch { }
+        });
         return true;
     }
     // Filter pools by liquidity, volume, market cap, age, and blacklist
     filterPool(pool) {
         if (!pool) {
-            logger_1.default.debug('Rejected pool: missing pool object');
+            logger.debug('Rejected pool: missing pool object');
             return false;
         }
         if (this.seenPoolAddresses.has(pool.address)) {
-            logger_1.default.debug('Rejected pool: already seen', { address: pool.address });
+            logger.debug('Rejected pool: already seen', { address: pool.address });
             return false;
         }
         if (this.BLACKLIST.has(pool.address)) {
-            logger_1.default.info('Rejected pool: blacklisted', { address: pool.address });
+            logger.info('Rejected pool: blacklisted', { address: pool.address });
             return false;
         }
         const liquidity = pool.liquidityUsd ?? pool.liquidity ?? 0;
         if (liquidity < this.MIN_LIQUIDITY) {
-            logger_1.default.debug('Rejected pool: insufficient liquidity', { address: pool.address, liquidity });
+            logger.debug('Rejected pool: insufficient liquidity', { address: pool.address, liquidity });
             return false;
         }
         const volume = pool.volumeUsd24h ?? pool.volume ?? 0;
         if (volume < this.MIN_VOLUME) {
-            logger_1.default.debug('Rejected pool: insufficient volume', { address: pool.address, volume });
+            logger.debug('Rejected pool: insufficient volume', { address: pool.address, volume });
             return false;
         }
         const mcap = pool.mcapUsd ?? pool.mcap ?? 0;
         if (mcap > 50000) {
-            logger_1.default.debug('Rejected pool: market cap too high', { address: pool.address, mcap });
+            logger.debug('Rejected pool: market cap too high', { address: pool.address, mcap });
             return false;
         }
         // Age filter (if available)
         if (pool.createdAt || pool.created_at) {
             const created = new Date(pool.createdAt || pool.created_at).getTime();
             const now = Date.now();
-            if ((now - created) > this.TOKEN_MAX_AGE_MS) {
-                logger_1.default.debug('Rejected pool: token too old', { address: pool.address });
+            if (now - created > this.TOKEN_MAX_AGE_MS) {
+                logger.debug('Rejected pool: token too old', { address: pool.address });
                 return false;
             }
         }
@@ -236,7 +279,7 @@ class TokenDiscovery extends events_1.EventEmitter {
             clearInterval(this.cleanupInterval);
             this.cleanupInterval = null;
         }
-        logger_1.default.info('TokenDiscovery stopped');
+        logger.info('TokenDiscovery stopped');
     }
     // Handle token events
     // TODO: Replace 'any' with a proper TokenEvent type if/when defined
@@ -268,13 +311,13 @@ class TokenDiscovery extends events_1.EventEmitter {
                 }));
                 // Throttle processing to reduce CPU load
                 if (this.tokenProcessQueue.size > 0) {
-                    await new Promise(resolve => setTimeout(resolve, 50));
+                    await new Promise((resolve) => setTimeout(resolve, 50));
                 }
             }
         }
         catch (error) {
-            logger_1.default.error('Error processing token queue', {
-                error: error instanceof Error ? error.message : 'Unknown error'
+            logger.error('Error processing token queue', {
+                error: error instanceof Error ? error.message : 'Unknown error',
             });
         }
         finally {
@@ -307,52 +350,52 @@ class TokenDiscovery extends events_1.EventEmitter {
             }
             // Enforce blacklist, age, liquidity, and volume filters again (defensive)
             if (this.BLACKLIST.has(tokenData.address)) {
-                logger_1.default.info('Rejected token: blacklisted', { address: tokenData.address });
+                logger.info('Rejected token: blacklisted', { address: tokenData.address });
                 return;
             }
             if (tokenData.liquidity !== undefined && tokenData.liquidity < this.MIN_LIQUIDITY) {
-                logger_1.default.debug('Rejected token: insufficient liquidity', { address: tokenData.address });
+                logger.debug('Rejected token: insufficient liquidity', { address: tokenData.address });
                 return;
             }
             if (tokenData.volume !== undefined && tokenData.volume < this.MIN_VOLUME) {
-                logger_1.default.debug('Rejected token: insufficient volume', { address: tokenData.address });
+                logger.debug('Rejected token: insufficient volume', { address: tokenData.address });
                 return;
             }
             if (tokenData.createdAt || tokenData.createdAt) {
                 const created = new Date(tokenData.createdAt || tokenData.createdAt).getTime();
                 const now = Date.now();
-                if ((now - created) > this.TOKEN_MAX_AGE_MS) {
-                    logger_1.default.debug('Rejected token: too old', { address: tokenData.address });
+                if (now - created > this.TOKEN_MAX_AGE_MS) {
+                    logger.debug('Rejected token: too old', { address: tokenData.address });
                     return;
                 }
             }
             // Apply initial filtering criteria
-            if (tokenData.liquidity !== undefined && tokenData.liquidity < this.MIN_LIQUIDITY ||
-                tokenData.volume !== undefined && tokenData.volume < this.MIN_VOLUME) {
+            if ((tokenData.liquidity !== undefined && tokenData.liquidity < this.MIN_LIQUIDITY) ||
+                (tokenData.volume !== undefined && tokenData.volume < this.MIN_VOLUME)) {
                 // Token doesn't meet criteria, skip processing
                 return;
             }
             // Throttle analysis to prevent CPU spikes
             const now = Date.now();
             if (now - this.lastAnalysisTime < this.ANALYSIS_THROTTLE_MS) {
-                await new Promise(resolve => setTimeout(resolve, this.ANALYSIS_THROTTLE_MS));
+                await new Promise((resolve) => setTimeout(resolve, this.ANALYSIS_THROTTLE_MS));
             }
             this.lastAnalysisTime = Date.now();
             // Analyze the token (add a score and risk assessment)
             const analyzedToken = this.tokenAnalyzer.analyzeToken(tokenData);
             // Skip low-quality tokens
             if (analyzedToken.score < 30) {
-                logger_1.default.debug('Low quality token skipped', {
+                logger.debug('Low quality token skipped', {
                     address: tokenData.address,
                     symbol: tokenData.symbol,
-                    score: analyzedToken.score
+                    score: analyzedToken.score,
                 });
                 return;
             }
             // Create a discovered token object with additional metadata
             const discoveredToken = {
                 ...analyzedToken,
-                analysisTime: Date.now()
+                analysisTime: Date.now(),
             };
             // Fix the types for the risk manager method
             if (this.riskManager) {
@@ -361,19 +404,19 @@ class TokenDiscovery extends events_1.EventEmitter {
                     if (typeof this.riskManager['analyzeTokenRisk'] === 'function') {
                         const riskResult = await this.riskManager.analyzeTokenRisk(discoveredToken);
                         if (riskResult && riskResult.score > 80) {
-                            logger_1.default.warn('High risk token detected', {
+                            logger.warn('High risk token detected', {
                                 address: discoveredToken.address,
                                 symbol: discoveredToken.symbol,
-                                risk: riskResult.score
+                                risk: riskResult.score,
                             });
                         }
                     }
                 }
                 catch (error) {
                     // Continue even if risk analysis fails
-                    logger_1.default.error('Risk analysis error', {
+                    logger.error('Risk analysis error', {
                         error: error instanceof Error ? error.message : 'Unknown error',
-                        address: discoveredToken.address
+                        address: discoveredToken.address,
                     });
                 }
             }
@@ -388,18 +431,18 @@ class TokenDiscovery extends events_1.EventEmitter {
              * @type {AnalyzedToken}
              */
             this.emit('tokenDiscovered', discoveredToken);
-            logger_1.default.info('New token discovered', {
+            logger.info('New token discovered', {
                 address: discoveredToken.address,
                 symbol: discoveredToken.symbol,
                 name: discoveredToken.name,
                 liquidity: discoveredToken.liquidity,
-                score: discoveredToken.score
+                score: discoveredToken.score,
             });
         }
         catch (error) {
-            logger_1.default.error('Error processing new token', {
+            logger.error('Error processing new token', {
                 error: error instanceof Error ? error.message : 'Unknown error',
-                address: tokenData.address
+                address: tokenData.address,
             });
         }
     }
@@ -411,7 +454,7 @@ class TokenDiscovery extends events_1.EventEmitter {
         this.cleanupInterval = setInterval(() => {
             this.cleanupExpiredTokens();
         }, this.CLEANUP_INTERVAL_MS);
-        logger_1.default.info(`Token cleanup scheduled every ${this.CLEANUP_INTERVAL_MS / 1000} seconds`);
+        logger.info(`Token cleanup scheduled every ${this.CLEANUP_INTERVAL_MS / 1000} seconds`);
     }
     // Cleanup expired tokens
     cleanupExpiredTokens() {
@@ -430,19 +473,19 @@ class TokenDiscovery extends events_1.EventEmitter {
             }
         });
         // Remove expired tokens
-        expiredAddresses.forEach(address => {
+        expiredAddresses.forEach((address) => {
             this.tokenExpiryTimes.delete(address);
             this.tokensDiscovered.delete(address);
         });
         if (expiredCount > 0) {
-            logger_1.default.info(`Cleaned up ${expiredCount} expired tokens, ${remainingCount} remaining`);
+            logger.info(`Cleaned up ${expiredCount} expired tokens, ${remainingCount} remaining`);
             // Run garbage collection if available to reclaim memory
             this.runGarbageCollection();
         }
     }
     // Run garbage collection
     runGarbageCollection() {
-        const memoryManager = new memoryManager_1.MemoryManager();
+        const memoryManager = new MemoryManager();
         memoryManager.triggerGarbageCollection(); // Correct method name
     }
     // Get the current token count
@@ -466,5 +509,4 @@ class TokenDiscovery extends events_1.EventEmitter {
         this.removeAllListeners();
     }
 }
-exports.TokenDiscovery = TokenDiscovery;
 //# sourceMappingURL=tokenDiscovery.js.map

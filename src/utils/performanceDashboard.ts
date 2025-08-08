@@ -2,8 +2,8 @@ import express from 'express';
 import * as http from 'http';
 import * as path from 'path';
 import * as fs from 'fs';
-import logger from './logger';
-import { RiskManager } from '../live/riskManager';
+import logger from './logger.js';
+import { RiskManager } from '../live/riskManager.js';
 
 interface DashboardOptions {
   port: number;
@@ -13,6 +13,8 @@ interface DashboardOptions {
 }
 
 export class PerformanceDashboard {
+  patternEventCounts: Record<string, number> = {};
+  pendingExits: any[] = [];
   private app: express.Application;
   private server: http.Server | null = null;
   private riskManager: RiskManager;
@@ -55,15 +57,20 @@ export class PerformanceDashboard {
       const metrics = this.riskManager.getMetrics();
       // Trades/sec (last 5 min)
       const now = Date.now();
-      const tradesLast5m = (this.tradeHistory || []).filter(t => now - t.timestamp < 5 * 60 * 1000);
+      const tradesLast5m = (this.tradeHistory || []).filter(
+        (t) => now - t.timestamp < 5 * 60 * 1000,
+      );
       const tradesPerSec = tradesLast5m.length / 300;
       // Avg PnL
-      const pnls = (this.tradeHistory || []).map(t => t.pnl).filter(p => typeof p === 'number');
+      const pnls = (this.tradeHistory || []).map((t) => t.pnl).filter((p) => typeof p === 'number');
       const avgPnl = pnls.length ? pnls.reduce((a, b) => a + b, 0) / pnls.length : 0;
       // Drawdown pct
-      const drawdownPct = metrics.drawdownMax && metrics.highWaterMark ? (metrics.drawdownMax / metrics.highWaterMark) * 100 : 0;
+      const drawdownPct =
+        metrics.drawdownMax && metrics.highWaterMark
+          ? (metrics.drawdownMax / metrics.highWaterMark) * 100
+          : 0;
       // RPC error count (example, should be incremented elsewhere)
-      const rpcErrorCount = global['rpcErrorCount'] || 0;
+      const rpcErrorCount = (global as any)['rpcErrorCount'] || 0;
       let output = '';
       output += `trades_executed_total ${metrics.tradesExecuted || 0}\n`;
       output += `trades_per_sec ${tradesPerSec}\n`;
@@ -98,11 +105,11 @@ export class PerformanceDashboard {
       const circuitBreakers = metrics.circuitBreakers;
       const emergencyStop = metrics.emergencyStopActive;
       const systemEnabled = metrics.systemEnabled;
-      
+
       (res as any).json({
         status: systemEnabled ? (emergencyStop ? 'EMERGENCY_STOP' : 'RUNNING') : 'DISABLED',
         circuitBreakers,
-        lastUpdated: new Date().toISOString()
+        lastUpdated: new Date().toISOString(),
       });
     });
 
@@ -126,10 +133,10 @@ export class PerformanceDashboard {
     return new Promise((resolve) => {
       this.server = http.createServer(this.app).listen(this.port, () => {
         logger.info(`Performance dashboard running on port ${this.port}`);
-        
+
         // Start metrics collection
         this.startMetricsCollection();
-        
+
         resolve();
       });
     });
@@ -140,7 +147,7 @@ export class PerformanceDashboard {
       if (!this.server) {
         return resolve();
       }
-      
+
       this.server.close((err) => {
         if (err) {
           return reject(err);
@@ -157,19 +164,19 @@ export class PerformanceDashboard {
       try {
         const metrics = this.riskManager.getMetrics();
         const timestamp = new Date().toISOString();
-        
+
         const performancePoint = {
           timestamp,
-          ...metrics
+          ...metrics,
         };
-        
+
         this.performanceHistory.push(performancePoint);
-        
+
         // Truncate history to avoid memory issues
         if (this.performanceHistory.length > 1000) {
           this.performanceHistory = this.performanceHistory.slice(-1000);
         }
-        
+
         // Save performance data to disk periodically (every hour)
         const minutes = new Date().getMinutes();
         if (minutes === 0) {
@@ -185,7 +192,7 @@ export class PerformanceDashboard {
     try {
       const date = new Date().toISOString().split('T')[0];
       const filePath = path.join(this.dataDir, `performance-${date}.json`);
-      
+
       fs.writeFileSync(filePath, JSON.stringify(this.performanceHistory, null, 2));
       logger.debug('Performance data saved to disk', { file: filePath });
     } catch (error) {

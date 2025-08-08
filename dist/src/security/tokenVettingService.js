@@ -1,53 +1,14 @@
-"use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.TokenVettingService = void 0;
-const web3_js_1 = require("@solana/web3.js");
-const events_1 = require("events");
-const logger_1 = __importDefault(require("../utils/logger"));
-const fs = __importStar(require("fs"));
-const path = __importStar(require("path"));
+import { PublicKey } from '@solana/web3.js';
+import { EventEmitter } from 'events';
+import logger from '../utils/logger.js';
+import * as fs from 'fs';
+import * as path from 'path';
 /**
  * Token Vetting Service
  * Advanced security layer to protect against scam tokens
  * and ensure only high-quality trading opportunities
  */
-class TokenVettingService extends events_1.EventEmitter {
+export class TokenVettingService extends EventEmitter {
     config;
     blacklistedAddresses = new Set();
     blacklistedCreators = new Set();
@@ -60,11 +21,11 @@ class TokenVettingService extends events_1.EventEmitter {
             minTradingAge: 1, // 1 hour minimum
             maxBuySellTaxPercent: 10, // Max tax 10%
             minLiquidity: 10000, // $10k minimum
-            ...config
+            ...config,
         };
         // Load blacklists
         this.loadBlacklists();
-        logger_1.default.info('Token Vetting Service initialized');
+        logger.info('Token Vetting Service initialized');
     }
     /**
      * Load blacklisted addresses and creators
@@ -81,7 +42,7 @@ class TokenVettingService extends events_1.EventEmitter {
             if (!fs.existsSync(blacklistPath)) {
                 fs.writeFileSync(blacklistPath, JSON.stringify({
                     tokens: [],
-                    creators: []
+                    creators: [],
                 }, null, 2));
             }
             // Load blacklist
@@ -97,13 +58,13 @@ class TokenVettingService extends events_1.EventEmitter {
                     this.blacklistedCreators.add(creator);
                 });
             }
-            logger_1.default.info('Loaded token blacklists', {
+            logger.info('Loaded token blacklists', {
                 tokenCount: this.blacklistedAddresses.size,
-                creatorCount: this.blacklistedCreators.size
+                creatorCount: this.blacklistedCreators.size,
             });
         }
         catch (error) {
-            logger_1.default.error('Error loading blacklists', error);
+            logger.error('Error loading blacklists', error);
         }
     }
     /**
@@ -113,16 +74,16 @@ class TokenVettingService extends events_1.EventEmitter {
         try {
             const blacklistData = {
                 tokens: Array.from(this.blacklistedAddresses),
-                creators: Array.from(this.blacklistedCreators)
+                creators: Array.from(this.blacklistedCreators),
             };
             fs.writeFileSync(this.config.blacklistPath, JSON.stringify(blacklistData, null, 2));
-            logger_1.default.info('Saved token blacklists', {
+            logger.info('Saved token blacklists', {
                 tokenCount: this.blacklistedAddresses.size,
-                creatorCount: this.blacklistedCreators.size
+                creatorCount: this.blacklistedCreators.size,
             });
         }
         catch (error) {
-            logger_1.default.error('Error saving blacklists', error);
+            logger.error('Error saving blacklists', error);
         }
     }
     /**
@@ -134,7 +95,7 @@ class TokenVettingService extends events_1.EventEmitter {
             if (this.vettingResults.has(tokenAddress)) {
                 return this.vettingResults.get(tokenAddress);
             }
-            logger_1.default.info('Vetting token', { tokenAddress });
+            logger.info('Vetting token', { tokenAddress });
             // Initialize result
             const result = {
                 address: tokenAddress,
@@ -143,7 +104,7 @@ class TokenVettingService extends events_1.EventEmitter {
                 score: 0,
                 warnings: [],
                 criticalIssues: [],
-                metadata: {}
+                metadata: {},
             };
             // Check if blacklisted
             if (this.blacklistedAddresses.has(tokenAddress)) {
@@ -230,22 +191,22 @@ class TokenVettingService extends events_1.EventEmitter {
             // Cache result
             this.vettingResults.set(tokenAddress, result);
             // Log result
-            logger_1.default.info('Token vetting completed', {
+            logger.info('Token vetting completed', {
                 token: result.symbol,
                 address: tokenAddress,
                 passed: result.passed,
                 score: result.score,
                 warnings: result.warnings.length,
-                criticalIssues: result.criticalIssues.length
+                criticalIssues: result.criticalIssues.length,
             });
             // Emit event
             this.emit('vettingComplete', result);
             return result;
         }
         catch (error) {
-            logger_1.default.error('Error vetting token', {
+            logger.error('Error vetting token', {
                 tokenAddress,
-                error: error instanceof Error ? error.message : 'Unknown error'
+                error: error instanceof Error ? error.message : 'Unknown error',
             });
             return {
                 address: tokenAddress,
@@ -254,7 +215,7 @@ class TokenVettingService extends events_1.EventEmitter {
                 score: 0,
                 warnings: [],
                 criticalIssues: ['Error during vetting process'],
-                metadata: {}
+                metadata: {},
             };
         }
     }
@@ -265,7 +226,7 @@ class TokenVettingService extends events_1.EventEmitter {
         try {
             // In a real implementation, you would query for token creation time
             // This is a simplified placeholder
-            const signatures = await this.config.connection.getSignaturesForAddress(new web3_js_1.PublicKey(tokenAddress), { limit: 1 });
+            const signatures = await this.config.connection.getSignaturesForAddress(new PublicKey(tokenAddress), { limit: 1 });
             if (signatures.length > 0) {
                 // Ensure the first signature exists and has a blockTime
                 const firstSignature = signatures[0];
@@ -277,7 +238,7 @@ class TokenVettingService extends events_1.EventEmitter {
             return 24; // Default to 24 hours if can't determine
         }
         catch (error) {
-            logger_1.default.warn('Error getting token age', error);
+            logger.warn('Error getting token age', error);
             return 24; // Default to 24 hours if can't determine
         }
     }
@@ -291,7 +252,7 @@ class TokenVettingService extends events_1.EventEmitter {
             return 50; // Default placeholder value
         }
         catch (error) {
-            logger_1.default.warn('Error getting holder count', error);
+            logger.warn('Error getting holder count', error);
             return 50; // Default placeholder value
         }
     }
@@ -305,7 +266,7 @@ class TokenVettingService extends events_1.EventEmitter {
             return 0; // Default to 0% tax
         }
         catch (error) {
-            logger_1.default.warn('Error estimating taxes', error);
+            logger.warn('Error estimating taxes', error);
             return 0; // Default to 0% tax
         }
     }
@@ -316,10 +277,10 @@ class TokenVettingService extends events_1.EventEmitter {
         if (!this.blacklistedAddresses.has(tokenAddress)) {
             this.blacklistedAddresses.add(tokenAddress);
             this.saveBlacklists();
-            logger_1.default.info('Added token to blacklist', {
+            logger.info('Added token to blacklist', {
                 tokenAddress,
                 reason,
-                totalBlacklisted: this.blacklistedAddresses.size
+                totalBlacklisted: this.blacklistedAddresses.size,
             });
             // Invalidate cache
             this.vettingResults.delete(tokenAddress);
@@ -332,10 +293,10 @@ class TokenVettingService extends events_1.EventEmitter {
         if (!this.blacklistedCreators.has(creatorAddress)) {
             this.blacklistedCreators.add(creatorAddress);
             this.saveBlacklists();
-            logger_1.default.info('Added creator to blacklist', {
+            logger.info('Added creator to blacklist', {
                 creatorAddress,
                 reason,
-                totalBlacklisted: this.blacklistedCreators.size
+                totalBlacklisted: this.blacklistedCreators.size,
             });
             // Also blacklist the token if provided
             if (this.config.contractValidator) {
@@ -366,8 +327,7 @@ class TokenVettingService extends events_1.EventEmitter {
      */
     clearCache() {
         this.vettingResults.clear();
-        logger_1.default.debug('Cleared token vetting cache');
+        logger.debug('Cleared token vetting cache');
     }
 }
-exports.TokenVettingService = TokenVettingService;
 //# sourceMappingURL=tokenVettingService.js.map

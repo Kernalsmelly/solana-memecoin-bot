@@ -1,15 +1,19 @@
+import { vi } from 'vitest';
+vi.mock('../../../src/utils/logger', () => import('../../mocks/mockLogger'));
 import { PatternDetector } from '../../../src/strategy/patternDetector';
 import { PatternMatch } from '../../../src/types';
 
 describe('PatternDetector Volatility Squeeze', () => {
   it('detects Volatility Squeeze with breakout and emits correct confidence/meta', () => {
-    const mockRiskManager = { getAccountBalance: () => ({ availableCash: 1000, allocatedCash: 0, totalValue: 1000 }) };
+    const mockRiskManager = {
+      getAccountBalance: () => ({ availableCash: 1000, allocatedCash: 0, totalValue: 1000 }),
+    };
     const detector = new PatternDetector({
       tokenDiscovery: { on: vi.fn() } as any,
       riskManager: mockRiskManager as any,
       maxTokenAge: 48,
       minLiquidity: 1000,
-      maxPositionValue: 100
+      maxPositionValue: 100,
     });
 
     // Simulate price history with a squeeze and breakout
@@ -26,9 +30,8 @@ describe('PatternDetector Volatility Squeeze', () => {
       priceChange24h: 100,
       volumeChange24h: 100,
       buyRatio: 10,
-      priceHistory: prices
+      priceHistory: prices,
     };
-
 
     // Debug: calculate bandWidth and upper band
     const period = 20;
@@ -39,7 +42,14 @@ describe('PatternDetector Volatility Squeeze', () => {
     const lower = mean - 2 * std;
     const bandWidth = (upper - lower) / mean;
     // eslint-disable-next-line no-console
-    console.log('Test Bollinger debug:', { mean, std, upper, lower, bandWidth, last: prices[prices.length-1] });
+    console.log('Test Bollinger debug:', {
+      mean,
+      std,
+      upper,
+      lower,
+      bandWidth,
+      last: prices[prices.length - 1],
+    });
 
     const match: PatternMatch | null = (detector as any).analyzePatternMatch(token);
     expect(match).toBeTruthy();
@@ -50,13 +60,15 @@ describe('PatternDetector Volatility Squeeze', () => {
   });
 
   it('does not match when no squeeze breakout', () => {
-    const mockRiskManager = { getAccountBalance: () => ({ availableCash: 1000, allocatedCash: 0, totalValue: 1000 }) };
+    const mockRiskManager = {
+      getAccountBalance: () => ({ availableCash: 1000, allocatedCash: 0, totalValue: 1000 }),
+    };
     const detector = new PatternDetector({
       tokenDiscovery: { on: vi.fn() } as any,
       riskManager: mockRiskManager as any,
       maxTokenAge: 48,
       minLiquidity: 1000,
-      maxPositionValue: 100
+      maxPositionValue: 100,
     });
 
     // Flat price, no breakout
@@ -70,7 +82,7 @@ describe('PatternDetector Volatility Squeeze', () => {
       priceChange24h: 0.5,
       volumeChange24h: 10,
       buyRatio: 1.1,
-      priceHistory: prices
+      priceHistory: prices,
     };
     const match: PatternMatch | null = (detector as any).analyzePatternMatch(token);
     expect(match).toBeFalsy();

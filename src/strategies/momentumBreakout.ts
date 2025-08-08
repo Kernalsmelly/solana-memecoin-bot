@@ -1,29 +1,29 @@
 import { EventEmitter } from 'events';
-import { analyzeMomentum } from './rocMomentum';
-import { Strategy } from './strategyCoordinator';
-
-import { Strategy } from '../strategy/StrategyCoordinator';
+import { analyzeMomentum } from './rocMomentum.js';
+import { Strategy } from './strategyCoordinator.js';
 
 export class MomentumBreakoutStrategy extends EventEmitter implements Strategy {
   public name = 'momentumBreakout';
   public enabled = true;
   public cooldownSec = 300;
-  private priceHistory: Record<string, { prices: { price: number, timestamp: number }[], maxLen: number }> = {};
+  private priceHistory: Record<
+    string,
+    { prices: { price: number; timestamp: number }[]; maxLen: number }
+  > = {};
   private maxHistory = 120; // 120 minutes for 1h+ buffer
   private momentumThreshold: number;
   private rollingWindowMs: number = 60 * 60 * 1000; // 1 hour
 
-  constructor(options: { cooldownSec?: number, maxHistory?: number, momentumThreshold?: number } = {}) {
+  constructor(
+    options: { cooldownSec?: number; maxHistory?: number; momentumThreshold?: number } = {},
+  ) {
     super();
     if (options.cooldownSec) this.cooldownSec = options.cooldownSec;
     if (options.maxHistory) this.maxHistory = options.maxHistory;
-    this.momentumThreshold = typeof options.momentumThreshold === 'number'
-      ? options.momentumThreshold
-      : (Number(process.env.MOMENTUM_THRESHOLD) || 1.0); // default 1%
-  }
-    super();
-    if (options.cooldownSec) this.cooldownSec = options.cooldownSec;
-    if (options.maxHistory) this.maxHistory = options.maxHistory;
+    this.momentumThreshold =
+      typeof options.momentumThreshold === 'number'
+        ? options.momentumThreshold
+        : Number(process.env.MOMENTUM_THRESHOLD) || 1.0; // default 1%
   }
 
   async handleOHLCV(event: any): Promise<void> {
@@ -37,9 +37,9 @@ export class MomentumBreakoutStrategy extends EventEmitter implements Strategy {
     if (history.prices.length > history.maxLen) history.prices.shift();
     // 1h rolling high: filter for last 60m
     const cutoff = event.timestamp - this.rollingWindowMs;
-    const windowPrices = history.prices.filter(p => p.timestamp >= cutoff);
+    const windowPrices = history.prices.filter((p) => p.timestamp >= cutoff);
     if (windowPrices.length < 5) return; // Not enough data
-    const high = Math.max(...windowPrices.map(p => p.price));
+    const high = Math.max(...windowPrices.map((p) => p.price));
     const threshold = high * (1 + this.momentumThreshold / 100);
     if (event.close >= threshold) {
       this.emit('patternMatch', {
@@ -51,8 +51,8 @@ export class MomentumBreakoutStrategy extends EventEmitter implements Strategy {
           close: event.close,
           high,
           momentumThreshold: this.momentumThreshold,
-          percentAboveHigh: ((event.close - high) / high) * 100
-        }
+          percentAboveHigh: ((event.close - high) / high) * 100,
+        },
       });
     }
   }

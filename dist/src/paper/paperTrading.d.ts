@@ -1,5 +1,5 @@
-import { Position, TradingSignal, RiskMetrics } from '../types';
-import { NotificationManager } from '../live/notificationManager';
+import { Position, TradingSignal, RiskMetrics } from '../types.js';
+import { NotificationManager } from '../live/notificationManager.js';
 import { EventEmitter } from 'events';
 interface PaperTradingConfig {
     initialBalance: number;

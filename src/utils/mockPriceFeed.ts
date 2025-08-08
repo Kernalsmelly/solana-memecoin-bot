@@ -30,22 +30,22 @@ export interface VolumeProfile {
 
 // Mock database of token prices
 const mockPriceDatabase: Record<string, TokenPrice> = {
-  'SOL123': {
+  SOL123: {
     price: 0.000023,
-    timestamp: new Date()
+    timestamp: new Date(),
   },
-  'BONK': {
+  BONK: {
     price: 0.000032,
-    timestamp: new Date()
+    timestamp: new Date(),
   },
-  'SAMO': {
+  SAMO: {
     price: 0.0087,
-    timestamp: new Date()
+    timestamp: new Date(),
   },
-  'WIF': {
+  WIF: {
     price: 0.0123,
-    timestamp: new Date()
-  }
+    timestamp: new Date(),
+  },
 };
 
 // Add some price volatility to make it more realistic
@@ -73,11 +73,16 @@ export class MockPriceFeed extends EventEmitter {
     return priceHistory[priceHistory.length - 1]?.price ?? 0;
   }
 
-  public updatePrice(tokenAddress: string, price: number, volume: number, volumeProfile?: Partial<VolumeProfile>): void {
+  public updatePrice(
+    tokenAddress: string,
+    price: number,
+    volume: number,
+    volumeProfile?: Partial<VolumeProfile>,
+  ): void {
     const pricePoint: PricePoint = {
       price,
       volume,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
 
     // Initialize or update price history
@@ -93,7 +98,8 @@ export class MockPriceFeed extends EventEmitter {
     }
 
     // Calculate volume profile
-    const previousPrice = priceHistory.length > 1 ? priceHistory[priceHistory.length - 2]?.price ?? price : price;
+    const previousPrice =
+      priceHistory.length > 1 ? (priceHistory[priceHistory.length - 2]?.price ?? price) : price;
     const averageVolume = this.calculateAverageVolume(priceHistory);
     const volumeTrend = this.calculateVolumeTrend(priceHistory);
     const volumeSpikes = this.calculateVolumeSpikes(priceHistory, averageVolume);
@@ -105,7 +111,7 @@ export class MockPriceFeed extends EventEmitter {
       recentVolume: volume,
       previousPrice,
       currentPrice: price,
-      ...volumeProfile
+      ...volumeProfile,
     };
 
     this.volumeProfiles.set(tokenAddress, newVolumeProfile);
@@ -120,7 +126,7 @@ export class MockPriceFeed extends EventEmitter {
         averageVolume: 0,
         recentVolume: 0,
         previousPrice: 0,
-        currentPrice: 0
+        currentPrice: 0,
       }
     );
   }
@@ -137,10 +143,12 @@ export class MockPriceFeed extends EventEmitter {
     const recentVolumes = priceHistory.slice(-5);
     const oldVolumes = priceHistory.slice(0, -5);
 
-    const recentAvg = recentVolumes.reduce((acc, point) => acc + point.volume, 0) / recentVolumes.length;
-    const oldAvg = oldVolumes.length > 0 
-      ? oldVolumes.reduce((acc, point) => acc + point.volume, 0) / oldVolumes.length 
-      : recentAvg;
+    const recentAvg =
+      recentVolumes.reduce((acc, point) => acc + point.volume, 0) / recentVolumes.length;
+    const oldAvg =
+      oldVolumes.length > 0
+        ? oldVolumes.reduce((acc, point) => acc + point.volume, 0) / oldVolumes.length
+        : recentAvg;
 
     return ((recentAvg - oldAvg) / oldAvg) * 100;
   }

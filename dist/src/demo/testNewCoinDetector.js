@@ -1,7 +1,5 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-const newCoinDetector_1 = require("./newCoinDetector");
-const readline_1 = require("readline");
+import { NewCoinDetector } from './newCoinDetector.js';
+import { createInterface } from 'readline';
 // Create dashboard-like ASCII art interface
 function printHeader() {
     console.log('\n=========================================================');
@@ -21,20 +19,20 @@ const mockDetections = [
         buyRatio: 2.1,
         transactions: 42,
         score: 78.5,
-        pumpPotential: 85
+        pumpPotential: 85,
     },
     {
         name: 'Jupiter Finance',
         symbol: 'JUP',
         age: 5.2,
-        price: 0.00132500,
+        price: 0.001325,
         priceChange: 3.2,
         liquidity: 532000,
         volume: 125000,
         buyRatio: 1.5,
         transactions: 87,
         score: 62.3,
-        pumpPotential: 70
+        pumpPotential: 70,
     },
     {
         name: 'Solana Doge',
@@ -47,34 +45,34 @@ const mockDetections = [
         buyRatio: 0.9,
         transactions: 31,
         score: 45.8,
-        pumpPotential: 35
+        pumpPotential: 35,
     },
     {
         name: 'BattleSol',
         symbol: 'BSOL',
         age: 2.1,
-        price: 0.00004250,
+        price: 0.0000425,
         priceChange: 18.7,
         liquidity: 87000,
         volume: 65000,
         buyRatio: 2.5,
         transactions: 65,
         score: 83.6,
-        pumpPotential: 90
+        pumpPotential: 90,
     },
     {
         name: 'UniAI',
         symbol: 'UAI',
         age: 11.3,
-        price: 0.52000000,
+        price: 0.52,
         priceChange: 5.1,
         liquidity: 210000,
         volume: 43000,
         buyRatio: 1.3,
         transactions: 22,
         score: 52.7,
-        pumpPotential: 45
-    }
+        pumpPotential: 45,
+    },
 ];
 // Create an interactive demo to visualize the potential of the system
 async function runDemo() {
@@ -88,7 +86,7 @@ async function runDemo() {
     console.log('4. Pattern Recognition');
     console.log('5. Trading Signal Generation');
     console.log('\nStarting simulation with mock data...\n');
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    await new Promise((resolve) => setTimeout(resolve, 1500));
     // Display initial detection results
     console.log('\n📊 New Token Detection Results');
     console.log('==============================');
@@ -116,7 +114,7 @@ async function runDemo() {
         console.log(`Status: ${indicator}`);
     });
     console.log('\n==============================');
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    await new Promise((resolve) => setTimeout(resolve, 2000));
     // Show pattern detection simulation
     console.log('\n\n📈 Pattern Recognition Simulation');
     console.log('==============================');
@@ -125,20 +123,20 @@ async function runDemo() {
             name: 'Smart Money Accumulation',
             description: 'Steady buy pressure with minimal price impact',
             tokens: ['BSOL', 'PUMP'],
-            confidence: 85
+            confidence: 85,
         },
         {
             name: 'Pre-Pump Volume Spike',
             description: 'Sudden volume increase without proportional price rise',
             tokens: ['JUP'],
-            confidence: 72
+            confidence: 72,
         },
         {
             name: 'Distribution Phase',
             description: 'Decreasing buy ratio with price stability',
             tokens: ['SDOGE'],
-            confidence: 68
-        }
+            confidence: 68,
+        },
     ];
     patterns.forEach((pattern, index) => {
         setTimeout(() => {
@@ -148,7 +146,7 @@ async function runDemo() {
         }, index * 400);
     });
     console.log('\n==============================');
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    await new Promise((resolve) => setTimeout(resolve, 1500));
     // Simulate real-time updates
     console.log('\n\n🔄 Simulating Real-Time Updates');
     console.log('==============================');
@@ -159,7 +157,7 @@ async function runDemo() {
     console.log('Buy/Sell Ratio: 3.2');
     console.log('Score: 91.5/100');
     console.log('⚠️ POTENTIAL BREAKOUT DETECTED!');
-    await new Promise(resolve => setTimeout(resolve, 1200));
+    await new Promise((resolve) => setTimeout(resolve, 1200));
     // PUMP price pump simulation
     console.log('\n📈 PUMP metrics updated:');
     console.log('Price: $0.00000621 (+19.19%)');
@@ -167,7 +165,7 @@ async function runDemo() {
     console.log('Buy/Sell Ratio: 2.8');
     console.log('Score: 88.2/100');
     console.log('🔥 ACCUMULATION PHASE COMPLETE - PUMP STARTING');
-    await new Promise(resolve => setTimeout(resolve, 1200));
+    await new Promise((resolve) => setTimeout(resolve, 1200));
     // Show trading signals
     console.log('\n\n🎯 Trading Signals Generated');
     console.log('==============================');
@@ -178,7 +176,7 @@ async function runDemo() {
     console.log('Target 1: $0.00006375 (+25%)');
     console.log('Target 2: $0.00007650 (+50%)');
     console.log('Target 3: $0.00010200 (+100%)');
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
     console.log('\n✅ BUY SIGNAL: PUMP');
     console.log('Entry Price: $0.00000621');
     console.log('Position Size: $37.50');
@@ -187,7 +185,7 @@ async function runDemo() {
     console.log('Target 2: $0.00000932 (+50%)');
     console.log('Target 3: $0.00001242 (+100%)');
     console.log('\n==============================');
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    await new Promise((resolve) => setTimeout(resolve, 1500));
     // Conclusion
     console.log('\n\n🚀 Enhanced Detection System Benefits');
     console.log('==============================');
@@ -204,7 +202,7 @@ async function runDemo() {
 async function runRealDetector() {
     printHeader();
     console.log('\nStarting real-time new coin detection...');
-    const detector = new newCoinDetector_1.NewCoinDetector();
+    const detector = new NewCoinDetector();
     // Set up event handlers
     detector.on('newToken', (token) => {
         console.log(`\n💎 New Trading Opportunity: ${token.symbol}`);
@@ -221,9 +219,9 @@ async function runRealDetector() {
     console.log('Starting detector simulation...');
     detector.startMonitoring(); // Correct method name
     // Simulate user interaction for stopping
-    const rl = (0, readline_1.createInterface)({
+    const rl = createInterface({
         input: process.stdin,
-        output: process.stdout
+        output: process.stdout,
     });
     rl.question('Press Enter to stop the detector...', () => {
         console.log('\nStopping detector simulation...');

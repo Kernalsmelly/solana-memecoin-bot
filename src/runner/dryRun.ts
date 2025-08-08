@@ -41,7 +41,7 @@ async function pollBirdeye() {
     // Birdeye's public API for pools (docs: https://docs.birdeye.so/reference/get_pools)
     const url = `https://public-api.birdeye.so/public/pool/all?sort_by=created_at&sort_type=desc&offset=0&limit=20`;
     const res = await axios.get(url, {
-      headers: { 'X-API-KEY': BIRDEYE_API_KEY }
+      headers: { 'X-API-KEY': BIRDEYE_API_KEY },
     });
     const data = res.data;
     if (data && Array.isArray(data.data)) {
@@ -55,10 +55,10 @@ async function pollBirdeye() {
     }
   } catch (e) {
     if (e instanceof Error) {
-  console.error('Error polling Birdeye:', e.message);
-} else {
-  console.error('Error polling Birdeye:', e);
-}
+      console.error('Error polling Birdeye:', e.message);
+    } else {
+      console.error('Error polling Birdeye:', e);
+    }
   }
   if (!found) {
     pollTimer = setTimeout(pollBirdeye, POLL_INTERVAL);

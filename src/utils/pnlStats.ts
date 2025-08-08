@@ -30,7 +30,8 @@ export function computePnLSummary(fills: Fill[]): PnLSummary {
       // Example: PnL = (sell - buy) * qty
       // Here, just simulate zero
       pnl += 0;
-      if (0 > 0) wins++; else losses++;
+      if (0 > 0) wins++;
+      else losses++;
     }
     peak = Math.max(peak, pnl);
     maxDrawdown = Math.max(maxDrawdown, peak - pnl);

@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
-import { getRecentTradeStats } from './getRecentTradeStats';
-import { analyticsConfig } from './config';
+import { getRecentTradeStats } from './getRecentTradeStats.js';
+import { analyticsConfig } from './config.js';
 
 const DATA_DIR = path.resolve(process.cwd(), 'data');
 const TRADES_FILE = path.join(DATA_DIR, 'trades.jsonl');
@@ -16,7 +16,7 @@ type Trade = {
 
 function writeTrades(trades: Trade[]) {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  fs.writeFileSync(TRADES_FILE, trades.map(t => JSON.stringify(t)).join('\n'));
+  fs.writeFileSync(TRADES_FILE, trades.map((t) => JSON.stringify(t)).join('\n'));
 }
 
 function nowMinus(minutes: number) {
@@ -30,17 +30,27 @@ async function runTestCase(name: string, trades: Trade[]) {
 
   // Compose summary
   const realizedPnl = `${stats.realizedPnl.toFixed(2)}% (${stats.winCount} wins, ${stats.lossCount} losses, avg ${stats.avgPnl.toFixed(2)}%, ${stats.tradeCount} trades)`;
-  const topWinner = stats.topWinner ? `${stats.topWinner.symbol} (${stats.topWinner.pnl.toFixed(2)}%)` : 'N/A';
-  const topLoser = stats.topLoser ? `${stats.topLoser.symbol} (${stats.topLoser.pnl.toFixed(2)}%)` : 'N/A';
-  const mostTraded = stats.mostTraded ? `${stats.mostTraded.symbol} (${stats.mostTraded.count} trades)` : 'N/A';
+  const topWinner = stats.topWinner
+    ? `${stats.topWinner.symbol} (${stats.topWinner.pnl.toFixed(2)}%)`
+    : 'N/A';
+  const topLoser = stats.topLoser
+    ? `${stats.topLoser.symbol} (${stats.topLoser.pnl.toFixed(2)}%)`
+    : 'N/A';
+  const mostTraded = stats.mostTraded
+    ? `${stats.mostTraded.symbol} (${stats.mostTraded.count} trades)`
+    : 'N/A';
   const pnlDist = `>10%: ${buckets.gt10}, 0-10%: ${buckets.p0to10}, 0 to -10%: ${buckets.n0to10}, <-10%: ${buckets.lt10}`;
 
-  let alerts: string[] = [];
+  const alerts: string[] = [];
   if (buckets.lt10 > 2) {
-    alerts.push(`🚨 ALERT: ${buckets.lt10} trades with PnL worse than -10% in the last ${analyticsConfig.analyticsWindowMinutes}m. Review risk!`);
+    alerts.push(
+      `🚨 ALERT: ${buckets.lt10} trades with PnL worse than -10% in the last ${analyticsConfig.analyticsWindowMinutes}m. Review risk!`,
+    );
   }
   if (buckets.gt10 > 3) {
-    alerts.push(`🔥 HOT STREAK: ${buckets.gt10} trades with PnL >10% in the last ${analyticsConfig.analyticsWindowMinutes}m!`);
+    alerts.push(
+      `🔥 HOT STREAK: ${buckets.gt10} trades with PnL >10% in the last ${analyticsConfig.analyticsWindowMinutes}m!`,
+    );
   }
 
   console.log(`\n=== Test Case: ${name} ===`);

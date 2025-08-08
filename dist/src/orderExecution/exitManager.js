@@ -1,11 +1,5 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.ExitManager = void 0;
-const events_1 = __importDefault(require("events"));
-class ExitManager extends events_1.default {
+import EventEmitter from 'events';
+export class ExitManager extends EventEmitter {
     orderManager;
     exits = new Map();
     timeoutMs = 15 * 60 * 1000; // 15 min default
@@ -50,5 +44,4 @@ class ExitManager extends events_1.default {
         this.emit('exitFilled', exit);
     }
 }
-exports.ExitManager = ExitManager;
 //# sourceMappingURL=exitManager.js.map

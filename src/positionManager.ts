@@ -1,7 +1,7 @@
 // src/positionManager.ts
 
 import axios from 'axios';
-import { fetchTokenPrice } from './utils/priceFeed';
+import { fetchTokenPrice } from './/utils/priceFeed.js';
 
 export interface Trade {
   type: 'buy' | 'sell';
@@ -84,7 +84,7 @@ export class PositionManager {
     tokenSymbol: string,
     tokenDecimals: number,
     quantity: number,
-    entryPrice: number
+    entryPrice: number,
   ): Promise<Position> {
     const position: Position = {
       tokenMint,
@@ -92,12 +92,14 @@ export class PositionManager {
       tokenDecimals,
       quantity,
       entryPrice,
-      trades: [{
-        type: 'buy',
-        quantity,
-        price: entryPrice,
-        timestamp: Date.now()
-      }],
+      trades: [
+        {
+          type: 'buy',
+          quantity,
+          price: entryPrice,
+          timestamp: Date.now(),
+        },
+      ],
     };
     this.positions.set(tokenMint, position);
     // Deduct cost from available cash and add to allocated cash.
@@ -116,7 +118,10 @@ export class PositionManager {
     if (!position) return null;
     const currentPrice = await this.fetchTokenPrice(tokenMint);
     const unrealizedPnL = (currentPrice - position.entryPrice) * position.quantity;
-    const unrealizedPnLPercent = position.entryPrice > 0 ? (unrealizedPnL / (position.entryPrice * position.quantity)) * 100 : 0;
+    const unrealizedPnLPercent =
+      position.entryPrice > 0
+        ? (unrealizedPnL / (position.entryPrice * position.quantity)) * 100
+        : 0;
     return {
       tokenMint,
       tokenSymbol: position.tokenSymbol,
@@ -124,7 +129,7 @@ export class PositionManager {
       entryPrice: position.entryPrice,
       currentPrice,
       unrealizedPnL,
-      unrealizedPnLPercent
+      unrealizedPnLPercent,
     };
   }
 
@@ -173,7 +178,7 @@ export class PositionManager {
   public async closePosition(
     tokenMint: string,
     quantityToSell: number,
-    sellPrice: number
+    sellPrice: number,
   ): Promise<Position | null> {
     const position = this.positions.get(tokenMint);
     if (!position) {
@@ -186,7 +191,7 @@ export class PositionManager {
       type: 'sell',
       quantity: quantityToSell,
       price: sellPrice,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     });
     position.quantity -= quantityToSell;
     const revenue = quantityToSell * sellPrice;
@@ -234,6 +239,7 @@ export class PositionManager {
    * (For immediate updates without current prices.)
    */
   private updateTotalValue(): void {
-    this.accountBalance.totalValue = this.accountBalance.availableCash + this.accountBalance.allocatedCash;
+    this.accountBalance.totalValue =
+      this.accountBalance.availableCash + this.accountBalance.allocatedCash;
   }
 }

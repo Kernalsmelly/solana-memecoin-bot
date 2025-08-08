@@ -1,4 +1,4 @@
-import { TokenMetrics } from '../types';
+import { TokenMetrics } from '../types.js';
 
 /**
  * Scores a token opportunity based on liquidity, volume, volatility, price action, buy ratio, age, and trending/social signals.
@@ -72,7 +72,8 @@ export function scoreOpportunity(metrics: TokenMetrics): OpportunityScoreResult 
       score -= 20;
       breakdown['age'] = -20;
       reasons.push('Too new (under 30min)');
-    } else if (ageMinutes < 10080 && ageMinutes >= 30) { // < 7 days
+    } else if (ageMinutes < 10080 && ageMinutes >= 30) {
+      // < 7 days
       score += 10;
       breakdown['age'] = 10;
       reasons.push('Recent (under 7 days)');

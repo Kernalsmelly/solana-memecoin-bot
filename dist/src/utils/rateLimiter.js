@@ -1,15 +1,9 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.globalRateLimiter = exports.RateLimiter = void 0;
-const logger_1 = __importDefault(require("./logger"));
+import logger from './logger.js';
 /**
  * API Rate Limiter to prevent overloading external services
  * and implement exponential backoff on errors
  */
-class RateLimiter {
+export class RateLimiter {
     limiters = new Map();
     options = new Map();
     backoffMultipliers = new Map();
@@ -20,22 +14,22 @@ class RateLimiter {
         this.options.set(apiName, {
             maxRequests: options.maxRequests,
             windowMs: options.windowMs,
-            errorThresholdPercent: options.errorThresholdPercent || 10
+            errorThresholdPercent: options.errorThresholdPercent || 10,
         });
         this.limiters.set(apiName, {
             timestamp: Date.now(),
             count: 0,
-            errors: 0
+            errors: 0,
         });
         this.backoffMultipliers.set(apiName, 1);
-        logger_1.default.debug(`Rate limit registered for ${apiName}`, options);
+        logger.debug(`Rate limit registered for ${apiName}`, options);
     }
     /**
      * Check if a request can be made to the specified API
      */
     async canMakeRequest(apiName) {
         if (!this.limiters.has(apiName)) {
-            logger_1.default.warn(`No rate limit defined for ${apiName}`);
+            logger.warn(`No rate limit defined for ${apiName}`);
             return true;
         }
         const limiter = this.limiters.get(apiName);
@@ -56,16 +50,15 @@ class RateLimiter {
             const waitTimeMs = options.windowMs - elapsedMs;
             // Apply backoff multiplier if error rate is high
             const errorRate = (limiter.errors / limiter.count) * 100;
-            const effectiveWaitTime = waitTimeMs *
-                (errorRate > options.errorThresholdPercent ? backoffMultiplier : 1);
-            logger_1.default.debug(`Rate limit hit for ${apiName}`, {
+            const effectiveWaitTime = waitTimeMs * (errorRate > options.errorThresholdPercent ? backoffMultiplier : 1);
+            logger.debug(`Rate limit hit for ${apiName}`, {
                 waitTime: effectiveWaitTime,
                 errorRate,
-                backoffMultiplier
+                backoffMultiplier,
             });
             // Wait for the appropriate time
             if (effectiveWaitTime > 0) {
-                await new Promise(resolve => setTimeout(resolve, effectiveWaitTime));
+                await new Promise((resolve) => setTimeout(resolve, effectiveWaitTime));
                 // Reset after waiting
                 limiter.timestamp = Date.now();
                 limiter.count = 0;
@@ -101,9 +94,9 @@ class RateLimiter {
         // Increase backoff multiplier on error (exponential backoff)
         const currentBackoff = this.backoffMultipliers.get(apiName);
         this.backoffMultipliers.set(apiName, Math.min(16, currentBackoff * 2));
-        logger_1.default.debug(`API error recorded for ${apiName}`, {
+        logger.debug(`API error recorded for ${apiName}`, {
             errors: limiter.errors,
-            backoffMultiplier: this.backoffMultipliers.get(apiName)
+            backoffMultiplier: this.backoffMultipliers.get(apiName),
         });
     }
     /**
@@ -115,30 +108,29 @@ class RateLimiter {
         this.limiters.set(apiName, {
             timestamp: Date.now(),
             count: 0,
-            errors: 0
+            errors: 0,
         });
         this.backoffMultipliers.set(apiName, 1);
-        logger_1.default.debug(`Rate limit reset for ${apiName}`);
+        logger.debug(`Rate limit reset for ${apiName}`);
     }
 }
-exports.RateLimiter = RateLimiter;
 // Create a singleton instance
-exports.globalRateLimiter = new RateLimiter();
+export const globalRateLimiter = new RateLimiter();
 // Pre-configure common API limits
-exports.globalRateLimiter.registerLimit('jupiter', {
+globalRateLimiter.registerLimit('jupiter', {
     maxRequests: 10,
     windowMs: 1000, // 10 requests per second
-    errorThresholdPercent: 20
+    errorThresholdPercent: 20,
 });
-exports.globalRateLimiter.registerLimit('birdeye', {
+globalRateLimiter.registerLimit('birdeye', {
     maxRequests: 5,
     windowMs: 1000, // 5 requests per second
-    errorThresholdPercent: 10
+    errorThresholdPercent: 10,
 });
-exports.globalRateLimiter.registerLimit('solana-rpc', {
+globalRateLimiter.registerLimit('solana-rpc', {
     maxRequests: 40,
     windowMs: 1000, // 40 requests per second
-    errorThresholdPercent: 15
+    errorThresholdPercent: 15,
 });
-exports.default = exports.globalRateLimiter;
+export default globalRateLimiter;
 //# sourceMappingURL=rateLimiter.js.map

@@ -35,11 +35,11 @@ function parseCSV(filePath: string): any[] {
   const [header, ...rows] = lines;
   if (!header) return [];
   const keys = header.split(',');
-  return rows.map(row => {
+  return rows.map((row) => {
     const values = row.split(',');
     const entry: Record<string, any> = {};
     keys.forEach((key, i) => {
-      let val = values[i];
+      const val = values[i];
       if (key === 'pnl' || key === 'price' || key === 'amount') {
         const f = parseFloat(val || '0');
         if (isNaN(f)) {
@@ -78,7 +78,8 @@ function analyzeTrades(trades: TradeLogEntry[]): TokenStats[] {
     const s = statsByToken[trade.token]!;
     s.trades++;
     s.totalPnL += trade.pnl;
-    if (trade.pnl > 0) s.wins++; else s.losses++;
+    if (trade.pnl > 0) s.wins++;
+    else s.losses++;
     // Drawdown calc (simplified)
     if (s.totalPnL < s.maxDrawdown) s.maxDrawdown = s.totalPnL;
     // Parameter summary (collect values)
@@ -110,7 +111,7 @@ function generateMarkdownReport(stats: TokenStats[]): string {
   md += `| Token | Trades | Win Rate | Total PnL | Max Drawdown | Avg Trade PnL |\n`;
   md += `|-------|--------|----------|-----------|--------------|---------------|\n`;
   for (const s of sorted) {
-    md += `| ${s.token} | ${s.trades} | ${(s.winRate*100).toFixed(1)}% | ${s.totalPnL.toFixed(2)} | ${s.maxDrawdown.toFixed(2)} | ${s.avgTradePnL.toFixed(2)} |\n`;
+    md += `| ${s.token} | ${s.trades} | ${(s.winRate * 100).toFixed(1)}% | ${s.totalPnL.toFixed(2)} | ${s.maxDrawdown.toFixed(2)} | ${s.avgTradePnL.toFixed(2)} |\n`;
   }
   md += `\n## Parameter Sensitivities (mean values)\n`;
   for (const s of sorted) {
@@ -130,6 +131,9 @@ if (require.main === module) {
   const stats = analyzeTrades(trades);
   const md = generateMarkdownReport(stats);
   fs.writeFileSync(path.join(path.dirname(filePath), 'analysis_report.md'), md);
-  fs.writeFileSync(path.join(path.dirname(filePath), 'analysis_report.json'), JSON.stringify(stats, null, 2));
+  fs.writeFileSync(
+    path.join(path.dirname(filePath), 'analysis_report.json'),
+    JSON.stringify(stats, null, 2),
+  );
   console.log('Analysis complete. Reports written to analysis_report.md and analysis_report.json');
 }

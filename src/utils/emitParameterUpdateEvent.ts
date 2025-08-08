@@ -2,7 +2,10 @@
 import fs from 'fs';
 import path from 'path';
 
-export function emitParameterUpdateEvent(params: { stopLossPercent: number; takeProfitPercent: number }) {
+export function emitParameterUpdateEvent(params: {
+  stopLossPercent: number;
+  takeProfitPercent: number;
+}) {
   const logPath = path.join(__dirname, '../../data/parameter_update_events.log');
   const event = {
     event: 'ParameterUpdateEvent',

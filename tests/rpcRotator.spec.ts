@@ -1,11 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { RpcRotator } from '../src/integrations/data-hub/RpcRotator';
 
-const urls = [
-  'http://fake1/',
-  'http://fake2/',
-  'http://fake3/',
-];
+const urls = ['http://fake1/', 'http://fake2/', 'http://fake3/'];
 
 describe('RpcRotator', () => {
   it('rotates endpoints and ejects after 3 fails', () => {

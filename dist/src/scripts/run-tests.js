@@ -1,19 +1,14 @@
 #!/usr/bin/env ts-node
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
 /**
  * Test runner script to execute all tests with proper setup/teardown
  */
-const child_process_1 = require("child_process");
-const fs_1 = __importDefault(require("fs"));
-const path_1 = __importDefault(require("path"));
+import { execSync } from 'child_process';
+import fs from 'fs';
+import path from 'path';
 // Ensure logs directory exists
-const logDir = path_1.default.join(__dirname, '../../logs');
-if (!fs_1.default.existsSync(logDir)) {
-    fs_1.default.mkdirSync(logDir, { recursive: true });
+const logDir = path.join(__dirname, '../../logs');
+if (!fs.existsSync(logDir)) {
+    fs.mkdirSync(logDir, { recursive: true });
 }
 console.log('💡 Running unit tests...');
 try {
@@ -22,14 +17,14 @@ try {
         './src/tests/riskManager.test.ts',
         './src/tests/birdeyeAPI.test.ts',
         './src/tests/tokenDiscovery.test.ts',
-        './src/tests/patternDetector.test.ts'
+        './src/tests/patternDetector.test.ts',
     ];
     for (const testFile of testFiles) {
         console.log(`\n🧪 Testing: ${testFile}`);
         try {
-            (0, child_process_1.execSync)(`npx vitest run ${testFile} --reporter verbose`, {
+            execSync(`npx vitest run ${testFile} --reporter verbose`, {
                 stdio: 'inherit',
-                timeout: 30000
+                timeout: 30000,
             });
             console.log(`✅ ${testFile} - Tests passed`);
         }

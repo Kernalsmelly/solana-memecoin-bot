@@ -1,6 +1,7 @@
 # SolMemeBot - Production Deployment Guide
 
 ## Table of Contents
+
 1. [System Overview](#system-overview)
 2. [Production Requirements](#production-requirements)
 3. [Configuration Setup](#configuration-setup)
@@ -104,13 +105,13 @@ DASHBOARD_PASSWORD=your_secure_password
 
 Optimal settings based on historical pattern performance:
 
-| Pattern | Take Profit | Stop Loss | Trailing % | Max Time |
-|---------|-------------|-----------|------------|----------|
-| Mega Pump and Dump | 120% | -20% | 20% | 12h |
-| Volatility Squeeze | 50% | -15% | 15% | 8h |
-| Smart Money Trap | 40% | -12% | 15% | 16h |
-| Algorithmic Stop Hunt | 50% | -15% | 12% | 24h |
-| Smart Money Reversal | 45% | -15% | 15% | 24h |
+| Pattern               | Take Profit | Stop Loss | Trailing % | Max Time |
+| --------------------- | ----------- | --------- | ---------- | -------- |
+| Mega Pump and Dump    | 120%        | -20%      | 20%        | 12h      |
+| Volatility Squeeze    | 50%         | -15%      | 15%        | 8h       |
+| Smart Money Trap      | 40%         | -12%      | 15%        | 16h      |
+| Algorithmic Stop Hunt | 50%         | -15%      | 12%        | 24h      |
+| Smart Money Reversal  | 45%         | -15%      | 15%        | 24h      |
 
 ## Deployment Procedure
 
@@ -145,6 +146,7 @@ node dist/launch.js --dry-run
 ```
 
 Monitor the system during dry run to ensure:
+
 - Token discovery is working
 - Patterns are being detected
 - Circuit breakers trigger appropriately
@@ -158,6 +160,7 @@ NODE_ENV=production node dist/launch.js
 ```
 
 The system will automatically:
+
 1. Start with 10% of configured capital
 2. Increase to 50% after the proving period (default: 48h)
 3. Increase to 100% after the full release period (default: 168h)
@@ -287,6 +290,7 @@ pm2 restart solmemebot
 ### RPC Provider
 
 For optimal performance:
+
 - Use a dedicated RPC endpoint
 - Consider using multiple RPC providers for redundancy
 - Implement proper rate limiting (already configured in system)
@@ -303,6 +307,7 @@ echo "0 0 * * 0 pm2 restart solmemebot" | crontab -
 ### Pattern Tuning
 
 After accumulating trading data, periodically review and adjust:
+
 - Pattern detection parameters
 - Exit strategy settings
 - Risk management thresholds

@@ -1,23 +1,18 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-const fs_1 = __importDefault(require("fs"));
-const path_1 = __importDefault(require("path"));
+import fs from 'fs';
+import path from 'path';
 function parseCSV(filePath) {
-    const lines = fs_1.default.readFileSync(filePath, 'utf8').split('\n').filter(Boolean);
+    const lines = fs.readFileSync(filePath, 'utf8').split('\n').filter(Boolean);
     // Use the correct CSV header for trade log
     // timestamp,action,token,pairAddress,price,amount,pnl,reason,txid,success
     const [header, ...rows] = lines;
     if (!header)
         return [];
     const keys = header.split(',');
-    return rows.map(row => {
+    return rows.map((row) => {
         const values = row.split(',');
         const entry = {};
         keys.forEach((key, i) => {
-            let val = values[i];
+            const val = values[i];
             if (key === 'pnl' || key === 'price' || key === 'amount') {
                 const f = parseFloat(val || '0');
                 if (isNaN(f)) {
@@ -103,15 +98,15 @@ function generateMarkdownReport(stats) {
 // Entry point
 if (require.main === module) {
     const filePath = process.argv[2];
-    if (!filePath || !fs_1.default.existsSync(filePath)) {
+    if (!filePath || !fs.existsSync(filePath)) {
         console.error('Usage: ts-node analyze_trades.ts <trade_log.jsonl>');
         process.exit(1);
     }
     const trades = parseCSV(filePath);
     const stats = analyzeTrades(trades);
     const md = generateMarkdownReport(stats);
-    fs_1.default.writeFileSync(path_1.default.join(path_1.default.dirname(filePath), 'analysis_report.md'), md);
-    fs_1.default.writeFileSync(path_1.default.join(path_1.default.dirname(filePath), 'analysis_report.json'), JSON.stringify(stats, null, 2));
+    fs.writeFileSync(path.join(path.dirname(filePath), 'analysis_report.md'), md);
+    fs.writeFileSync(path.join(path.dirname(filePath), 'analysis_report.json'), JSON.stringify(stats, null, 2));
     console.log('Analysis complete. Reports written to analysis_report.md and analysis_report.json');
 }
 //# sourceMappingURL=analyze_trades.js.map

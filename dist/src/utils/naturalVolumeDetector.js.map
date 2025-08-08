@@ -1,0 +1,1 @@
+{"version":3,"file":"naturalVolumeDetector.js","sourceRoot":"","sources":["../../../src/utils/naturalVolumeDetector.ts"],"names":[],"mappings":"AAEA;;;GAGG;AACH,MAAM,SAAS,GAAoD,EAAE,CAAC;AAEtE,kEAAkE;AAClE,MAAM,CAAC,KAAK,UAAU,sBAAsB,CAC1C,SAAiB,EACjB,eAAuB,IAAI;IAE3B,OAAO,CAAC,GAAG,CACT,gEAAgE,SAAS,sBAAsB,CAChG,CAAC;IACF,OAAO,KAAK,CAAC;AACf,CAAC"}

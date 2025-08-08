@@ -1,8 +1,8 @@
-import { NewCoinDetector } from '../demo/newCoinDetector';
-import { TradingEngine } from './tradingEngine';
-import { NotificationManager } from './notificationManager';
-import { startMetricsServer } from './metricsServer';
-import logger from '../utils/logger';
+import { NewCoinDetector } from '../demo/newCoinDetector.js';
+import { TradingEngine } from './tradingEngine.js';
+import { NotificationManager } from './notificationManager.js';
+import { startMetricsServer } from './metricsServer.js';
+import logger from '../utils/logger.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -12,12 +12,6 @@ async function main() {
     const notificationManager = new NotificationManager({
         discord: process.env.DISCORD_WEBHOOK ? {
             webhookUrl: process.env.DISCORD_WEBHOOK
-        } : undefined,
-        telegram: process.env.TELEGRAM_API_ID ? {
-            apiId: parseInt(process.env.TELEGRAM_API_ID),
-            apiHash: process.env.TELEGRAM_API_HASH || '',
-            sessionString: process.env.TELEGRAM_SESSION || '',
-            chatId: process.env.TELEGRAM_CHAT_ID || ''
         } : undefined,
         notifyLevel: 'all'
     });
@@ -42,8 +36,8 @@ async function main() {
     });
 
     // Set up event handlers
-    detector.on('tradingSignal', (signal) => {
-        tradingEngine.processSignal(signal).catch(error => {
+    detector.on('tradingSignal', (signal: any) => {
+        tradingEngine.processSignal(signal).catch((error: any) => {
             logger.error('Error processing trading signal:', error);
         });
     });

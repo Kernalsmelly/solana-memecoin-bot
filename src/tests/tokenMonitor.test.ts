@@ -1,4 +1,6 @@
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect, vi } from 'vitest';
+vi.mock('../utils/logger', () => import('./mocks/mockLogger'));
+
 import { TokenMonitor } from '../tokenMonitor';
 
 describe('TokenMonitor', () => {

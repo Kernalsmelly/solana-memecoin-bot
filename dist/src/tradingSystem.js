@@ -1,21 +1,15 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.TradingSystem = void 0;
 // src/tradingSystem.ts
-const web3_js_1 = require("@solana/web3.js");
-const orderExecution_1 = require("./orderExecution");
-const web3_js_2 = require("@solana/web3.js");
-const contractValidator_1 = require("./contractValidator");
-const tokenMonitor_1 = require("./tokenMonitor");
-const persistenceManager_1 = require("./persistenceManager");
-const logger_1 = __importDefault(require("./utils/logger"));
-const StrategyCoordinator_1 = require("./strategy/StrategyCoordinator");
-const momentumBreakout_1 = require("./strategies/momentumBreakout");
-const volatilitySqueeze_1 = require("./strategies/volatilitySqueeze");
-class TradingSystem {
+import { PublicKey } from '@solana/web3.js';
+import { LiveOrderExecution } from './orderExecution.js';
+import { Keypair } from '@solana/web3.js';
+import { createContractValidator } from './contractValidator.js';
+import { TokenMonitor } from './tokenMonitor.js';
+import { PersistenceManager } from './persistenceManager.js';
+import logger from './utils/logger.js';
+import { StrategyCoordinator } from './strategy/StrategyCoordinator.js';
+import { MomentumBreakoutStrategy } from './strategies/momentumBreakout.js';
+import { VolatilitySqueeze } from './strategies/volatilitySqueeze.js';
+export class TradingSystem {
     strategyCoordinator;
     latestPatterns = new Map();
     connection;
@@ -26,17 +20,20 @@ class TradingSystem {
     // private state: any; // Removed TradingState
     constructor(connection) {
         // Register both MomentumBreakoutStrategy and VolatilitySqueeze for pilot
-        const momentumBreakout = new momentumBreakout_1.MomentumBreakoutStrategy({ cooldownSec: 300 });
-        const squeeze = new volatilitySqueeze_1.VolatilitySqueeze({ priceChangeThreshold: 20, volumeMultiplier: 2 });
-        this.strategyCoordinator = new StrategyCoordinator_1.StrategyCoordinator({
+        const momentumBreakout = new MomentumBreakoutStrategy({ cooldownSec: 300 });
+        const squeeze = new VolatilitySqueeze({
+            priceChangeThreshold: 20,
+            volumeMultiplier: 2,
+        });
+        this.strategyCoordinator = new StrategyCoordinator({
             strategies: [momentumBreakout, squeeze],
-            enabledStrategies: ['momentumBreakout', 'volatilitySqueeze'],
-            cooldownSec: 300
+            maxConcurrent: 2,
+            cooldownMs: 300000,
         });
         this.strategyCoordinator.on('tokenDispatch', async (tokenAddress) => {
             const pattern = this.latestPatterns.get(tokenAddress);
             if (pattern) {
-                logger_1.default.info(`[Coordinator] Dispatching trade for ${tokenAddress}`);
+                logger.info(`[Coordinator] Dispatching trade for ${tokenAddress}`);
                 try {
                     if (this.canOpenPosition()) {
                         await this.executeSignal({
@@ -47,29 +44,29 @@ class TradingSystem {
                             confidence: pattern.confidence,
                             timestamp: Date.now(),
                             timeframe: '1h',
-                            signalType: 'buy'
+                            signalType: 'buy',
                         });
                     }
                     else {
-                        logger_1.default.info(`[Coordinator] Cannot open position, skipping trade for ${tokenAddress}`);
+                        logger.info(`[Coordinator] Cannot open position, skipping trade for ${tokenAddress}`);
                     }
                 }
                 catch (e) {
-                    logger_1.default.error(`[Coordinator] Error dispatching trade for ${tokenAddress}:`, e);
+                    logger.error(`[Coordinator] Error dispatching trade for ${tokenAddress}:`, e);
                 }
                 // Always mark token as complete after trade attempt
                 this.strategyCoordinator.completeToken(tokenAddress);
             }
             else {
-                logger_1.default.warn(`[Coordinator] No pattern found for dispatched token ${tokenAddress}`);
+                logger.warn(`[Coordinator] No pattern found for dispatched token ${tokenAddress}`);
                 this.strategyCoordinator.completeToken(tokenAddress);
             }
         });
         this.connection = connection;
-        this.orderExecution = new orderExecution_1.LiveOrderExecution(connection, web3_js_2.Keypair.generate());
-        this.contractValidator = (0, contractValidator_1.createContractValidator)(connection);
-        this.tokenMonitor = new tokenMonitor_1.TokenMonitor();
-        this.persistenceManager = new persistenceManager_1.PersistenceManager();
+        this.orderExecution = new LiveOrderExecution(connection, Keypair.generate());
+        this.contractValidator = createContractValidator(connection);
+        this.tokenMonitor = new TokenMonitor();
+        this.persistenceManager = new PersistenceManager();
         // this.state = this.persistenceManager.loadState(); // Removed TradingState
         this.setupEventListeners();
     }
@@ -85,14 +82,17 @@ class TradingSystem {
             const analysis = await this.contractValidator.validateContract(metrics.address);
             // Skip if high risk
             if (analysis.riskLevel === 'high') {
-                logger_1.default.info('Skipping high risk token', { address: metrics.address, issues: analysis.issues });
+                logger.info('Skipping high risk token', {
+                    address: metrics.address,
+                    issues: analysis.issues,
+                });
                 return;
             }
             // Add to monitor
             await this.tokenMonitor.addToken(metrics);
         }
         catch (error) {
-            logger_1.default.error('Error handling new token:', error instanceof Error ? error.message : 'Unknown error');
+            logger.error('Error handling new token:', error instanceof Error ? error.message : 'Unknown error');
         }
     }
     async handleTokenUpdate(metrics) {
@@ -106,7 +106,7 @@ class TradingSystem {
             }
         }
         catch (error) {
-            logger_1.default.error('Error handling token update:', error instanceof Error ? error.message : 'Unknown error');
+            logger.error('Error handling token update:', error instanceof Error ? error.message : 'Unknown error');
         }
     }
     async handlePatternDetected(pattern) {
@@ -117,11 +117,11 @@ class TradingSystem {
             this.strategyCoordinator.enqueueToken(pattern.tokenAddress);
         }
         catch (error) {
-            logger_1.default.error('[DEBUG] Error handling pattern:', error instanceof Error ? error.message : 'Unknown error');
+            logger.error('[DEBUG] Error handling pattern:', error instanceof Error ? error.message : 'Unknown error');
         }
     }
     handleError(error) {
-        logger_1.default.error('Trading system error:', error.message);
+        logger.error('Trading system error:', error.message);
     }
     async executeSignal(signal) {
         try {
@@ -129,7 +129,7 @@ class TradingSystem {
                 tokenAddress: signal.tokenAddress,
                 side: 'buy',
                 size: signal.positionSize,
-                price: signal.price
+                price: signal.price,
             };
             const result = await this.orderExecution.executeOrder(order);
             if (result.success) {
@@ -137,7 +137,7 @@ class TradingSystem {
                     id: `${signal.tokenAddress}-${Date.now()}`, // Add unique ID
                     tokenAddress: signal.tokenAddress,
                     tokenSymbol: 'UNKNOWN', // Will be updated later
-                    tokenMint: new web3_js_1.PublicKey(signal.tokenAddress), // Fixed PublicKey type issue
+                    tokenMint: new PublicKey(signal.tokenAddress), // Fixed PublicKey type issue
                     tokenDecimals: 9,
                     quantity: signal.positionSize / signal.price,
                     entryPrice: signal.price,
@@ -147,20 +147,19 @@ class TradingSystem {
                     takeProfit: signal.price * 1.5, // 50% take profit
                     pnl: 0,
                     status: 'open',
-                    timestamp: Date.now()
+                    timestamp: Date.now(),
                 };
                 this.persistenceManager.savePosition(position);
                 this.updateRiskMetrics();
             }
         }
         catch (error) {
-            logger_1.default.error('Error executing signal:', error instanceof Error ? error.message : 'Unknown error');
+            logger.error('Error executing signal:', error instanceof Error ? error.message : 'Unknown error');
         }
     }
     calculatePositionSize(liquidity) {
         const maxSize = Math.min(1000 * 0.1, // Stub: Max 10% of balance
-        liquidity * 0.02 // Max 2% of liquidity
-        );
+        liquidity * 0.02);
         return Math.min(maxSize, 1000); // Hard cap at $1000
     }
     canOpenPosition() {
@@ -183,7 +182,7 @@ class TradingSystem {
             this.persistenceManager.savePosition(position);
         }
         catch (error) {
-            logger_1.default.error('Error updating position:', error instanceof Error ? error.message : 'Unknown error');
+            logger.error('Error updating position:', error instanceof Error ? error.message : 'Unknown error');
         }
     }
     async closePosition(position, reason) {
@@ -192,22 +191,22 @@ class TradingSystem {
                 tokenAddress: position.tokenAddress,
                 side: 'sell',
                 size: position.size,
-                price: position.currentPrice
+                price: position.currentPrice,
             };
             const result = await this.orderExecution.executeOrder(order);
             if (result.success) {
                 position.status = 'closed';
                 this.persistenceManager.savePosition(position);
                 this.updateRiskMetrics();
-                logger_1.default.info('Position closed', {
+                logger.info('Position closed', {
                     tokenAddress: position.tokenAddress,
                     reason,
-                    pnl: position.pnl
+                    pnl: position.pnl,
                 });
             }
         }
         catch (error) {
-            logger_1.default.error('Error closing position:', error instanceof Error ? error.message : 'Unknown error');
+            logger.error('Error closing position:', error instanceof Error ? error.message : 'Unknown error');
         }
     }
     updateRiskMetrics() {
@@ -222,7 +221,7 @@ class TradingSystem {
             activePositions: 0,
             availablePositions: 3,
             highWaterMark: 0,
-            dailyLoss: 0
+            dailyLoss: 0,
         };
         // Persist risk metrics if needed
         this.persistenceManager.saveRiskMetrics(metrics); // Persist stub metrics
@@ -251,12 +250,11 @@ class TradingSystem {
         return {}; // Stub: Not implemented
     }
     start() {
-        logger_1.default.info('Trading system started');
+        logger.info('Trading system started');
         this.tokenMonitor.clearOldData();
     }
     stop() {
-        logger_1.default.info('Trading system stopped');
+        logger.info('Trading system stopped');
     }
 }
-exports.TradingSystem = TradingSystem;
 //# sourceMappingURL=tradingSystem.js.map

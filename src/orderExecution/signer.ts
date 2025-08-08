@@ -30,7 +30,10 @@ export class EnvVarSigner implements Signer {
     this.keypair = Keypair.fromSecretKey(new Uint8Array(arr));
     this.publicKey = this.keypair.publicKey;
   }
-  async signAndSendTransaction(tx: Transaction | VersionedTransaction, connection: Connection): Promise<string> {
+  async signAndSendTransaction(
+    tx: Transaction | VersionedTransaction,
+    connection: Connection,
+  ): Promise<string> {
     if (tx instanceof Transaction) {
       tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
       tx.feePayer = this.publicKey;
@@ -38,7 +41,17 @@ export class EnvVarSigner implements Signer {
       const raw = tx.serialize();
       return await connection.sendRawTransaction(raw, { skipPreflight: false });
     } else if (tx instanceof (await import('@solana/web3.js')).VersionedTransaction) {
-      // Assume already signed by Jupiter, just send
+      // Jupiter returns a partially signed transaction; sign with our keypair
+      console.debug('[EnvVarSigner] Signing VersionedTransaction with wallet...');
+      tx.sign([this.keypair]);
+      const signedAccounts = tx.signatures.map((sig, i) => ({
+        pubkey:
+          tx.message.staticAccountKeys && tx.message.staticAccountKeys[i]
+            ? tx.message.staticAccountKeys[i].toBase58()
+            : '',
+        hasSignature: sig !== null && sig.length > 0,
+      }));
+      console.debug('[EnvVarSigner] Signature map:', signedAccounts);
       const raw = tx.serialize();
       return await connection.sendRawTransaction(raw, { skipPreflight: false });
     } else {

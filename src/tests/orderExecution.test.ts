@@ -1,4 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
+vi.mock('../../src/utils/logger', () => import('../mocks/mockLogger'));
+
 import { DryRunOrderExecution } from '../../src/orderExecution/index';
 import { handleDryRunFill } from '../../src/orderExecution/dryRunFill';
 
@@ -11,7 +13,7 @@ describe('DryRunOrderExecution', () => {
       amountIn: 1000,
       slippageBps: 50,
       userPublicKey: 'user111',
-      meta: { test: true }
+      meta: { test: true },
     };
     let eventEmitted = false;
     dryRun.on('dryRunSwap', (tx) => {
@@ -39,7 +41,7 @@ describe('handleDryRunFill', () => {
       tokenSymbol: 'MEME',
       quantity: 100,
       price: 0.05,
-      meta: { dry: true }
+      meta: { dry: true },
     };
     await handleDryRunFill(params, { recordTrade: mockRecordTrade });
     expect(mockRecordTrade).toHaveBeenCalled();

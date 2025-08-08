@@ -1,11 +1,6 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-const web3_js_1 = require("@solana/web3.js");
-const bs58_1 = __importDefault(require("bs58"));
-const logger_1 = __importDefault(require("./logger"));
+import { Connection, Keypair } from '@solana/web3.js';
+import bs58 from 'bs58';
+import logger from './/logger.js';
 // dotenv.config(); // REMOVE THIS - Rely on index.ts loading
 // Required environment variables for production
 const REQUIRED_ENV_VARS = [
@@ -21,14 +16,10 @@ const REQUIRED_ENV_VARS = [
     'MAX_TRADES_PER_MINUTE',
     'MAX_TRADES_PER_HOUR',
     'MAX_TRADES_PER_DAY',
-    'MIN_SUCCESS_RATE'
+    'MIN_SUCCESS_RATE',
 ];
 // Recommended environment variables
-const RECOMMENDED_ENV_VARS = [
-    'DISCORD_WEBHOOK_URL',
-    'TELEGRAM_BOT_TOKEN',
-    'TELEGRAM_CHAT_ID'
-];
+const RECOMMENDED_ENV_VARS = ['DISCORD_WEBHOOK_URL', 'TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID'];
 async function verifyConfig() {
     const result = {
         isValid: true,
@@ -36,7 +27,7 @@ async function verifyConfig() {
         missingRecommended: [],
         walletStatus: { valid: false },
         rpcStatus: { valid: false },
-        riskParameters: { valid: true, issues: [] }
+        riskParameters: { valid: true, issues: [] },
     };
     // Check for required environment variables
     for (const envVar of REQUIRED_ENV_VARS) {
@@ -58,52 +49,63 @@ async function verifyConfig() {
         if (!rpcUrl) {
             throw new Error('QUICKNODE_RPC_URL is not defined in environment variables.');
         }
-        const connection = new web3_js_1.Connection(rpcUrl, 'confirmed');
+        const connection = new Connection(rpcUrl, 'confirmed');
         await connection.getVersion(); // Use getVersion() to check connectivity
         const latency = Date.now() - startTime;
         result.rpcStatus = {
             valid: true, // If getVersion() didn't throw, connection is valid
-            latency
+            latency,
         };
         if (latency > 2000) {
-            logger_1.default.warn(`RPC latency is high: ${latency}ms`);
+            logger.warn(`RPC latency is high: ${latency}ms`);
         }
     }
     catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error connecting to RPC';
-        logger_1.default.error(`RPC connection check failed for ${process.env.QUICKNODE_RPC_URL}: ${errorMessage}`, {
+        logger.error(`RPC connection check failed for ${process.env.QUICKNODE_RPC_URL}: ${errorMessage}`, {
             errorDetails: error instanceof Error ? error : JSON.stringify(error),
             cause: error instanceof Error && 'cause' in error ? error.cause : 'N/A',
-            stack: error instanceof Error ? error.stack : 'N/A'
+            stack: error instanceof Error ? error.stack : 'N/A',
         });
         result.rpcStatus = {
             valid: false,
-            error: errorMessage
+            error: errorMessage,
         };
         result.isValid = false;
     }
     // Verify wallet
     try {
         if (process.env.SOLANA_PRIVATE_KEY) {
-            const privateKey = bs58_1.default.decode(process.env.SOLANA_PRIVATE_KEY);
-            const wallet = web3_js_1.Keypair.fromSecretKey(privateKey);
-            const connection = new web3_js_1.Connection(process.env.QUICKNODE_RPC_URL || '', 'confirmed');
+            console.log('[VERIFY CONFIG DEBUG] Raw SOLANA_PRIVATE_KEY env:', process.env.SOLANA_PRIVATE_KEY);
+            // Parse JSON array (comma-separated numbers)
+            let secretKey;
+            if (process.env.SOLANA_PRIVATE_KEY.includes(',')) {
+                // CSV/JSON array format
+                secretKey = new Uint8Array(process.env.SOLANA_PRIVATE_KEY.split(',').map(Number));
+            }
+            else {
+                // Base58 format
+                secretKey = bs58.decode(process.env.SOLANA_PRIVATE_KEY);
+            }
+            console.log('[VERIFY CONFIG DEBUG] SOLANA_PRIVATE_KEY decoded length:', secretKey.length, 'First 8 bytes:', Array.from(secretKey).slice(0, 8));
+            const wallet = Keypair.fromSecretKey(secretKey);
+            const connection = new Connection(process.env.QUICKNODE_RPC_URL || '', 'confirmed');
             // Check SOL balance
             const solBalance = await connection.getBalance(wallet.publicKey);
             result.walletStatus = {
                 valid: true,
                 address: wallet.publicKey.toString(),
-                balance: solBalance / 1e9 // Convert lamports to SOL
+                balance: solBalance / 1e9, // Convert lamports to SOL
             };
             if (solBalance < 0.1 * 1e9) {
-                logger_1.default.warn('Wallet SOL balance is low. Consider funding for transaction fees.');
+                logger.warn('Wallet SOL balance is low. Consider funding for transaction fees.');
             }
         }
     }
     catch (error) {
         result.walletStatus = {
             valid: false,
-            error: error instanceof Error ? error.message : 'Unknown error validating wallet'
+            error: error instanceof Error ? error.message : 'Unknown error validating wallet',
         };
         result.isValid = false;
     }
@@ -117,7 +119,9 @@ async function verifyConfig() {
             result.riskParameters.issues.push('MAX_POSITION_SIZE must be a positive number');
             result.riskParameters.valid = false;
         }
-        if (isNaN(maxActivePositions) || maxActivePositions <= 0 || !Number.isInteger(maxActivePositions)) {
+        if (isNaN(maxActivePositions) ||
+            maxActivePositions <= 0 ||
+            !Number.isInteger(maxActivePositions)) {
             result.riskParameters.issues.push('MAX_ACTIVE_POSITIONS must be a positive integer');
             result.riskParameters.valid = false;
         }
@@ -139,62 +143,14 @@ async function verifyConfig() {
         result.isValid = false;
     }
     if (!process.env.QUICKNODE_RPC_URL) {
-        logger_1.default.warn('QUICKNODE_RPC_URL is not configured. RPC calls will fail.');
-        result.isValid = false; // Make it invalid if missing
+        logger.warn('QUICKNODE_RPC_URL is not configured. RPC calls will fail.');
+        result.isValid = false; // Make it invalid
     }
     if (!process.env.QUICKNODE_WSS_URL) {
-        logger_1.default.warn('QUICKNODE_WSS_URL is not configured. WebSocket detection will fail.');
-        result.isValid = false; // Make it invalid if missing
+        logger.warn('QUICKNODE_WSS_URL is not configured. WebSocket detection will fail.');
+        result.isValid = false; // Make it invalid
     }
     return result;
 }
-exports.default = verifyConfig;
-// Run when invoked directly
-if (require.main === module) {
-    (async () => {
-        try {
-            console.log('Verifying configuration...');
-            const validationResult = await verifyConfig();
-            if (validationResult.isValid) {
-                console.log('✅ Configuration validated successfully');
-            }
-            else {
-                console.log('❌ Configuration validation failed');
-            }
-            if (validationResult.missingRequired.length > 0) {
-                console.log('Missing required environment variables:');
-                console.log(validationResult.missingRequired.map(v => ` - ${v}`).join('\n'));
-            }
-            if (validationResult.missingRecommended.length > 0) {
-                console.log('Missing recommended environment variables:');
-                console.log(validationResult.missingRecommended.map(v => ` - ${v}`).join('\n'));
-            }
-            console.log('\nWallet Status:');
-            if (validationResult.walletStatus.valid) {
-                console.log(` - Address: ${validationResult.walletStatus.address}`);
-                console.log(` - SOL Balance: ${validationResult.walletStatus.balance} SOL`);
-            }
-            else {
-                console.log(` - Error: ${validationResult.walletStatus.error}`);
-            }
-            console.log('\nRPC Status:');
-            if (validationResult.rpcStatus.valid) {
-                console.log(` - Connected: Yes`);
-                console.log(` - Latency: ${validationResult.rpcStatus.latency}ms`);
-            }
-            else {
-                console.log(` - Error: ${validationResult.rpcStatus.error}`);
-            }
-            if (validationResult.riskParameters.issues.length > 0) {
-                console.log('\nRisk Parameter Issues:');
-                console.log(validationResult.riskParameters.issues.map(issue => ` - ${issue}`).join('\n'));
-            }
-            process.exit(validationResult.isValid ? 0 : 1);
-        }
-        catch (error) {
-            console.error('Error during configuration verification:', error);
-            process.exit(1);
-        }
-    })();
-}
+export default verifyConfig;
 //# sourceMappingURL=verifyConfig.js.map

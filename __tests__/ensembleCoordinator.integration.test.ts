@@ -8,16 +8,17 @@ function mockStrategy(name: string, patternMatchTokens: string[]) {
     cooldownSec: 0,
     handleOHLCV: vi.fn(async function (event: any) {
       if (patternMatchTokens.includes(event.tokenSymbol)) {
-        this.emit && this.emit('patternMatch', {
-          address: event.tokenSymbol,
-          timestamp: event.timestamp,
-          strategy: name,
-          suggestedSOL: 1
-        });
+        this.emit &&
+          this.emit('patternMatch', {
+            address: event.tokenSymbol,
+            timestamp: event.timestamp,
+            strategy: name,
+            suggestedSOL: 1,
+          });
       }
     }),
     on: vi.fn(),
-    emit: vi.fn()
+    emit: vi.fn(),
   };
 }
 
@@ -28,14 +29,14 @@ describe('StrategyCoordinator ensemble integration', () => {
     const coordinator = new StrategyCoordinator({
       strategies: [stratA, stratB],
       enabledStrategies: ['volatilitySqueeze', 'momentumBreakout'],
-      stratWeightsInterval: 2
+      stratWeightsInterval: 2,
     });
     // Simulate both strategies firing on different tokens concurrently
     const events = [
       { tokenSymbol: 'AAA', timestamp: Date.now() },
-      { tokenSymbol: 'CCC', timestamp: Date.now() }
+      { tokenSymbol: 'CCC', timestamp: Date.now() },
     ];
-    await Promise.all(events.map(e => coordinator.handleOHLCV(e)));
+    await Promise.all(events.map((e) => coordinator.handleOHLCV(e)));
     // No overlap: stratA only triggers for AAA/BBB, stratB for CCC/DDD
     expect(stratA.handleOHLCV).toHaveBeenCalledWith(events[0]);
     expect(stratB.handleOHLCV).toHaveBeenCalledWith(events[1]);

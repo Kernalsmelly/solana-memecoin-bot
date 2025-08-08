@@ -7,11 +7,14 @@ const SWEEP_RESULTS_PATH = path.join(__dirname, '../data/parameter_sweep_results
 function updateConfigFile(stopLoss: number, takeProfit: number) {
   let configText = fs.readFileSync(CONFIG_PATH, 'utf8');
   configText = configText.replace(/stopLossPercent:\s*[^,}]+/, `stopLossPercent: ${stopLoss}`);
-  configText = configText.replace(/takeProfitPercent:\s*[^,}]+/, `takeProfitPercent: ${takeProfit}`);
+  configText = configText.replace(
+    /takeProfitPercent:\s*[^,}]+/,
+    `takeProfitPercent: ${takeProfit}`,
+  );
   fs.writeFileSync(CONFIG_PATH, configText);
 }
 
-function emitParameterUpdateEvent(params: { stopLoss: number, takeProfit: number }) {
+function emitParameterUpdateEvent(params: { stopLoss: number; takeProfit: number }) {
   // Placeholder: In production, this could emit to an event bus, log, or notification system
   console.log('ParameterUpdateEvent', params);
 }

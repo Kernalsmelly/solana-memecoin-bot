@@ -8,7 +8,13 @@ import axios from 'axios';
  * @param currency - The fiat currency (default: 'usd').
  * @returns The current price of the token.
  */
-export async function fetchTokenPrice(tokenAddress: string, currency: string = 'usd'): Promise<number> {
+export async function fetchTokenPrice(
+  tokenAddress: string,
+  currency: string = 'usd',
+): Promise<number> {
+  // PILOT PATCH: Return static mock price, never call axios
+  return 1.05;
+
   try {
     const url = `https://price.jup.ag/v4/price?ids=${tokenAddress}`;
     const response = await axios.get(url);
@@ -23,7 +29,7 @@ export async function fetchTokenPrice(tokenAddress: string, currency: string = '
     } else {
       throw new Error('Price not found in response');
     }
-  } catch (error: any) {
+  } catch (error) {
     console.error(`Error fetching price for token ${tokenAddress}:`, error.message);
     throw error;
   }

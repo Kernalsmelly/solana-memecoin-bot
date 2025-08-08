@@ -1,4 +1,3 @@
-"use strict";
 // Usage:
 //   node scripts/generate-solana-keypair.js             # Generate new keypair
 //   node scripts/generate-solana-keypair.js --print-public-from-env  # Print public key from SOLANA_PRIVATE_KEY in .env
@@ -17,7 +16,7 @@ if (args.includes('--print-public-from-env')) {
         console.error('SOLANA_PRIVATE_KEY not found in .env');
         process.exit(1);
     }
-    const secretKey = Uint8Array.from(keyStr.split(',').map(x => parseInt(x.trim(), 10)));
+    const secretKey = Uint8Array.from(keyStr.split(',').map((x) => parseInt(x.trim(), 10)));
     const kp = Keypair.fromSecretKey(secretKey);
     console.log('Public Key:', kp.publicKey.toBase58());
     process.exit(0);
@@ -27,4 +26,5 @@ console.log(kp.secretKey.toString());
 if (args.includes('--print-public')) {
     console.log('Public Key:', kp.publicKey.toBase58());
 }
+export {};
 //# sourceMappingURL=generate-solana-keypair.js.map

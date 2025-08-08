@@ -1,4 +1,4 @@
-import { RiskMetrics } from '../types';
+import { RiskMetrics } from '../types.js';
 import { EventEmitter } from 'events';
 interface RiskManagerConfig {
     maxDrawdown: number;
@@ -39,6 +39,15 @@ export interface TradeExecution {
     errorMessage?: string;
 }
 export declare class RiskManager extends EventEmitter {
+    /**
+     * Allocate capital for a strategy based on ensemble weights and per-strategy max exposure caps.
+     * @param strategy Strategy name
+     * @param weights Record of {strategy: weight}
+     * @param totalBalance Total SOL balance
+     * @param perStratMaxUsd Record of {strategy: maxUsd}
+     * @param solUsdPrice Current SOL/USD price
+     */
+    getCapitalForStrategy(strategy: string, weights: Record<string, number>, totalBalance: number, perStratMaxUsd: Record<string, number>, solUsdPrice: number): number;
     /**
      * Compute recommended position size (SOL) based on volatility and balance.
      * sizeSOL = min(maxExposureSol, balance * riskPct / sigma)

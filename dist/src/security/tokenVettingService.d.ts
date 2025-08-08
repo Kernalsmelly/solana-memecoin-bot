@@ -1,7 +1,7 @@
 import { Connection } from '@solana/web3.js';
 import { EventEmitter } from 'events';
-import { ContractValidator } from '../utils/contractValidator';
-import { BirdeyeAPI } from '../api/birdeyeAPI';
+import { ContractValidator } from '../utils/contractValidator.js';
+import { BirdeyeAPI } from '../api/birdeyeAPI.js';
 interface TokenVettingConfig {
     connection: Connection;
     birdeyeAPI: BirdeyeAPI;

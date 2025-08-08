@@ -1,7 +1,4 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.scoreOpportunity = scoreOpportunity;
-function scoreOpportunity(metrics) {
+export function scoreOpportunity(metrics) {
     let score = 0;
     const breakdown = {};
     const reasons = [];
@@ -61,7 +58,8 @@ function scoreOpportunity(metrics) {
             breakdown['age'] = -20;
             reasons.push('Too new (under 30min)');
         }
-        else if (ageMinutes < 10080 && ageMinutes >= 30) { // < 7 days
+        else if (ageMinutes < 10080 && ageMinutes >= 30) {
+            // < 7 days
             score += 10;
             breakdown['age'] = 10;
             reasons.push('Recent (under 7 days)');

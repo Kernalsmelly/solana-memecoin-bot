@@ -63,7 +63,11 @@ export class ExitManager extends EventEmitter {
 
   onPriceUpdate(update: PriceUpdate) {
     const order = this.orders.get(update.address);
-    console.log('[DEBUG ExitManager.onPriceUpdate]', { address: update.address, price: update.price, order });
+    console.log('[DEBUG ExitManager.onPriceUpdate]', {
+      address: update.address,
+      price: update.price,
+      order,
+    });
     if (!order || !order.active) return;
     if (update.price <= order.stopLoss) {
       order.active = false;
@@ -87,6 +91,6 @@ export class ExitManager extends EventEmitter {
   }
 
   getPendingExits() {
-    return Array.from(this.orders.values()).filter(o => o.active);
+    return Array.from(this.orders.values()).filter((o) => o.active);
   }
 }

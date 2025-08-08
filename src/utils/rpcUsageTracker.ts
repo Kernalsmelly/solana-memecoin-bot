@@ -14,7 +14,7 @@ export function getRpcCallStats() {
   const now = Math.floor(Date.now() / 1000);
   const stats: Record<string, number> = {};
   for (const [method, times] of Object.entries(callCounts)) {
-    stats[method] = times.filter(t => now - t < WINDOW).length;
+    stats[method] = times.filter((t) => now - t < WINDOW).length;
   }
   return stats;
 }

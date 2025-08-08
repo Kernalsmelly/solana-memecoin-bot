@@ -1,0 +1,29 @@
+[
+  {
+    "priceChangeThreshold": 10,
+    "volumeMultiplier": 1.5,
+    "lookbackPeriod": 900000,
+    "mean": 0,
+    "stdev": 0,
+    "sharpe": 0,
+    "trades": 0
+  },
+  {
+    "priceChangeThreshold": 10,
+    "volumeMultiplier": 1.5,
+    "lookbackPeriod": 1800000,
+    "mean": 0,
+    "stdev": 0,
+    "sharpe": 0,
+    "trades": 0
+  },
+  {
+    "priceChangeThreshold": 10,
+    "volumeMultiplier": 1.5,
+    "lookbackPeriod": 3600000,
+    "mean": 0,
+    "stdev": 0,
+    "sharpe": 0,
+    "trades": 0
+  }
+]

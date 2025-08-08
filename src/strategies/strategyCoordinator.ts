@@ -23,11 +23,15 @@ export class StrategyCoordinator extends EventEmitter {
   constructor(options: CoordinatorOptions) {
     super();
     this.strategies = new Map();
-    (options.strategies || []).forEach(s => this.strategies.set(s.name, s));
-    this.enabled = new Set(options.enabledStrategies || process.env.ENABLED_STRATEGIES?.split(',') || [...this.strategies.keys()]);
+    (options.strategies || []).forEach((s) => this.strategies.set(s.name, s));
+    this.enabled = new Set(
+      options.enabledStrategies ||
+        process.env.ENABLED_STRATEGIES?.split(',') || [...this.strategies.keys()],
+    );
     this.cooldowns = new Map();
     this.defaultCooldownSec = options.cooldownSec || 300;
-    this.stratWeightsInterval = options.stratWeightsInterval || Number(process.env.STRAT_WEIGHTS_INTERVAL) || 10;
+    this.stratWeightsInterval =
+      options.stratWeightsInterval || Number(process.env.STRAT_WEIGHTS_INTERVAL) || 10;
     // Start periodic weight update
     this.weightUpdateTimer = setInterval(() => this.updateStrategyWeights(), 60 * 1000); // every 1min
   }
@@ -46,7 +50,8 @@ export class StrategyCoordinator extends EventEmitter {
    */
   // Store per-strategy weights (default 1.0)
   private strategyWeights: Map<string, number> = new Map();
-  private strategyTradeHistory: Map<string, { pnl: number, win: boolean, timestamp: number }[]> = new Map();
+  private strategyTradeHistory: Map<string, { pnl: number; win: boolean; timestamp: number }[]> =
+    new Map();
   private stratWeightsInterval: number;
   private weightUpdateTimer: NodeJS.Timeout | null = null;
 
@@ -55,14 +60,16 @@ export class StrategyCoordinator extends EventEmitter {
     const now = Date.now() / 1000;
     if (this.cooldowns.get(token) && now < this.cooldowns.get(token)!) return;
     // Allow all enabled strategies to process the event concurrently
-    await Promise.all(Array.from(this.enabled).map(async name => {
-      const strat = this.strategies.get(name);
-      if (!strat) return;
-      await strat.handleOHLCV(event);
-      // If a strategy triggers, set cooldown for this token (handled by patternMatch event in orchestration layer)
-      // For now, set cooldown for all strategies
-      this.cooldowns.set(token, now + (strat.cooldownSec || this.defaultCooldownSec));
-    }));
+    await Promise.all(
+      Array.from(this.enabled).map(async (name) => {
+        const strat = this.strategies.get(name);
+        if (!strat) return;
+        await strat.handleOHLCV(event);
+        // If a strategy triggers, set cooldown for this token (handled by patternMatch event in orchestration layer)
+        // For now, set cooldown for all strategies
+        this.cooldowns.set(token, now + (strat.cooldownSec || this.defaultCooldownSec));
+      }),
+    );
   }
 
   setStrategyWeight(name: string, weight: number) {
@@ -90,7 +97,7 @@ export class StrategyCoordinator extends EventEmitter {
     const variance = arr.reduce((a, b) => a + Math.pow(b.pnl - mean, 2), 0) / (n || 1);
     const volatility = Math.sqrt(variance) || 1;
     const roi = mean;
-    const winRate = arr.filter(t => t.win).length / n;
+    const winRate = arr.filter((t) => t.win).length / n;
     return { roi, volatility, winRate };
   }
 
@@ -106,7 +113,9 @@ export class StrategyCoordinator extends EventEmitter {
   // Weighted round-robin scheduling stub (to be implemented in trade dispatch logic)
   getWeightedStrategyOrder(): string[] {
     // Return strategies ordered by weight (highest first)
-    return Array.from(this.enabled).sort((a, b) => this.getStrategyWeight(b) - this.getStrategyWeight(a));
+    return Array.from(this.enabled).sort(
+      (a, b) => this.getStrategyWeight(b) - this.getStrategyWeight(a),
+    );
   }
 }
 

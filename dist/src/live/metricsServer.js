@@ -1,20 +1,30 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.startMetricsServer = startMetricsServer;
-const express_1 = __importDefault(require("express"));
+import express from 'express';
 /**
  * Starts a lightweight metrics server exposing /metrics for Prometheus scraping.
  * Exposes basic bot health and risk metrics.
  */
-function startMetricsServer(riskManager, notificationManager, port = 9469) {
-    const app = (0, express_1.default)();
+export function startMetricsServer(riskManager, notificationManager, port = 9469) {
+    const app = express();
+    let parameterUpdatesTotal = 0;
+    // Expose a method to increment the counter from outside
+    app.incrementParameterUpdates = () => {
+        parameterUpdatesTotal++;
+    };
     app.get('/metrics', (req, res) => {
         const metrics = riskManager.getMetrics();
         // Prometheus exposition format
         let output = '';
+        // Per-strategy metrics
+        if (metrics.strategies) {
+            for (const [strategy, s] of Object.entries(metrics.strategies)) {
+                if (typeof s === 'object' && s !== null && 'tradesTotal' in s)
+                    output += `trades_total{strategy="${strategy}"} ${s.tradesTotal ?? 0}\n`;
+                if (typeof s === 'object' && s !== null && 'netPnl' in s)
+                    output += `net_pnl{strategy="${strategy}"} ${s.netPnl ?? 0}\n`;
+                if (typeof s === 'object' && s !== null && 'winRate' in s)
+                    output += `win_rate{strategy="${strategy}"} ${s.winRate ?? 0}\n`;
+            }
+        }
         output += `bot_balance ${metrics.currentBalance}\n`;
         output += `bot_drawdown ${metrics.drawdown}\n`;
         output += `bot_daily_pnl ${metrics.dailyPnL}\n`;
@@ -28,7 +38,9 @@ function startMetricsServer(riskManager, notificationManager, port = 9469) {
         if (typeof metrics.totalSlippagePaid === 'number')
             output += `bot_total_slippage_paid ${metrics.totalSlippagePaid}\n`;
         // Average slippage bps: (totalSlippagePaid / totalNotionalTraded) * 10,000
-        if (typeof metrics.totalSlippagePaid === 'number' && typeof metrics.totalNotionalTraded === 'number' && metrics.totalNotionalTraded > 0) {
+        if (typeof metrics.totalSlippagePaid === 'number' &&
+            typeof metrics.totalNotionalTraded === 'number' &&
+            metrics.totalNotionalTraded > 0) {
             const avgSlippageBps = (metrics.totalSlippagePaid / metrics.totalNotionalTraded) * 10000;
             output += `bot_avg_slippage_bps ${avgSlippageBps}\n`;
         }
@@ -39,6 +51,7 @@ function startMetricsServer(riskManager, notificationManager, port = 9469) {
         }
         output += `bot_emergency_stop ${metrics.emergencyStopActive ? 1 : 0}\n`;
         output += `bot_system_enabled ${metrics.systemEnabled ? 1 : 0}\n`;
+        output += `parameter_updates_total ${parameterUpdatesTotal}\n`;
         res.set('Content-Type', 'text/plain');
         res.send(output);
     });

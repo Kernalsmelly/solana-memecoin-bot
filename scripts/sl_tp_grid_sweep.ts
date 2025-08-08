@@ -1,6 +1,10 @@
 import fs from 'fs';
 import path from 'path';
-import csvParse from 'csv-parse/sync';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+import { parse } from 'csv-parse/sync';
 
 const LOG_PATH = path.join(__dirname, '../data/trade_log.csv');
 
@@ -19,16 +23,18 @@ interface Trade {
 
 function loadTrades(): Trade[] {
   const csv = fs.readFileSync(LOG_PATH, 'utf8');
-  const records = csvParse.parse(csv, { columns: true });
+  const records = parse(csv, { columns: true, relax_column_count: true });
   // Only completed trades (BUY+SELL pairs)
-  return records.filter((r: any) => r.action === 'SELL').map((r: any) => ({
-    action: r.action,
-    price: parseFloat(r.price),
-    amount: parseFloat(r.amount),
-    pnl: parseFloat(r.pnl),
-    reason: r.reason,
-    success: r.success,
-  }));
+  return records
+    .filter((r: any) => r.action === 'SELL')
+    .map((r: any) => ({
+      action: r.action,
+      price: parseFloat(r.price),
+      amount: parseFloat(r.amount),
+      pnl: parseFloat(r.pnl),
+      reason: r.reason,
+      success: r.success,
+    }));
 }
 
 function simulate(trades: Trade[], sl: number, tp: number) {
@@ -62,11 +68,10 @@ function main() {
   for (const sl of SL_PCTS) {
     for (const tp of TP_PCTS) {
       const { netPnL, winRate, count } = simulate(trades, sl, tp);
-      console.log(`SL: ${sl}% TP: ${tp}% | NetPnL: ${netPnL.toFixed(4)} | WinRate: ${(winRate*100).toFixed(2)}% | Trades: ${count}`);
-      if (
-        netPnL > best.netPnL ||
-        (netPnL === best.netPnL && winRate > best.winRate)
-      ) {
+      console.log(
+        `SL: ${sl}% TP: ${tp}% | NetPnL: ${netPnL.toFixed(4)} | WinRate: ${(winRate * 100).toFixed(2)}% | Trades: ${count}`,
+      );
+      if (netPnL > best.netPnL || (netPnL === best.netPnL && winRate > best.winRate)) {
         best = { sl, tp, netPnL, winRate };
       }
     }

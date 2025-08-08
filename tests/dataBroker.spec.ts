@@ -8,7 +8,17 @@ describe('DataBroker', () => {
   it('returns Dexscreener data (happy path)', async () => {
     nock('https://api.dexscreener.com')
       .get(/.*/)
-      .reply(200, { pairs: [{ priceUsd: '1.23', liquidity: { usd: '1000' }, fdv: '9000', volume: { h24: '10000' }, updatedAt: 1720000000000 }] });
+      .reply(200, {
+        pairs: [
+          {
+            priceUsd: '1.23',
+            liquidity: { usd: '1000' },
+            fdv: '9000',
+            volume: { h24: '10000' },
+            updatedAt: 1720000000000,
+          },
+        ],
+      });
     const res = await DataBroker.getTokenData('FAKE');
     expect(res.priceUSD).toBe(1.23);
     expect(res.liquidityUSD).toBe(1000);
@@ -18,12 +28,20 @@ describe('DataBroker', () => {
   });
 
   it('falls back to GeckoTerminal on Dexscreener 429', async () => {
-    nock('https://api.dexscreener.com')
-      .get(/.*/)
-      .reply(429);
+    nock('https://api.dexscreener.com').get(/.*/).reply(429);
     nock('https://api.geckoterminal.com')
       .get(/.*/)
-      .reply(200, { data: { attributes: { price_usd: '2.34', liquidity_usd: '2000', fdv_usd: '18000', volume_usd_24h: '20000', last_trade_at: '2024-01-01T00:00:00Z' } } });
+      .reply(200, {
+        data: {
+          attributes: {
+            price_usd: '2.34',
+            liquidity_usd: '2000',
+            fdv_usd: '18000',
+            volume_usd_24h: '20000',
+            last_trade_at: '2024-01-01T00:00:00Z',
+          },
+        },
+      });
     const res = await DataBroker.getTokenData('FAKE2');
     expect(res.priceUSD).toBe(2.34);
     expect(res.liquidityUSD).toBe(2000);

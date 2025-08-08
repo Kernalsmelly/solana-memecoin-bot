@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { OHLCVEvent } from '../utils/priceFeedManager';
+import { OHLCVEvent } from '../utils/priceFeedManager.js';
 export interface PatternMatchEvent {
     address: string;
     timestamp: number;

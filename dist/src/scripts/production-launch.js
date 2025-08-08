@@ -1,5 +1,4 @@
 #!/usr/bin/env ts-node
-"use strict";
 /**
  * Production Launch Script
  *
@@ -10,45 +9,11 @@
  * - Provides periodic status reports
  * - Manages state persistence
  */
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
-Object.defineProperty(exports, "__esModule", { value: true });
-const childProcess = __importStar(require("child_process"));
-const fs = __importStar(require("fs"));
-const path = __importStar(require("path"));
-const dotenv = __importStar(require("dotenv"));
-const notifications_1 = require("../utils/notifications");
+import * as childProcess from 'child_process';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as dotenv from 'dotenv';
+import { sendAlert } from '../utils/notifications.js';
 // Load environment variables
 dotenv.config();
 // Constants
@@ -60,7 +25,7 @@ const MAX_RESTART_ATTEMPTS = 5;
 const RESTART_DELAY_MS = 10000; // 10 seconds
 let botProcess = null;
 let isShuttingDown = false;
-let startTime = Date.now();
+const startTime = Date.now();
 let restartCount = 0;
 let statusInterval;
 // Format time duration in human-readable format
@@ -82,7 +47,7 @@ async function validateConfig() {
     console.log('🧪 Validating configuration...');
     return new Promise((resolve) => {
         const validator = childProcess.spawn('ts-node', ['src/scripts/validate-config.ts'], {
-            stdio: 'inherit'
+            stdio: 'inherit',
         });
         validator.on('close', (code) => {
             if (code === 0) {
@@ -109,7 +74,7 @@ function startBot() {
     console.log('🚀 Launching trading bot...');
     const process = childProcess.spawn('ts-node', ['src/launch.ts'], {
         stdio: ['pipe', 'pipe', 'pipe'], // Use tuple form for stdio
-        env: { ...global.process.env, PRODUCTION_MODE: 'true' } // Use global.process.env to avoid conflict
+        env: { ...global.process.env, PRODUCTION_MODE: 'true' }, // Use global.process.env to avoid conflict
     });
     // Handle output
     process.stdout?.on('data', (data) => {
@@ -124,7 +89,7 @@ function startBot() {
             return;
         console.log(`⚠️ Bot process exited with code ${code}`);
         if (code !== 0) {
-            await (0, notifications_1.sendAlert)(`Bot process terminated unexpectedly with code ${code}`, 'WARNING');
+            await sendAlert(`Bot process terminated unexpectedly with code ${code}`, 'WARNING');
             // Auto-restart logic
             if (restartCount < MAX_RESTART_ATTEMPTS) {
                 restartCount++;
@@ -137,7 +102,7 @@ function startBot() {
             }
             else {
                 console.error(`❌ Maximum restart attempts (${MAX_RESTART_ATTEMPTS}) reached. Exiting.`);
-                await (0, notifications_1.sendAlert)('Maximum restart attempts reached. Bot is down.', 'CRITICAL');
+                await sendAlert('Maximum restart attempts reached. Bot is down.', 'CRITICAL');
                 shutdown();
             }
         }
@@ -171,8 +136,9 @@ async function printStatus() {
                 console.log(`⛔ System Disabled Reason: ${state.emergencyStopReason || 'Unknown'}`);
             }
             // Send status alert
-            if (restartCount === 0) { // Only send if things are stable
-                await (0, notifications_1.sendAlert)(`Status: Uptime ${formatDuration(uptime)}, Balance $${state.currentBalance?.toFixed(2) || 'N/A'}`, 'INFO');
+            if (restartCount === 0) {
+                // Only send if things are stable
+                await sendAlert(`Status: Uptime ${formatDuration(uptime)}, Balance $${state.currentBalance?.toFixed(2) || 'N/A'}`, 'INFO');
             }
         }
         catch (err) {
@@ -202,7 +168,7 @@ async function shutdown() {
             }
         }, 5000);
     }
-    await (0, notifications_1.sendAlert)('Bot has been shut down.', 'WARNING');
+    await sendAlert('Bot has been shut down.', 'WARNING');
     process.exit(0);
 }
 // Main function
@@ -213,14 +179,14 @@ async function main() {
     // Check for emergency stop
     if (checkEmergencyStop()) {
         console.log('⛔ Emergency stop is active. Please remove the override file to continue.');
-        await (0, notifications_1.sendAlert)('Bot startup prevented: Emergency stop is active', 'CRITICAL');
+        await sendAlert('Bot startup prevented: Emergency stop is active', 'CRITICAL');
         process.exit(1);
     }
     // Validate configuration
     const configValid = await validateConfig();
     if (!configValid) {
         console.error('❌ Configuration validation failed. Please fix the issues before starting.');
-        await (0, notifications_1.sendAlert)('Bot startup prevented: Configuration validation failed', 'CRITICAL');
+        await sendAlert('Bot startup prevented: Configuration validation failed', 'CRITICAL');
         process.exit(1);
     }
     // Start the bot
@@ -236,19 +202,19 @@ async function main() {
     // Handle unhandled errors
     process.on('uncaughtException', async (err) => {
         console.error('❌ Unhandled exception:', err);
-        await (0, notifications_1.sendAlert)(`Wrapper caught unhandled exception: ${err.message}`, 'CRITICAL');
+        await sendAlert(`Wrapper caught unhandled exception: ${err.message}`, 'CRITICAL');
         shutdown();
     });
     process.on('unhandledRejection', async (reason) => {
         console.error('❌ Unhandled rejection:', reason);
-        await (0, notifications_1.sendAlert)(`Wrapper caught unhandled rejection: ${String(reason)}`, 'CRITICAL');
+        await sendAlert(`Wrapper caught unhandled rejection: ${String(reason)}`, 'CRITICAL');
         shutdown();
     });
 }
 // Run main function
 main().catch(async (err) => {
     console.error('❌ Fatal error in main wrapper:', err);
-    await (0, notifications_1.sendAlert)(`Fatal error in production wrapper: ${err instanceof Error ? err.message : String(err)}`, 'CRITICAL');
+    await sendAlert(`Fatal error in production wrapper: ${err instanceof Error ? err.message : String(err)}`, 'CRITICAL');
     process.exit(1);
 });
 //# sourceMappingURL=production-launch.js.map

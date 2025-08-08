@@ -1,6 +1,14 @@
 // src/utils/config.ts
 import dotenv from 'dotenv';
-import { RiskLevel } from '../contractValidator';
+import { RiskLevel as RiskLevelType } from './contractValidator.js';
+
+export const RiskLevel = {
+  LOW: 'LOW',
+  MEDIUM: 'MEDIUM',
+  HIGH: 'HIGH',
+  CRITICAL: 'CRITICAL',
+} as const;
+type RiskLevel = (typeof RiskLevel)[keyof typeof RiskLevel];
 import path from 'path';
 import { Cluster, PublicKey } from '@solana/web3.js';
 
@@ -29,7 +37,10 @@ function getEnvAsNumber(key: string, defaultValue?: number): number {
 }
 
 function getEnvAsBoolean(key: string, defaultValue?: boolean): boolean {
-  const value = getEnv(key, defaultValue !== undefined ? String(defaultValue) : undefined).toLowerCase();
+  const value = getEnv(
+    key,
+    defaultValue !== undefined ? String(defaultValue) : undefined,
+  ).toLowerCase();
   return value === 'true' || value === '1';
 }
 
@@ -43,22 +54,55 @@ function getEnvAsCluster(key: string, defaultValue: Cluster = 'mainnet-beta'): C
 
 function getRiskLevel(key: string, defaultValue: RiskLevel): RiskLevel {
   const value = getEnv(key, defaultValue.toString()).toUpperCase();
-  
+
   if (value === 'LOW') return RiskLevel.LOW;
   if (value === 'MEDIUM') return RiskLevel.MEDIUM;
   if (value === 'HIGH') return RiskLevel.HIGH;
   if (value === 'CRITICAL') return RiskLevel.CRITICAL;
-  
+
   return defaultValue;
 }
 
 // Define and export the structure of the configuration object
 export interface Config {
+
+
   /**
    * If true, the bot will simulate trades (no live orders sent).
    */
-  dryRun?: boolean;
   trading: {
+    /**
+     * Threshold for pump detection (custom script usage)
+     */
+    pumpThreshold?: number;
+    /**
+     * Pump window in seconds (custom script usage)
+     */
+    pumpWindowSec?: number;
+    /**
+     * Max hold time in seconds (custom script usage)
+     */
+    maxHoldSec?: number;
+    /**
+     * If true, the bot will simulate trades (no live orders sent).
+     */
+    dryRun?: boolean;
+    /**
+     * If true, force a buy on mempool event (regardless of pattern filter)
+     */
+    forcePumpOnMempool?: boolean;
+    /**
+     * If true, force a buy on whale event (regardless of pattern filter)
+     */
+    forcePumpOnWhale?: boolean;
+    /**
+     * Size in SOL for forced pump buys
+     */
+    forcedPumpSizeSol?: number;
+    /**
+     * Seconds to wait before executing forced pump
+     */
+    forcedPumpWaitSec?: number;
     initialBalance: number;
     maxPositionSize: number;
     maxRiskLevel: RiskLevel;
@@ -106,11 +150,7 @@ export interface Config {
     usdcMint: string;
     cluster: Cluster;
   };
-  apis: {
-    quicknodeRpcUrl?: string;
-    quicknodeWssUrl?: string;
-    coingeckoApiKey?: string;
-  };
+
   notifications: {
     enabled: boolean;
     discordWebhookUrl?: string;
@@ -182,6 +222,22 @@ export interface AnalyticsConfig {
 // Default configuration object loading values from environment variables
 export const config: Config = {
   trading: {
+    pumpThreshold: getEnvAsNumber('PUMP_THRESHOLD', 2),
+    pumpWindowSec: getEnvAsNumber('PUMP_WINDOW_SEC', 60),
+    maxHoldSec: getEnvAsNumber('MAX_HOLD_SEC', 180),
+    dryRun: getEnvAsBoolean('DRY_RUN', false),
+    /**
+     * If true, force a buy on mempool event (regardless of pattern filter)
+     */
+    forcePumpOnMempool: getEnvAsBoolean('FORCE_PUMP_ON_MEMPOOL', false),
+    /**
+     * If true, force a buy on whale event (regardless of pattern filter)
+     */
+    forcePumpOnWhale: getEnvAsBoolean('FORCE_PUMP_ON_WHALE', false),
+    /**
+     * Size in SOL for forced pump buys
+     */
+    forcedPumpSizeSol: getEnvAsNumber('FORCED_PUMP_SIZE_SOL', 0.0005),
     initialBalance: getEnvAsNumber('INITIAL_BALANCE', 10000),
     maxPositionSize: getEnvAsNumber('MAX_POSITION_SIZE', 1000),
     maxRiskLevel: getRiskLevel('MAX_RISK_LEVEL', RiskLevel.MEDIUM),
@@ -225,15 +281,17 @@ export const config: Config = {
   solana: {
     rpcEndpoint: getEnv('QUICKNODE_RPC_URL', 'https://api.mainnet-beta.solana.com'),
     // WebSocket endpoint: prefer SOLANA_WSS_ENDPOINT, fallback to QUICKNODE_WSS_URL
-    wssEndpoint: getEnv('SOLANA_WSS_ENDPOINT', getEnv('QUICKNODE_WSS_URL', '')),  
+    wssEndpoint: getEnv('SOLANA_WSS_ENDPOINT', getEnv('QUICKNODE_WSS_URL', '')),
     walletPrivateKey: getEnv('SOLANA_PRIVATE_KEY', ''),
     usdcMint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
     cluster: getEnvAsCluster('SOLANA_CLUSTER', 'mainnet-beta'),
   },
   apis: {
     quicknodeRpcUrl: getEnv('QUICKNODE_RPC_URL', '') || undefined,
+    // Existing fields remain unchanged
     quicknodeWssUrl: getEnv('QUICKNODE_WSS_URL', '') || undefined,
     coingeckoApiKey: getEnv('COINGECKO_API_KEY', '') || undefined,
+    jupiterQuoteIntervalMs: getEnvAsNumber('JUPITER_QUOTE_INTERVAL_MS', 1500), // interval in ms between Jupiter quote requests
   },
   notifications: {
     enabled: getEnvAsBoolean('NOTIFICATIONS_ENABLED', true),
@@ -260,7 +318,7 @@ export const config: Config = {
     maxTradesPerMinute: getEnvAsNumber('MAX_TRADES_PER_MINUTE', 10),
     maxTradesPerHour: getEnvAsNumber('MAX_TRADES_PER_HOUR', 100),
     maxTradesPerDay: getEnvAsNumber('MAX_TRADES_PER_DAY', 1000),
-    minSuccessRate: getEnvAsNumber('MIN_SUCCESS_RATE', 50)
+    minSuccessRate: getEnvAsNumber('MIN_SUCCESS_RATE', 50),
   },
   tokenMonitor: {
     minLiquidityUsd: getEnvAsNumber('MIN_LIQUIDITY_USD', 5000),
@@ -271,37 +329,46 @@ export const config: Config = {
     reconnectInterval: getEnvAsNumber('WS_RECONNECT_DELAY', 5000),
     maxRetries: getEnvAsNumber('WS_RECONNECT_ATTEMPTS', 5),
     pollingIntervalSeconds: getEnvAsNumber('POLLING_INTERVAL_SECONDS', 30),
-    maxSignaturesToStore: getEnvAsNumber('MAX_SIGNATURES_TO_STORE', 10000)
+    maxSignaturesToStore: getEnvAsNumber('MAX_SIGNATURES_TO_STORE', 10000),
   },
   debug: {
     verbose: getEnvAsBoolean('DEBUG', false),
-    logLevel: getEnv('LOG_LEVEL', 'info')
+    logLevel: getEnv('LOG_LEVEL', 'info'),
   },
   sellCriteria: {
     minSellLiquidity: getEnvAsNumber('MIN_SELL_LIQUIDITY'),
     minSellBuyRatio: getEnvAsNumber('MIN_SELL_BUY_RATIO'),
     stopLossPercent: getEnvAsNumber('STOP_LOSS_PERCENT', 1), // Tuned by parameter sweep 2025-07-05
-    takeProfitPercent: getEnvAsNumber('TAKE_PROFIT_PERCENT', 1) // Tuned by parameter sweep 2025-07-05
-  }
+    takeProfitPercent: getEnvAsNumber('TAKE_PROFIT_PERCENT', 1), // Tuned by parameter sweep 2025-07-05
+  },
 };
 
 // --- Analytics/Notification Config ---
 export const analyticsConfig: AnalyticsConfig = {
   summaryIntervalMinutes: getEnvAsNumber('SUMMARY_INTERVAL_MINUTES', 120),
-  analyticsWindowMinutes: getEnvAsNumber('ANALYTICS_WINDOW_MINUTES', 120)
+  analyticsWindowMinutes: getEnvAsNumber('ANALYTICS_WINDOW_MINUTES', 120),
 };
 
 export function validateConfig(config: Config): void {
   // Validate QuickNode URLs if they are intended to be primary
   // Depending on usage, these might become required later
   if (!config.apis.quicknodeRpcUrl) {
-    console.warn('QUICKNODE_RPC_URL is not set. Ensure SOLANA_RPC_URL is reliable or evaluation/trading might fail.');
+    console.warn(
+      'QUICKNODE_RPC_URL is not set. Ensure SOLANA_RPC_URL is reliable or evaluation/trading might fail.',
+    );
   }
   if (!config.apis.quicknodeWssUrl) {
-    console.warn('QUICKNODE_WSS_URL is not set. WebSocket detection will rely on Helius or other methods if configured, or fail.');
-  } 
-  if (!config.solana.rpcEndpoint || config.solana.rpcEndpoint === 'https://api.mainnet-beta.solana.com') {
-    throw new Error('Missing or default QUICKNODE_RPC_URL in configuration. Please set it in .env.');
+    console.warn(
+      'QUICKNODE_WSS_URL is not set. WebSocket detection will rely on Helius or other methods if configured, or fail.',
+    );
+  }
+  if (
+    !config.solana.rpcEndpoint ||
+    config.solana.rpcEndpoint === 'https://api.mainnet-beta.solana.com'
+  ) {
+    throw new Error(
+      'Missing or default QUICKNODE_RPC_URL in configuration. Please set it in .env.',
+    );
   }
   if (!config.solana.wssEndpoint) {
     throw new Error('Missing QUICKNODE_WSS_URL in configuration. Please set it in .env.');

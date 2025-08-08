@@ -1,30 +1,27 @@
-"use strict";
 // src/utils/mockPriceFeed.ts
 /**
  * Mock Price Feed Service
  * Simulates real-time price data for testing without connecting to actual blockchain
  */
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.mockPriceFeed = exports.MockPriceFeed = void 0;
-const events_1 = require("events");
+import { EventEmitter } from 'events';
 // Mock database of token prices
 const mockPriceDatabase = {
-    'SOL123': {
+    SOL123: {
         price: 0.000023,
-        timestamp: new Date()
+        timestamp: new Date(),
     },
-    'BONK': {
+    BONK: {
         price: 0.000032,
-        timestamp: new Date()
+        timestamp: new Date(),
     },
-    'SAMO': {
+    SAMO: {
         price: 0.0087,
-        timestamp: new Date()
+        timestamp: new Date(),
     },
-    'WIF': {
+    WIF: {
         price: 0.0123,
-        timestamp: new Date()
-    }
+        timestamp: new Date(),
+    },
 };
 // Add some price volatility to make it more realistic
 function applyPriceVolatility(price) {
@@ -35,7 +32,7 @@ function applyPriceVolatility(price) {
 /**
  * Mock price feed service class
  */
-class MockPriceFeed extends events_1.EventEmitter {
+export class MockPriceFeed extends EventEmitter {
     prices = new Map();
     volumeProfiles = new Map();
     VOLUME_WINDOW = 10; // Number of price points to consider for volume analysis
@@ -52,7 +49,7 @@ class MockPriceFeed extends events_1.EventEmitter {
         const pricePoint = {
             price,
             volume,
-            timestamp: Date.now()
+            timestamp: Date.now(),
         };
         // Initialize or update price history
         if (!this.prices.has(tokenAddress)) {
@@ -65,7 +62,7 @@ class MockPriceFeed extends events_1.EventEmitter {
             priceHistory.shift();
         }
         // Calculate volume profile
-        const previousPrice = priceHistory.length > 1 ? priceHistory[priceHistory.length - 2]?.price ?? price : price;
+        const previousPrice = priceHistory.length > 1 ? (priceHistory[priceHistory.length - 2]?.price ?? price) : price;
         const averageVolume = this.calculateAverageVolume(priceHistory);
         const volumeTrend = this.calculateVolumeTrend(priceHistory);
         const volumeSpikes = this.calculateVolumeSpikes(priceHistory, averageVolume);
@@ -76,7 +73,7 @@ class MockPriceFeed extends events_1.EventEmitter {
             recentVolume: volume,
             previousPrice,
             currentPrice: price,
-            ...volumeProfile
+            ...volumeProfile,
         };
         this.volumeProfiles.set(tokenAddress, newVolumeProfile);
         this.emit('priceUpdate', { tokenAddress, price, volume, volumeProfile: newVolumeProfile });
@@ -88,7 +85,7 @@ class MockPriceFeed extends events_1.EventEmitter {
             averageVolume: 0,
             recentVolume: 0,
             previousPrice: 0,
-            currentPrice: 0
+            currentPrice: 0,
         });
     }
     calculateAverageVolume(priceHistory) {
@@ -114,7 +111,6 @@ class MockPriceFeed extends events_1.EventEmitter {
         }, 0);
     }
 }
-exports.MockPriceFeed = MockPriceFeed;
 // Export a singleton instance
-exports.mockPriceFeed = new MockPriceFeed();
+export const mockPriceFeed = new MockPriceFeed();
 //# sourceMappingURL=mockPriceFeed.js.map

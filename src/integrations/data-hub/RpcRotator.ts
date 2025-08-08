@@ -20,7 +20,7 @@ export class RpcRotator {
 
   constructor(urls?: string[]) {
     const useUrls = urls || process.env.RPC_URLS?.split(',') || DEFAULT_URLS;
-    this.endpoints = useUrls.map(url => ({ url: url.trim(), fails: 0, cooldownUntil: 0 }));
+    this.endpoints = useUrls.map((url) => ({ url: url.trim(), fails: 0, cooldownUntil: 0 }));
     this.i = 0;
   }
 
@@ -38,7 +38,7 @@ export class RpcRotator {
   }
 
   reportTimeout(url: string) {
-    const ep = this.endpoints.find(e => e.url === url);
+    const ep = this.endpoints.find((e) => e.url === url);
     if (ep) {
       ep.fails += 1;
       if (ep.fails >= 3) {
@@ -49,7 +49,7 @@ export class RpcRotator {
   }
 
   reportSuccess(url: string) {
-    const ep = this.endpoints.find(e => e.url === url);
+    const ep = this.endpoints.find((e) => e.url === url);
     if (ep) ep.fails = 0;
   }
 }

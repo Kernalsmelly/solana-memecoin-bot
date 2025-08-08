@@ -1,42 +1,7 @@
-"use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
-Object.defineProperty(exports, "__esModule", { value: true });
 // Utility to analyze pool_detection_log.csv for missed high-liquidity/volume pools and summary stats
-const fs = __importStar(require("fs"));
-const path = __importStar(require("path"));
-const sync_1 = require("csv-parse/sync");
+import * as fs from 'fs';
+import * as path from 'path';
+import { parse } from 'csv-parse/sync';
 const poolLogFile = path.resolve(__dirname, '..', '..', 'data', 'pool_detection_log.csv');
 const tradeLogFile = path.resolve(__dirname, '..', '..', 'data', 'trade_log.csv');
 function parseNumber(val) {
@@ -45,7 +10,7 @@ function parseNumber(val) {
     const n = Number(val);
     return isNaN(n) ? 0 : n;
 }
-const priceHistoryUtils_1 = require("./priceHistoryUtils");
+import { loadPriceHistory, getWindowedPrices } from './priceHistoryUtils.js';
 function main() {
     if (!fs.existsSync(poolLogFile)) {
         console.error('No pool_detection_log.csv found!');
@@ -57,12 +22,12 @@ function main() {
     }
     const poolCsv = fs.readFileSync(poolLogFile, 'utf-8');
     const tradeCsv = fs.readFileSync(tradeLogFile, 'utf-8');
-    const pools = (0, sync_1.parse)(poolCsv, { columns: true, skip_empty_lines: true }).map((row) => ({
+    const pools = parse(poolCsv, { columns: true, skip_empty_lines: true }).map((row) => ({
         ...row,
         liquidityUsd: parseNumber(row.liquidityUsd),
-        volume24hUsd: parseNumber(row.volume24hUsd)
+        volume24hUsd: parseNumber(row.volume24hUsd),
     }));
-    const trades = (0, sync_1.parse)(tradeCsv, { columns: true, skip_empty_lines: true });
+    const trades = parse(tradeCsv, { columns: true, skip_empty_lines: true });
     // Build a set of traded pool addresses or token mints
     const tradedPoolAddresses = new Set();
     const tradedTokens = new Set();
@@ -74,7 +39,8 @@ function main() {
     }
     // Mark pools as traded or not
     for (const p of pools) {
-        p.wasTraded = tradedPoolAddresses.has(p.poolAddress || '') || tradedTokens.has(p.baseMint || '');
+        p.wasTraded =
+            tradedPoolAddresses.has(p.poolAddress || '') || tradedTokens.has(p.baseMint || '');
     }
     // Summary stats
     const total = pools.length;
@@ -115,7 +81,8 @@ function main() {
         ? tradedPoolKeys.reduce((a, k) => a + (Number(poolTradeStats[k]?.pnlSum) || 0), 0) / (tradedPoolKeys.length || 1)
         : 0;
     const winRate = tradedPoolKeys.length
-        ? tradedPoolKeys.reduce((a, k) => a + ((Number(poolTradeStats[k]?.winCount) / (Number(poolTradeStats[k]?.tradeCount) || 1)) || 0), 0) / (tradedPoolKeys.length || 1)
+        ? tradedPoolKeys.reduce((a, k) => a +
+            (Number(poolTradeStats[k]?.winCount) / (Number(poolTradeStats[k]?.tradeCount) || 1) || 0), 0) / (tradedPoolKeys.length || 1)
         : 0;
     // --- Parameter Tuning Suggestions ---
     function median(arr) {
@@ -129,28 +96,46 @@ function main() {
             ? sorted[mid]
             : (sorted[mid - 1] + sorted[mid]) / 2;
     }
-    const missedLiquidity = untraded.reduce((acc, p) => {
-        if (typeof p.liquidityUsd === 'number' && isFinite(p.liquidityUsd) && !isNaN(p.liquidityUsd) && p.liquidityUsd > 0) {
+    const missedLiquidity = untraded
+        .reduce((acc, p) => {
+        if (typeof p.liquidityUsd === 'number' &&
+            isFinite(p.liquidityUsd) &&
+            !isNaN(p.liquidityUsd) &&
+            p.liquidityUsd > 0) {
             acc.push(p.liquidityUsd);
         }
         return acc;
-    }, []).filter((n) => typeof n === 'number' && !isNaN(n));
-    const missedVolume = untraded.reduce((acc, p) => {
-        if (typeof p.volume24hUsd === 'number' && isFinite(p.volume24hUsd) && !isNaN(p.volume24hUsd) && p.volume24hUsd > 0) {
+    }, [])
+        .filter((n) => typeof n === 'number' && !isNaN(n));
+    const missedVolume = untraded
+        .reduce((acc, p) => {
+        if (typeof p.volume24hUsd === 'number' &&
+            isFinite(p.volume24hUsd) &&
+            !isNaN(p.volume24hUsd) &&
+            p.volume24hUsd > 0) {
             acc.push(p.volume24hUsd);
         }
         return acc;
-    }, []).filter((n) => typeof n === 'number' && !isNaN(n));
-    const missedVLratio = untraded.reduce((acc, p) => {
-        if (typeof p.liquidityUsd === 'number' && isFinite(p.liquidityUsd) && !isNaN(p.liquidityUsd) && p.liquidityUsd > 0 &&
-            typeof p.volume24hUsd === 'number' && isFinite(p.volume24hUsd) && !isNaN(p.volume24hUsd) && p.volume24hUsd > 0) {
+    }, [])
+        .filter((n) => typeof n === 'number' && !isNaN(n));
+    const missedVLratio = untraded
+        .reduce((acc, p) => {
+        if (typeof p.liquidityUsd === 'number' &&
+            isFinite(p.liquidityUsd) &&
+            !isNaN(p.liquidityUsd) &&
+            p.liquidityUsd > 0 &&
+            typeof p.volume24hUsd === 'number' &&
+            isFinite(p.volume24hUsd) &&
+            !isNaN(p.volume24hUsd) &&
+            p.volume24hUsd > 0) {
             const val = p.volume24hUsd / p.liquidityUsd;
             if (typeof val === 'number' && isFinite(val) && !isNaN(val) && val > 0) {
                 acc.push(val);
             }
         }
         return acc;
-    }, []).filter((n) => typeof n === 'number' && !isNaN(n));
+    }, [])
+        .filter((n) => typeof n === 'number' && !isNaN(n));
     const safeMissedLiquidity = missedLiquidity.filter((n) => typeof n === 'number' && !isNaN(n));
     const safeMissedVolume = missedVolume.filter((n) => typeof n === 'number' && !isNaN(n));
     const safeMissedVLratio = missedVLratio.filter((n) => typeof n === 'number' && !isNaN(n));
@@ -192,18 +177,18 @@ function main() {
         const autoConfig = {
             minLiquidity: best.minLiquidity,
             minVolume: best.minVolume,
-            minVLratio: best.minVLratio
+            minVLratio: best.minVLratio,
         };
         fs.writeFileSync(path.resolve(__dirname, '../../autoConfig.json'), JSON.stringify(autoConfig, null, 2));
         // Also export leaderboard as CSV
         const leaderboardCsv = [
             'minLiquidity,minVolume,minVLratio,detected,tradedPools,totalPL,avgPL,winRate',
-            ...leaderboard.map(r => `${r.minLiquidity},${r.minVolume},${r.minVLratio},${r.detected},${r.tradedPools},${r.totalPL},${r.avgPL},${r.winRate}`)
+            ...leaderboard.map((r) => `${r.minLiquidity},${r.minVolume},${r.minVLratio},${r.detected},${r.tradedPools},${r.totalPL},${r.avgPL},${r.winRate}`),
         ].join('\n');
         fs.writeFileSync(path.resolve(__dirname, '../../data/parameter_leaderboard.csv'), leaderboardCsv);
         console.log('\nBest-performing config written to autoConfig.json. Full leaderboard exported to data/parameter_leaderboard.csv');
         // --- Missed Opportunity Simulation with Price History ---
-        const priceHistory = (0, priceHistoryUtils_1.loadPriceHistory)();
+        const priceHistory = loadPriceHistory();
         const missedSimResults = [];
         let totalMissedProfit15m = 0, totalMissedProfit1h = 0, totalMissedProfitBest1h = 0;
         const positionSize = 50; // Simulate $50 position
@@ -211,19 +196,23 @@ function main() {
         const window1h = 60 * 60 * 1000;
         const missedPools = untraded.filter((p) => p.liquidityUsd >= best.minLiquidity &&
             p.volume24hUsd >= best.minVolume &&
-            (p.volume24hUsd / (p.liquidityUsd || 1)) >= best.minVLratio);
+            p.volume24hUsd / (p.liquidityUsd || 1) >= best.minVLratio);
         for (const pool of missedPools) {
             const detectionPriceRaw = pool.priceUsd || pool.price || '';
             const detectionTimeRaw = pool.timestamp || pool.detectedAt || '';
             const detectionPrice = parseNumber(detectionPriceRaw);
             const detectionTime = parseNumber(detectionTimeRaw);
-            if (typeof detectionPrice !== 'number' || isNaN(detectionPrice) || detectionPrice <= 0 ||
-                typeof detectionTime !== 'number' || isNaN(detectionTime) || detectionTime <= 0) {
+            if (typeof detectionPrice !== 'number' ||
+                isNaN(detectionPrice) ||
+                detectionPrice <= 0 ||
+                typeof detectionTime !== 'number' ||
+                isNaN(detectionTime) ||
+                detectionTime <= 0) {
                 continue;
             }
             // Get price history rows for this pool after detection
-            const phRows15m = (0, priceHistoryUtils_1.getWindowedPrices)(priceHistory, pool.baseMint || '', pool.poolAddress, detectionTime, window15m);
-            const phRows1h = (0, priceHistoryUtils_1.getWindowedPrices)(priceHistory, pool.baseMint || '', pool.poolAddress, detectionTime, window1h);
+            const phRows15m = getWindowedPrices(priceHistory, pool.baseMint || '', pool.poolAddress, detectionTime, window15m);
+            const phRows1h = getWindowedPrices(priceHistory, pool.baseMint || '', pool.poolAddress, detectionTime, window1h);
             // Strategy 1: Sell after 15min
             const lastRow15m = phRows15m.length > 0 ? phRows15m[phRows15m.length - 1] : undefined;
             const exit15m = lastRow15m && lastRow15m.price !== undefined ? lastRow15m.price : detectionPrice;
@@ -232,7 +221,9 @@ function main() {
             const exit1h = lastRow1h && lastRow1h.price !== undefined ? lastRow1h.price : detectionPrice;
             // Strategy 3: Best price in 1hr window
             const best1h = phRows1h.length > 0
-                ? Math.max(...phRows1h.map(r => r.price).filter((p) => typeof p === 'number' && !isNaN(p)))
+                ? Math.max(...phRows1h
+                    .map((r) => r.price)
+                    .filter((p) => typeof p === 'number' && !isNaN(p)))
                 : detectionPrice;
             // Simulate P/L for each
             const pnl15m = ((exit15m - detectionPrice) / detectionPrice) * positionSize;
@@ -253,7 +244,7 @@ function main() {
                 best1h,
                 pnlBest1h,
                 liquidityUsd: pool.liquidityUsd,
-                volume24hUsd: pool.volume24hUsd
+                volume24hUsd: pool.volume24hUsd,
             });
         }
         // After the loop, report and export
@@ -272,7 +263,7 @@ function main() {
             // Export missed opportunities to CSV
             const missedCsv = [
                 'token,poolAddress,detectionPrice,detectionTime,exit15m,pnl15m,exit1h,pnl1h,best1h,pnlBest1h,liquidityUsd,volume24hUsd',
-                ...missedSimResults.map(r => `${r.token},${r.poolAddress},${r.detectionPrice},${r.detectionTime},${r.exit15m},${r.pnl15m},${r.exit1h},${r.pnl1h},${r.best1h},${r.pnlBest1h},${r.liquidityUsd},${r.volume24hUsd}`)
+                ...missedSimResults.map((r) => `${r.token},${r.poolAddress},${r.detectionPrice},${r.detectionTime},${r.exit15m},${r.pnl15m},${r.exit1h},${r.pnl1h},${r.best1h},${r.pnlBest1h},${r.liquidityUsd},${r.volume24hUsd}`),
             ].join('\n');
             fs.writeFileSync(path.resolve(__dirname, '../../data/missed_opportunities.csv'), missedCsv);
             console.log('Missed opportunity simulation exported to data/missed_opportunities.csv');
@@ -303,7 +294,9 @@ function parameterSweep(pools, trades) {
     for (const minLiquidity of liquidityRange) {
         for (const minVolume of volumeRange) {
             for (const minVLratio of vlRatioRange) {
-                const detected = pools.filter((p) => p.liquidityUsd >= minLiquidity && p.volume24hUsd >= minVolume && (p.volume24hUsd / (p.liquidityUsd || 1)) >= minVLratio);
+                const detected = pools.filter((p) => p.liquidityUsd >= minLiquidity &&
+                    p.volume24hUsd >= minVolume &&
+                    p.volume24hUsd / (p.liquidityUsd || 1) >= minVLratio);
                 const detectedKeys = new Set(detected.map((p) => p.poolAddress || p.baseMint || ''));
                 let totalPL = 0, totalTrades = 0, totalWins = 0, tradedPools = 0;
                 for (const key of detectedKeys) {
@@ -322,7 +315,7 @@ function parameterSweep(pools, trades) {
                     tradedPools: tradedPools || 0,
                     totalPL: typeof totalPL === 'number' ? totalPL : 0,
                     avgPL: tradedPools ? (typeof totalPL === 'number' ? totalPL : 0) / tradedPools : 0,
-                    winRate: tradedPools ? (totalWins / totalTrades) || 0 : 0
+                    winRate: tradedPools ? totalWins / totalTrades || 0 : 0,
                 });
             }
         }

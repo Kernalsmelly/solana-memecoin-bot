@@ -1,4 +1,4 @@
-import { PatternDetector } from '../strategy/patternDetector';
+import { PatternDetector } from '../strategy/patternDetector.js';
 export declare class TopTokenScanner {
     private patternDetector;
     private running;

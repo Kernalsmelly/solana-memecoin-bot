@@ -1,6 +1,6 @@
 import { PublicKey } from '@solana/web3.js';
 import axios from 'axios';
-import logger from './logger';
+import logger from './logger.js';
 
 // const BIRDEYE_API_KEY = process.env.BIRDEYE_API_KEY;
 // const BIRDEYE_API_URL = 'https://public-api.birdeye.so/public/price';

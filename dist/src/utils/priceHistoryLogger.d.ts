@@ -1,4 +1,4 @@
-export declare function logPriceHistory({ timestamp, token, poolAddress, price, liquidity, volume }: {
+export declare function logPriceHistory({ timestamp, token, poolAddress, price, liquidity, volume, }: {
     timestamp: number;
     token: string;
     poolAddress?: string;

@@ -1,7 +1,5 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-const tradeLogger_1 = require("../src/utils/tradeLogger");
-tradeLogger_1.tradeLogger.log({
+import { tradeLogger } from '../src/utils/tradeLogger.js';
+tradeLogger.log({
     timestamp: new Date().toISOString(),
     action: 'buy',
     token: 'TEST',
@@ -11,6 +9,6 @@ tradeLogger_1.tradeLogger.log({
     pnl: 0,
     reason: 'smoketest',
     txid: '',
-    success: true
+    success: true,
 });
 //# sourceMappingURL=trade_logger_smoketest.js.map

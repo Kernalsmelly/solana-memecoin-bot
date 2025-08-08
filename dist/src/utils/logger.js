@@ -1,6 +1,4 @@
-"use strict";
 // Simple console logger for performance testing
-Object.defineProperty(exports, "__esModule", { value: true });
 // Helper to safely stringify metadata, handling circular references and errors
 const safeStringify = (obj) => {
     if (!obj)
@@ -36,7 +34,7 @@ const logger = {
         console.warn(`[WARN] ${message}${meta ? ' ' + safeStringify(meta) : ''}`);
     },
     error: (message, meta) => {
-        // For errors, print the message and stringified meta, but also log the raw error object 
+        // For errors, print the message and stringified meta, but also log the raw error object
         // separately in case stringification loses details (like stack trace).
         console.error(`[ERROR] ${message}${meta ? ' ' + safeStringify(meta) : ''}`);
         if (meta instanceof Error) {
@@ -51,7 +49,9 @@ const logger = {
         if (process.env.DEBUG === 'true') {
             console.debug(`[DEBUG] ${message}${meta ? ' ' + safeStringify(meta) : ''}`);
         }
-    }
+    },
 };
-exports.default = logger;
+logger.default = logger;
+export default logger;
+export { logger };
 //# sourceMappingURL=logger.js.map

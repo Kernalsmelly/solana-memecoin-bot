@@ -1,9 +1,6 @@
-"use strict";
 // src/positionManager.ts
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.PositionManager = void 0;
-const priceFeed_1 = require("./utils/priceFeed");
-class PositionManager {
+import { fetchTokenPrice } from './/utils/priceFeed.js';
+export class PositionManager {
     accountBalance;
     positions;
     constructor(initialBalance) {
@@ -21,7 +18,7 @@ class PositionManager {
      */
     async fetchTokenPrice(tokenMint) {
         // Use the utility function from src/utils/priceFeed.ts
-        return await (0, priceFeed_1.fetchTokenPrice)(tokenMint, 'usd');
+        return await fetchTokenPrice(tokenMint, 'usd');
     }
     getAccountBalance() {
         return this.accountBalance;
@@ -48,12 +45,14 @@ class PositionManager {
             tokenDecimals,
             quantity,
             entryPrice,
-            trades: [{
+            trades: [
+                {
                     type: 'buy',
                     quantity,
                     price: entryPrice,
-                    timestamp: Date.now()
-                }],
+                    timestamp: Date.now(),
+                },
+            ],
         };
         this.positions.set(tokenMint, position);
         // Deduct cost from available cash and add to allocated cash.
@@ -72,7 +71,9 @@ class PositionManager {
             return null;
         const currentPrice = await this.fetchTokenPrice(tokenMint);
         const unrealizedPnL = (currentPrice - position.entryPrice) * position.quantity;
-        const unrealizedPnLPercent = position.entryPrice > 0 ? (unrealizedPnL / (position.entryPrice * position.quantity)) * 100 : 0;
+        const unrealizedPnLPercent = position.entryPrice > 0
+            ? (unrealizedPnL / (position.entryPrice * position.quantity)) * 100
+            : 0;
         return {
             tokenMint,
             tokenSymbol: position.tokenSymbol,
@@ -80,7 +81,7 @@ class PositionManager {
             entryPrice: position.entryPrice,
             currentPrice,
             unrealizedPnL,
-            unrealizedPnLPercent
+            unrealizedPnLPercent,
         };
     }
     /**
@@ -137,7 +138,7 @@ class PositionManager {
             type: 'sell',
             quantity: quantityToSell,
             price: sellPrice,
-            timestamp: Date.now()
+            timestamp: Date.now(),
         });
         position.quantity -= quantityToSell;
         const revenue = quantityToSell * sellPrice;
@@ -182,8 +183,8 @@ class PositionManager {
      * (For immediate updates without current prices.)
      */
     updateTotalValue() {
-        this.accountBalance.totalValue = this.accountBalance.availableCash + this.accountBalance.allocatedCash;
+        this.accountBalance.totalValue =
+            this.accountBalance.availableCash + this.accountBalance.allocatedCash;
     }
 }
-exports.PositionManager = PositionManager;
 //# sourceMappingURL=positionManager.js.map

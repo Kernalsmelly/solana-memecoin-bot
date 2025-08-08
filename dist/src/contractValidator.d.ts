@@ -1,4 +1,4 @@
-import { RugAnalysis } from './types';
+import { RugAnalysis } from './types.js';
 import { Connection } from '@solana/web3.js';
 /**
  * Risk level enum for token contracts

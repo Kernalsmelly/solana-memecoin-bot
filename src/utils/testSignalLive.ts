@@ -1,7 +1,7 @@
 import dotenv from 'dotenv';
 dotenv.config();
-import { sendDiscordSignal, SignalPayload } from './discordNotifier';
-import { logSignal } from './signalLogger';
+import { sendDiscordSignal, SignalPayload } from './discordNotifier.js';
+import { logSignal } from './signalLogger.js';
 // This test script does NOT import or use config.ts.
 
 (async () => {
@@ -19,7 +19,8 @@ import { logSignal } from './signalLogger';
     reason: 'Manual test signal (live system check)',
     links: {
       solscan: 'https://solscan.io/token/So11111111111111111111111111111111111111112',
-      raydium: 'https://raydium.io/swap/?inputCurrency=SOL&outputCurrency=So11111111111111111111111111111111111111112',
+      raydium:
+        'https://raydium.io/swap/?inputCurrency=SOL&outputCurrency=So11111111111111111111111111111111111111112',
     },
     timestamp: Date.now(),
   };

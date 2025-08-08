@@ -1,4 +1,4 @@
-import { RiskManager } from '../live/riskManager';
+import { RiskManager } from '../live/riskManager.js';
 interface DashboardOptions {
     port: number;
     riskManager: RiskManager;
@@ -6,6 +6,8 @@ interface DashboardOptions {
     refreshInterval?: number;
 }
 export declare class PerformanceDashboard {
+    patternEventCounts: Record<string, number>;
+    pendingExits: any[];
     private app;
     private server;
     private riskManager;

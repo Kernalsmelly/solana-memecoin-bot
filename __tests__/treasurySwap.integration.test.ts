@@ -10,14 +10,14 @@ vi.mock('../src/orderExecution/jupiterQuote', () => ({
     outAmount: 1000000, // 1 USDC (6 decimals)
     price: 1,
     route: { dummy: true },
-    tx: {}
-  })
+    tx: {},
+  }),
 }));
 vi.mock('../src/orderExecution/jupiterOrderExecution', () => ({
   __esModule: true,
   default: vi.fn().mockImplementation(() => ({
-    executeSwap: vi.fn().mockResolvedValue({ success: true })
-  }))
+    executeSwap: vi.fn().mockResolvedValue({ success: true }),
+  })),
 }));
 
 describe('Treasury Profit Auto-Swap Integration', () => {
@@ -34,12 +34,13 @@ describe('Treasury Profit Auto-Swap Integration', () => {
     const solProceeds = netPnL;
     // Simulate auto-swap logic
     const { fetchJupiterQuote } = await import('../src/orderExecution/jupiterQuote');
-    const JupiterOrderExecution = (await import('../src/orderExecution/jupiterOrderExecution')).default;
+    const JupiterOrderExecution = (await import('../src/orderExecution/jupiterOrderExecution'))
+      .default;
     const quote = await fetchJupiterQuote({
       inputMint: 'So11111111111111111111111111111111111111112',
       outputMint: USDC_MINT,
       amount: Math.floor(solProceeds * 1e9),
-      slippageBps: 50
+      slippageBps: 50,
     });
     expect(quote).toBeTruthy();
     const orderExec = new JupiterOrderExecution({}, {});
@@ -49,7 +50,7 @@ describe('Treasury Profit Auto-Swap Integration', () => {
       amountIn: Math.floor(solProceeds * 1e9),
       slippageBps: 50,
       userPublicKey: 'dummy',
-      meta: { autoTreasury: true }
+      meta: { autoTreasury: true },
     });
     expect(swapResult.success).toBe(true);
     // Record profit

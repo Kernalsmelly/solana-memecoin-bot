@@ -1,14 +1,8 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.StrategyCoordinator = void 0;
-const events_1 = __importDefault(require("events"));
+import EventEmitter from 'events';
 /**
  * Coordinates execution of strategies across multiple tokens with concurrency and cooldowns.
  */
-class StrategyCoordinator extends events_1.default {
+export class StrategyCoordinator extends EventEmitter {
     maxConcurrent;
     cooldownMs;
     activeTokens = new Set();
@@ -23,11 +17,10 @@ class StrategyCoordinator extends events_1.default {
      * Call when a new token is discovered or signaled for trading
      */
     enqueueToken(token) {
-        // Prevent enqueue if token is active, queued, or on cooldown
+        // Prevent enqueue if token is active or already queued
         if (this.activeTokens.has(token) || this.queue.includes(token))
             return;
-        if (this.isOnCooldown(token))
-            return; // Do NOT queue if on cooldown
+        console.debug(`[Coordinator] enqueueToken: ${token} (active: ${Array.from(this.activeTokens)}, queue: ${this.queue}, cooldowns: ${Array.from(this.cooldowns)})`);
         this.queue.push(token);
         this.tryDispatch();
     }
@@ -35,26 +28,39 @@ class StrategyCoordinator extends events_1.default {
      * Call when a token's trade completes (to start cooldown)
      */
     completeToken(token) {
+        const eligible = Date.now() + this.cooldownMs;
+        this.cooldowns.set(token, eligible);
         this.activeTokens.delete(token);
-        this.cooldowns.set(token, Date.now());
+        console.debug(`[Coordinator] completeToken: ${token} (active: ${Array.from(this.activeTokens)}, queue: ${this.queue}, cooldowns: ${Array.from(this.cooldowns.keys())})`);
         setTimeout(() => {
-            this.cooldowns.delete(token);
-            this.tryDispatch();
+            // Only remove if the eligible time has passed
+            if (this.cooldowns.get(token) && Date.now() >= this.cooldowns.get(token)) {
+                this.cooldowns.delete(token);
+                console.debug(`[Coordinator] cooldown expired: ${token} (active: ${Array.from(this.activeTokens)}, queue: ${this.queue}, cooldowns: ${Array.from(this.cooldowns.keys())})`);
+                this.tryDispatch();
+            }
         }, this.cooldownMs);
-        this.tryDispatch();
+        // Do not call tryDispatch here; only after cooldown expires
     }
     isOnCooldown(token) {
         if (!this.cooldowns.has(token))
             return false;
-        const since = Date.now() - this.cooldowns.get(token);
-        return since < this.cooldownMs;
+        const eligible = this.cooldowns.get(token);
+        return Date.now() < eligible;
     }
     tryDispatch() {
         while (this.activeTokens.size < this.maxConcurrent && this.queue.length > 0) {
-            const token = this.queue.shift();
-            if (this.isOnCooldown(token) || this.activeTokens.has(token))
-                continue;
+            const token = this.queue[0];
+            if (!token)
+                break;
+            if (this.isOnCooldown(token) || this.activeTokens.has(token)) {
+                // If the token at the front is not ready, break (don't cycle)
+                break;
+            }
+            // Token is ready for dispatch
+            this.queue.shift();
             this.activeTokens.add(token);
+            console.debug(`[Coordinator] dispatching: ${token} (active: ${Array.from(this.activeTokens)}, queue: ${this.queue}, cooldowns: ${Array.from(this.cooldowns)})`);
             this.emit('tokenDispatch', token);
         }
     }
@@ -69,5 +75,4 @@ class StrategyCoordinator extends events_1.default {
         };
     }
 }
-exports.StrategyCoordinator = StrategyCoordinator;
 //# sourceMappingURL=StrategyCoordinator.js.map

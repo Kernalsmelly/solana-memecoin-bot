@@ -1,27 +1,24 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.raydiumDex = exports.RaydiumDEX = void 0;
-const config_1 = require("../utils/config");
+import { config } from '../utils/config.js';
 // Mock Raydium swap function
 async function mockRaydiumSwap(params) {
     // Simulate network delay
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise((resolve) => setTimeout(resolve, 500));
     // Generate mock transaction signature
     const txSignature = `mock_tx_${Date.now()}_${Math.random().toString(36).substring(7)}`;
     console.log('Mock Raydium Swap Parameters:', {
         inputMint: params.inputMint,
         outputMint: params.outputMint,
         amountIn: params.amountIn,
-        slippage: params.slippageTolerance
+        slippage: params.slippageTolerance,
     });
     return txSignature;
 }
-class RaydiumDEX {
+export class RaydiumDEX {
     rpcEndpoint;
     slippageTolerance;
     constructor() {
-        this.rpcEndpoint = config_1.config.solana.rpcEndpoint;
-        this.slippageTolerance = config_1.config.trading.slippageTolerance / 100; // Convert from percentage to decimal
+        this.rpcEndpoint = config.solana.rpcEndpoint;
+        this.slippageTolerance = config.trading.slippageTolerance / 100; // Convert from percentage to decimal
     }
     async executeSwap(walletPrivateKey, inputMint, outputMint, amountIn, customSlippage) {
         try {
@@ -38,14 +35,14 @@ class RaydiumDEX {
             console.log('✅ Rapid trade executed:', txSignature);
             return {
                 success: true,
-                txSignature
+                txSignature,
             };
         }
         catch (error) {
             console.error('❌ Rapid trade failed:', error);
             return {
                 success: false,
-                error: error instanceof Error ? error.message : String(error)
+                error: error instanceof Error ? error.message : String(error),
             };
         }
     }
@@ -56,7 +53,7 @@ class RaydiumDEX {
             const mockImpact = amountIn > 10000 ? 0.01 : 0.005; // Higher impact for larger trades
             return {
                 price: mockPrice,
-                impact: mockImpact
+                impact: mockImpact,
             };
         }
         catch (error) {
@@ -65,7 +62,6 @@ class RaydiumDEX {
         }
     }
 }
-exports.RaydiumDEX = RaydiumDEX;
 // Export singleton instance
-exports.raydiumDex = new RaydiumDEX();
+export const raydiumDex = new RaydiumDEX();
 //# sourceMappingURL=raydiumDex.js.map

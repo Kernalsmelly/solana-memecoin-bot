@@ -1,6 +1,6 @@
-import { TokenMetrics } from './fetchTokenMetrics';
-import { RiskManager } from '../live/riskManager';
-import { AccountBalance } from '../positionManager';
+import { TokenMetrics } from './fetchTokenMetrics.js';
+import { RiskManager } from '../live/riskManager.js';
+import { AccountBalance } from '../positionManager.js';
 
 /**
  * Calculates optimal position size based on risk, liquidity, and available balance.
@@ -12,7 +12,7 @@ import { AccountBalance } from '../positionManager';
 export function calculatePositionSize(
   token: TokenMetrics,
   riskManager: RiskManager,
-  accountBalance: AccountBalance
+  accountBalance: AccountBalance,
 ): number {
   // Get max allowed position size from risk manager config
   const maxPositionUsd = riskManager.config.maxPositionValueUsd || 50;

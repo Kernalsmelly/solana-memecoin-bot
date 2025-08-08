@@ -1,10 +1,10 @@
 // src/paperTrading.ts
 
 import { Connection } from '@solana/web3.js';
-import { config } from './utils/config';
-import logger from './utils/logger';
-import { TradingSystem } from './tradingSystem';
-import { RiskLevel } from './contractValidator';
+import { config } from './/utils/config.js';
+import logger from './/utils/logger.js';
+import { TradingSystem } from './/tradingSystem.js';
+import { RiskLevel } from './/contractValidator.js';
 
 /**
  * Runs the paper trading module.
@@ -18,10 +18,10 @@ export async function runPaperTrading(): Promise<void> {
     // Create a new TradingSystem instance with the connection.
     const tradingSystem = new TradingSystem(connection);
 
-    logger.info("Paper trading system initialized.");
+    logger.info('Paper trading system initialized.');
 
     // Define a dummy token mint (32-character string).
-    const dummyTokenMint = "11111111111111111111111111111111";
+    const dummyTokenMint = '11111111111111111111111111111111';
 
     // --- Validation and Buying Logic Needs Revision ---
     // The following logic assumes methods (validateToken, buyToken)
@@ -29,13 +29,15 @@ export async function runPaperTrading(): Promise<void> {
     // This section needs to be rewritten to interact with TradingSystem
     // or its components (like ContractValidator) correctly.
 
-    logger.warn('Paper trading validation and buying logic needs implementation based on TradingSystem capabilities.');
+    logger.warn(
+      'Paper trading validation and buying logic needs implementation based on TradingSystem capabilities.',
+    );
 
     // Subscribe to token updates (if your system uses events for price updates).
     // tradingSystem.tokenMonitor.on('tokenUpdate', (update) => { ... }); // Example
 
     // Wait briefly (simulate time passing).
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    await new Promise((resolve) => setTimeout(resolve, 2000));
 
     // Get the updated portfolio information.
     // const portfolio = tradingSystem.getPortfolio(); // Method doesn't exist
@@ -53,24 +55,24 @@ export async function runPaperTrading(): Promise<void> {
 
     // Shutdown the trading system gracefully.
     // await tradingSystem.shutdown(); // Method doesn't exist
-    logger.info("Placeholder: Shutting down trading system."); // Placeholder
-    logger.info("Paper trading system shutdown complete.");
+    logger.info('Placeholder: Shutting down trading system.'); // Placeholder
+    logger.info('Paper trading system shutdown complete.');
   } catch (error) {
     if (error instanceof Error) {
-      logger.error("Paper trading encountered an error:", error);
+      logger.error('Paper trading encountered an error:', error);
     } else {
-      logger.error("Paper trading encountered an unknown error:", String(error));
+      logger.error('Paper trading encountered an unknown error:', String(error));
     }
   }
 }
 
 // If this file is executed directly, run the paper trading module.
 if (require.main === module) {
-  runPaperTrading().catch(err => {
+  runPaperTrading().catch((err) => {
     if (err instanceof Error) {
-      logger.error("Fatal error during paper trading:", err);
+      logger.error('Fatal error during paper trading:', err);
     } else {
-      logger.error("Fatal error during paper trading (unknown error):", String(err));
+      logger.error('Fatal error during paper trading (unknown error):', String(err));
     }
     process.exit(1);
   });

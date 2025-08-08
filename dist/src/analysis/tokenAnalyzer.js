@@ -1,22 +1,16 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.TokenAnalyzer = void 0;
-const logger_1 = __importDefault(require("../utils/logger"));
-const cache_1 = require("../utils/cache");
-class TokenAnalyzer {
+import logger from '../utils/logger.js';
+import { globalCacheManager } from '../utils/cache.js';
+export class TokenAnalyzer {
     scamPatterns;
     nameBlacklist;
     addressBlacklist;
     minLiquidity;
     minHolders;
     tokenScoreCache;
-    cacheManager = cache_1.globalCacheManager;
+    cacheManager = globalCacheManager;
     constructor({ minLiquidity = 1000, // Minimum liquidity in USD
     minHolders = 10, // Minimum holder count
-    cacheTimeMs = 3600000 // Cache scores for 1 hour
+    cacheTimeMs = 3600000, // Cache scores for 1 hour
      } = {}) {
         this.minLiquidity = minLiquidity;
         this.minHolders = minHolders;
@@ -26,18 +20,16 @@ class TokenAnalyzer {
             maxSize: 5000,
             ttl: cacheTimeMs,
             onEvict: (key, value) => {
-                logger_1.default.debug(`Evicted token score from cache: ${key}`);
-            }
+                logger.debug(`Evicted token score from cache: ${key}`);
+            },
         });
         // Initialize scam detection patterns
         this.scamPatterns = [
             /\b(fake|scam|pump|dump|airdrop|free)\b/i,
             /\b(elon|musk|bezos|gates|trump|biden)\b/i,
-            /\b(eth2.0|eth2|btc2.0|btc2)\b/i
+            /\b(eth2.0|eth2|btc2.0|btc2)\b/i,
         ];
-        this.nameBlacklist = new Set([
-            'test', 'sample', 'token', 'coin', 'airdrop', 'free'
-        ]);
+        this.nameBlacklist = new Set(['test', 'sample', 'token', 'coin', 'airdrop', 'free']);
         this.addressBlacklist = new Set();
     }
     // Analyze a token and return a score (0-100)
@@ -48,7 +40,7 @@ class TokenAnalyzer {
             return {
                 ...token,
                 score: cachedScore,
-                analysisTime: Date.now()
+                analysisTime: Date.now(),
             };
         }
         // Check for scam patterns
@@ -58,7 +50,7 @@ class TokenAnalyzer {
                 isScam: true,
                 score: 0,
                 analysisTime: Date.now(),
-                riskLevel: 'high'
+                riskLevel: 'high',
             };
             this.cacheScore(token.address, 0);
             return scamToken;
@@ -69,10 +61,7 @@ class TokenAnalyzer {
         const holderScore = this.calculateHolderScore(token);
         const ageScore = this.calculateAgeScore(token);
         // Calculate overall score (weighted average)
-        const overallScore = Math.round((liquidityScore * 0.4) +
-            (nameScore * 0.2) +
-            (holderScore * 0.3) +
-            (ageScore * 0.1));
+        const overallScore = Math.round(liquidityScore * 0.4 + nameScore * 0.2 + holderScore * 0.3 + ageScore * 0.1);
         // Determine risk level
         let riskLevel = 'medium';
         if (overallScore >= 70)
@@ -89,8 +78,8 @@ class TokenAnalyzer {
                 liquidityScore,
                 nameScore,
                 holderScore,
-                ageScore
-            }
+                ageScore,
+            },
         };
         // Cache the score
         this.cacheScore(token.address, overallScore);
@@ -104,7 +93,7 @@ class TokenAnalyzer {
         }
         // Check name and symbol against scam patterns
         const nameSymbol = `${token.name} ${token.symbol}`.toLowerCase();
-        if (this.scamPatterns.some(pattern => pattern.test(nameSymbol))) {
+        if (this.scamPatterns.some((pattern) => pattern.test(nameSymbol))) {
             return true;
         }
         // Check if name is in blacklist
@@ -183,7 +172,9 @@ class TokenAnalyzer {
     }
     // Get cached score
     getCachedScore(address) {
-        const cachedScore = this.cacheManager.getCache('tokenScores').get(address);
+        const cachedScore = this.cacheManager
+            .getCache('tokenScores')
+            .get(address);
         if (cachedScore) {
             return cachedScore.score;
         }
@@ -193,7 +184,7 @@ class TokenAnalyzer {
     cacheScore(address, score) {
         this.cacheManager.getCache('tokenScores').set(address, {
             score,
-            timestamp: Date.now()
+            timestamp: Date.now(),
         });
     }
     // Clear score cache
@@ -201,5 +192,4 @@ class TokenAnalyzer {
         this.cacheManager.getCache('tokenScores').clear();
     }
 }
-exports.TokenAnalyzer = TokenAnalyzer;
 //# sourceMappingURL=tokenAnalyzer.js.map

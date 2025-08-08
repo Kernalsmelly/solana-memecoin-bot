@@ -7,7 +7,7 @@
   "dailyStartBalance": 0,
   "winRate": 0,
   "activePositions": 0,
-  "availablePositions": 2,
+  "availablePositions": 3,
   "circuitBreakers": {
     "HIGH_VOLATILITY": false,
     "PRICE_DEVIATION": false,
@@ -26,5 +26,6 @@
     "minute": 0,
     "hour": 0,
     "day": 0
-  }
+  },
+  "pnl": 0
 }

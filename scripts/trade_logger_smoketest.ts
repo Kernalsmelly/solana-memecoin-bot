@@ -1,4 +1,4 @@
-import { tradeLogger } from '../src/utils/tradeLogger';
+import { tradeLogger } from '../src/utils/tradeLogger.js';
 
 tradeLogger.log({
   timestamp: new Date().toISOString(),
@@ -10,5 +10,5 @@ tradeLogger.log({
   pnl: 0,
   reason: 'smoketest',
   txid: '',
-  success: true
+  success: true,
 });

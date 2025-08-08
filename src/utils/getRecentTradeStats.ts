@@ -27,9 +27,10 @@ export async function getRecentTradeStats(windowMs: number) {
   let lossCount = 0;
   let tradeCount = 0;
   let pnlSum = 0;
-  let trades: any[] = [];
+  const trades: any[] = [];
   try {
-    if (!fs.existsSync(TRADES_FILE)) return { realizedPnl: 0, winCount: 0, lossCount: 0, avgPnl: 0, tradeCount: 0 };
+    if (!fs.existsSync(TRADES_FILE))
+      return { realizedPnl: 0, winCount: 0, lossCount: 0, avgPnl: 0, tradeCount: 0 };
     const lines = (await fs.promises.readFile(TRADES_FILE, 'utf8')).split('\n').filter(Boolean);
     for (const line of lines) {
       try {
@@ -54,8 +55,18 @@ export async function getRecentTradeStats(windowMs: number) {
     if (trades.length > 0) {
       topWinner = trades.reduce((max, t) => (t.pnl > (max?.pnl ?? -Infinity) ? t : max), null);
       topLoser = trades.reduce((min, t) => (t.pnl < (min?.pnl ?? Infinity) ? t : min), null);
-      if (topWinner) topWinner = { symbol: topWinner.tokenSymbol || topWinner.token || 'UNKNOWN', pnl: topWinner.pnl, time: topWinner.timestamp };
-      if (topLoser) topLoser = { symbol: topLoser.tokenSymbol || topLoser.token || 'UNKNOWN', pnl: topLoser.pnl, time: topLoser.timestamp };
+      if (topWinner)
+        topWinner = {
+          symbol: topWinner.tokenSymbol || topWinner.token || 'UNKNOWN',
+          pnl: topWinner.pnl,
+          time: topWinner.timestamp,
+        };
+      if (topLoser)
+        topLoser = {
+          symbol: topLoser.tokenSymbol || topLoser.token || 'UNKNOWN',
+          pnl: topLoser.pnl,
+          time: topLoser.timestamp,
+        };
     }
 
     // Most traded token
@@ -71,7 +82,10 @@ export async function getRecentTradeStats(windowMs: number) {
     }
 
     // PnL buckets
-    let gt10 = 0, p0to10 = 0, n0to10 = 0, lt10 = 0;
+    let gt10 = 0,
+      p0to10 = 0,
+      n0to10 = 0,
+      lt10 = 0;
     for (const t of trades) {
       if (typeof t.pnl !== 'number') continue;
       if (t.pnl > 10) gt10++;
@@ -81,7 +95,18 @@ export async function getRecentTradeStats(windowMs: number) {
     }
     const pnlBuckets = { gt10, p0to10, n0to10, lt10 };
 
-    return { realizedPnl, winCount, lossCount, avgPnl, tradeCount, trades, topWinner, topLoser, mostTraded, pnlBuckets };
+    return {
+      realizedPnl,
+      winCount,
+      lossCount,
+      avgPnl,
+      tradeCount,
+      trades,
+      topWinner,
+      topLoser,
+      mostTraded,
+      pnlBuckets,
+    };
   } catch (err) {
     console.error('[Persistence] Failed to read trades.jsonl for stats:', err);
     return { realizedPnl: 0, winCount: 0, lossCount: 0, avgPnl: 0, tradeCount: 0 };

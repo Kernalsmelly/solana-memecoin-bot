@@ -1,15 +1,13 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.analyticsConfig = exports.config = void 0;
-exports.validateConfig = validateConfig;
 // src/utils/config.ts
-const dotenv_1 = __importDefault(require("dotenv"));
-const contractValidator_1 = require("../contractValidator");
+import dotenv from 'dotenv';
+export const RiskLevel = {
+    LOW: 'LOW',
+    MEDIUM: 'MEDIUM',
+    HIGH: 'HIGH',
+    CRITICAL: 'CRITICAL',
+};
 // Load environment variables from .env file
-dotenv_1.default.config();
+dotenv.config();
 // Helper function to get environment variables with type conversion
 function getEnv(key, defaultValue) {
     const value = process.env[key];
@@ -43,21 +41,37 @@ function getEnvAsCluster(key, defaultValue = 'mainnet-beta') {
 function getRiskLevel(key, defaultValue) {
     const value = getEnv(key, defaultValue.toString()).toUpperCase();
     if (value === 'LOW')
-        return contractValidator_1.RiskLevel.LOW;
+        return RiskLevel.LOW;
     if (value === 'MEDIUM')
-        return contractValidator_1.RiskLevel.MEDIUM;
+        return RiskLevel.MEDIUM;
     if (value === 'HIGH')
-        return contractValidator_1.RiskLevel.HIGH;
+        return RiskLevel.HIGH;
     if (value === 'CRITICAL')
-        return contractValidator_1.RiskLevel.CRITICAL;
+        return RiskLevel.CRITICAL;
     return defaultValue;
 }
 // Default configuration object loading values from environment variables
-exports.config = {
+export const config = {
     trading: {
+        pumpThreshold: getEnvAsNumber('PUMP_THRESHOLD', 2),
+        pumpWindowSec: getEnvAsNumber('PUMP_WINDOW_SEC', 60),
+        maxHoldSec: getEnvAsNumber('MAX_HOLD_SEC', 180),
+        dryRun: getEnvAsBoolean('DRY_RUN', false),
+        /**
+         * If true, force a buy on mempool event (regardless of pattern filter)
+         */
+        forcePumpOnMempool: getEnvAsBoolean('FORCE_PUMP_ON_MEMPOOL', false),
+        /**
+         * If true, force a buy on whale event (regardless of pattern filter)
+         */
+        forcePumpOnWhale: getEnvAsBoolean('FORCE_PUMP_ON_WHALE', false),
+        /**
+         * Size in SOL for forced pump buys
+         */
+        forcedPumpSizeSol: getEnvAsNumber('FORCED_PUMP_SIZE_SOL', 0.0005),
         initialBalance: getEnvAsNumber('INITIAL_BALANCE', 10000),
         maxPositionSize: getEnvAsNumber('MAX_POSITION_SIZE', 1000),
-        maxRiskLevel: getRiskLevel('MAX_RISK_LEVEL', contractValidator_1.RiskLevel.MEDIUM),
+        maxRiskLevel: getRiskLevel('MAX_RISK_LEVEL', RiskLevel.MEDIUM),
         // --- Automated Trading Criteria (Profitability Tuned) ---
         newTokenAgeHours: 12, // Only consider tokens < 12h old as "new"
         newVolumeSpikePercent: 50, // Require at least 50% volume spike for new tokens
@@ -104,8 +118,10 @@ exports.config = {
     },
     apis: {
         quicknodeRpcUrl: getEnv('QUICKNODE_RPC_URL', '') || undefined,
+        // Existing fields remain unchanged
         quicknodeWssUrl: getEnv('QUICKNODE_WSS_URL', '') || undefined,
         coingeckoApiKey: getEnv('COINGECKO_API_KEY', '') || undefined,
+        jupiterQuoteIntervalMs: getEnvAsNumber('JUPITER_QUOTE_INTERVAL_MS', 1500), // interval in ms between Jupiter quote requests
     },
     notifications: {
         enabled: getEnvAsBoolean('NOTIFICATIONS_ENABLED', true),
@@ -132,7 +148,7 @@ exports.config = {
         maxTradesPerMinute: getEnvAsNumber('MAX_TRADES_PER_MINUTE', 10),
         maxTradesPerHour: getEnvAsNumber('MAX_TRADES_PER_HOUR', 100),
         maxTradesPerDay: getEnvAsNumber('MAX_TRADES_PER_DAY', 1000),
-        minSuccessRate: getEnvAsNumber('MIN_SUCCESS_RATE', 50)
+        minSuccessRate: getEnvAsNumber('MIN_SUCCESS_RATE', 50),
     },
     tokenMonitor: {
         minLiquidityUsd: getEnvAsNumber('MIN_LIQUIDITY_USD', 5000),
@@ -143,25 +159,25 @@ exports.config = {
         reconnectInterval: getEnvAsNumber('WS_RECONNECT_DELAY', 5000),
         maxRetries: getEnvAsNumber('WS_RECONNECT_ATTEMPTS', 5),
         pollingIntervalSeconds: getEnvAsNumber('POLLING_INTERVAL_SECONDS', 30),
-        maxSignaturesToStore: getEnvAsNumber('MAX_SIGNATURES_TO_STORE', 10000)
+        maxSignaturesToStore: getEnvAsNumber('MAX_SIGNATURES_TO_STORE', 10000),
     },
     debug: {
         verbose: getEnvAsBoolean('DEBUG', false),
-        logLevel: getEnv('LOG_LEVEL', 'info')
+        logLevel: getEnv('LOG_LEVEL', 'info'),
     },
     sellCriteria: {
         minSellLiquidity: getEnvAsNumber('MIN_SELL_LIQUIDITY'),
         minSellBuyRatio: getEnvAsNumber('MIN_SELL_BUY_RATIO'),
         stopLossPercent: getEnvAsNumber('STOP_LOSS_PERCENT', 1), // Tuned by parameter sweep 2025-07-05
-        takeProfitPercent: getEnvAsNumber('TAKE_PROFIT_PERCENT', 1) // Tuned by parameter sweep 2025-07-05
-    }
+        takeProfitPercent: getEnvAsNumber('TAKE_PROFIT_PERCENT', 1), // Tuned by parameter sweep 2025-07-05
+    },
 };
 // --- Analytics/Notification Config ---
-exports.analyticsConfig = {
+export const analyticsConfig = {
     summaryIntervalMinutes: getEnvAsNumber('SUMMARY_INTERVAL_MINUTES', 120),
-    analyticsWindowMinutes: getEnvAsNumber('ANALYTICS_WINDOW_MINUTES', 120)
+    analyticsWindowMinutes: getEnvAsNumber('ANALYTICS_WINDOW_MINUTES', 120),
 };
-function validateConfig(config) {
+export function validateConfig(config) {
     // Validate QuickNode URLs if they are intended to be primary
     // Depending on usage, these might become required later
     if (!config.apis.quicknodeRpcUrl) {
@@ -170,7 +186,8 @@ function validateConfig(config) {
     if (!config.apis.quicknodeWssUrl) {
         console.warn('QUICKNODE_WSS_URL is not set. WebSocket detection will rely on Helius or other methods if configured, or fail.');
     }
-    if (!config.solana.rpcEndpoint || config.solana.rpcEndpoint === 'https://api.mainnet-beta.solana.com') {
+    if (!config.solana.rpcEndpoint ||
+        config.solana.rpcEndpoint === 'https://api.mainnet-beta.solana.com') {
         throw new Error('Missing or default QUICKNODE_RPC_URL in configuration. Please set it in .env.');
     }
     if (!config.solana.wssEndpoint) {

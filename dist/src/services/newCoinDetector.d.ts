@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import { Connection } from '@solana/web3.js';
-import { Config } from '../utils/config';
+import { Config } from '../utils/config.js';
 export interface NewPoolDetectedEvent {
     poolAddress: string;
     baseMint: string;

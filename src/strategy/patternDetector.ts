@@ -1,18 +1,18 @@
 import { EventEmitter } from 'events';
-import { TokenDiscovery } from '../discovery/tokenDiscovery';
-import { RiskManager } from '../live/riskManager';
-import { PatternType, PatternDetectorConfig, PatternCriteria, PatternMatch } from '../types';
+import { TokenDiscovery } from '../discovery/tokenDiscovery.js';
+import { RiskManager } from '../live/riskManager.js';
+import { PatternType, PatternDetectorConfig, PatternCriteria, PatternMatch } from '../types.js';
 export type { PatternMatch };
 
-import logger from '../utils/logger';
-import { tradeLogger } from '../utils/tradeLogger';
+import logger from '../utils/logger.js';
+import { tradeLogger } from '../utils/tradeLogger.js';
 
 // Define DetectedPattern as an alias for PatternMatch if needed by other files
 
 // export type DetectedPattern = PatternMatch;
 
-import { calculatePositionSize } from '../utils/positionSizing';
-import { AccountBalance } from '../positionManager';
+import { calculatePositionSize } from '../utils/positionSizing.js';
+import { AccountBalance } from '../positionManager.js';
 
 /**
  * Pattern Detector System
@@ -26,18 +26,21 @@ export class PatternDetector extends EventEmitter {
   private minLiquidity: number;
   private maxPositionValue: number;
   private enabledPatterns: PatternType[];
-  
+
   constructor(config: PatternDetectorConfig) {
     super();
     this.tokenDiscovery = config.tokenDiscovery;
     this.riskManager = config.riskManager;
     // Defensive guards for pattern detection config
-    this.maxTokenAge = (typeof config.maxTokenAge === 'number' && !isNaN(config.maxTokenAge)) ? config.maxTokenAge : 48; // 48 hours max age
+    this.maxTokenAge =
+      typeof config.maxTokenAge === 'number' && !isNaN(config.maxTokenAge)
+        ? config.maxTokenAge
+        : 48; // 48 hours max age
     // Add similar guards for priceChangeThreshold, volumeMultiplier, riskPct if used in this class
 
     this.minLiquidity = config.minLiquidity || 50000; // $50K min liquidity
     this.maxPositionValue = config.maxPositionValue || 100; // $100 max position
-    
+
     // Define criteria for pattern recognition - optimized based on performance metrics
     // Allow pattern criteria to be loaded from config or environment for hot-reload
     const customCriteria = (global as any).PATTERN_CRITERIA || {};
@@ -47,63 +50,63 @@ export class PatternDetector extends EventEmitter {
         volumeChangeMin: 170,
         buyRatioMin: 2.5,
         liquidityMin: 50000,
-        ageMax: 12
+        ageMax: 12,
       },
       'Volatility Squeeze': customCriteria['Volatility Squeeze'] || {
         priceChangeMin: 20,
         volumeChangeMin: 100,
         buyRatioMin: 1.7,
         liquidityMin: 75000,
-        ageMax: 24
+        ageMax: 24,
       },
       'Smart Money Trap': customCriteria['Smart Money Trap'] || {
         priceChangeMin: 15,
         volumeChangeMin: 80,
         buyRatioMin: 1.8,
         liquidityMin: 90000,
-        ageMax: 36
+        ageMax: 36,
       },
       'Algorithmic Stop Hunt': customCriteria['Algorithmic Stop Hunt'] || {
         priceChangeMin: 25,
         volumeChangeMin: 120,
         buyRatioMin: 1.5,
-        liquidityMin: 100000
+        liquidityMin: 100000,
       },
       'Smart Money Reversal': customCriteria['Smart Money Reversal'] || {
         priceChangeMin: 18,
         volumeChangeMin: 90,
         buyRatioMin: 1.6,
-        liquidityMin: 85000
+        liquidityMin: 85000,
       },
       'Volume Divergence': customCriteria['Volume Divergence'] || {
         priceChangeMin: 12,
         volumeChangeMin: 80,
         buyRatioMin: 1.4,
-        liquidityMin: 100000
+        liquidityMin: 100000,
       },
       'Hidden Accumulation': customCriteria['Hidden Accumulation'] || {
         priceChangeMin: 10,
         volumeChangeMin: 50,
         buyRatioMin: 1.3,
-        liquidityMin: 120000
+        liquidityMin: 120000,
       },
       'Wyckoff Spring': customCriteria['Wyckoff Spring'] || {
         priceChangeMin: 15,
         volumeChangeMin: 60,
         buyRatioMin: 1.5,
-        liquidityMin: 150000
+        liquidityMin: 150000,
       },
       'Liquidity Grab': customCriteria['Liquidity Grab'] || {
         priceChangeMin: 30,
         volumeChangeMin: 120,
         buyRatioMin: 1.6,
-        liquidityMin: 80000
+        liquidityMin: 80000,
       },
       'FOMO Cycle': customCriteria['FOMO Cycle'] || {
         priceChangeMin: 35,
         volumeChangeMin: 150,
         buyRatioMin: 2.0,
-        liquidityMin: 60000
+        liquidityMin: 60000,
       },
       // --- New Patterns ---
       'Volatility Breakout': customCriteria['Volatility Breakout'] || {
@@ -111,44 +114,51 @@ export class PatternDetector extends EventEmitter {
         volumeChangeMin: 130, // Volume spike
         buyRatioMin: 1.8,
         liquidityMin: 70000,
-        ageMax: 36
+        ageMax: 36,
       },
       'Mean Reversion': customCriteria['Mean Reversion'] || {
         priceChangeMin: 10, // Modest move
         volumeChangeMin: 40, // Lower volume
         buyRatioMin: 1.0, // Neutral buy/sell
         liquidityMin: 50000,
-        ageMax: 72
-      }
+        ageMax: 72,
+      },
     };
     if (Object.keys(customCriteria).length > 0) {
       logger.info('[PatternDetector] Loaded custom pattern thresholds from config/global.');
     }
-    
+
     // Set enabled patterns (default to all if not specified)
-    this.enabledPatterns = config.enabledPatterns || Object.keys(this.patternCriteria) as PatternType[];
-    
+    this.enabledPatterns =
+      config.enabledPatterns || (Object.keys(this.patternCriteria) as PatternType[]);
+
     logger.info('Pattern Detector initialized', {
       enabledPatterns: this.enabledPatterns,
       maxTokenAge: this.maxTokenAge,
-      minLiquidity: this.minLiquidity
+      minLiquidity: this.minLiquidity,
     });
-    
+
     // Set up event listeners for token discovery
     this.setupEventListeners();
   }
-  
+
   /**
    * Set up event listeners for TokenDiscovery
    */
   private setupEventListeners(): void {
-    // Listen for new tokens
+    // Listen for new tokens (legacy)
     this.tokenDiscovery.on('newToken', this.analyzeTokenForPattern.bind(this));
-    
     // Listen for volume spikes on existing tokens
     this.tokenDiscovery.on('volumeSpike', this.analyzeTokenForPattern.bind(this));
+    // --- FAST PATH: Raydium/Orca pool-init ---
+    this.tokenDiscovery.on('tokenDiscovered', (token: any) => {
+      const match = this.analyzeTokenForPattern(token);
+      if (match) {
+        this.emit('patternMatch', { ...match, address: token.address, timestamp: Date.now() });
+      }
+    });
   }
-  
+
   /**
    * Analyze token for trading patterns
    */
@@ -157,53 +167,77 @@ export class PatternDetector extends EventEmitter {
     tradeLogger.logScenario('PATTERN_ANALYSIS', {
       event: 'analyzeTokenForPattern',
       token: token.symbol || token.mint || token.address,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
     // Skip if token is too old or doesn't meet liquidity requirements
     try {
-    if ((token.age && token.age > this.maxTokenAge)) {
-      logger.info('[DEBUG] Token skipped due to age', { token, maxTokenAge: this.maxTokenAge });
-      return null;
-    }
-    if ((token.liquidity && token.liquidity < this.minLiquidity)) {
-      logger.info('[DEBUG] Token skipped due to liquidity', { token, minLiquidity: this.minLiquidity });
-      return null;
-    }
-    // Analyze for patterns
-    const patternMatch = this.analyzePatternMatch(token);
-    if (patternMatch) {
-      const { pattern, confidence, signalType } = patternMatch;
-      // Calculate position size using new utility and risk/account state
-      const rawBalance = this.riskManager.getAccountBalance ? this.riskManager.getAccountBalance() : { availableCash: 0, allocatedCash: 0, totalValue: 0 };
-const accountBalance: AccountBalance = typeof rawBalance === 'object' && rawBalance !== null
-  ? rawBalance
-  : { availableCash: 0, allocatedCash: 0, totalValue: 0 };
-
-      const positionSize = calculatePositionSize(token, this.riskManager, accountBalance);
-      logger.info('[DEBUG] Calculated position size', { token: token.symbol, positionSize });
-      if (positionSize > 0 && this.riskManager.canOpenPosition(positionSize, token.symbol, token.price)) {
-        logger.info('[DEBUG] Pattern matched and can open position', { token, pattern, confidence, positionSize });
-        // Emit pattern detected event
-        this.emit('patternDetected', {
-          tokenAddress: token.address,
-          tokenSymbol: token.symbol,
-          pattern,
-          confidence,
-          signalType
-        });
-        logger.info('[DEBUG] patternDetected event emitted', { token, pattern, confidence, positionSize });
-        return patternMatch;
-      } else {
-        logger.info('[DEBUG] Pattern matched but cannot open position or size is zero', { token, pattern, confidence, positionSize });
+      if (token.age && token.age > this.maxTokenAge) {
+        logger.info('[DEBUG] Token skipped due to age', { token, maxTokenAge: this.maxTokenAge });
+        return null;
       }
-    } else {
-      logger.info('[DEBUG] No pattern matched for token', { token });
+      if (token.liquidity && token.liquidity < this.minLiquidity) {
+        logger.info('[DEBUG] Token skipped due to liquidity', {
+          token,
+          minLiquidity: this.minLiquidity,
+        });
+        return null;
+      }
+      // Analyze for patterns
+      const patternMatch = this.analyzePatternMatch(token);
+      if (patternMatch) {
+        const { pattern, confidence, signalType } = patternMatch;
+        // Calculate position size using new utility and risk/account state
+        const rawBalance = this.riskManager.getAccountBalance
+          ? this.riskManager.getAccountBalance()
+          : { availableCash: 0, allocatedCash: 0, totalValue: 0 };
+        const accountBalance: AccountBalance =
+          typeof rawBalance === 'object' && rawBalance !== null
+            ? rawBalance
+            : { availableCash: 0, allocatedCash: 0, totalValue: 0 };
+
+        const positionSize = calculatePositionSize(token, this.riskManager, accountBalance);
+        logger.info('[DEBUG] Calculated position size', { token: token.symbol, positionSize });
+        if (
+          positionSize > 0 &&
+          this.riskManager.canOpenPosition(positionSize, token.symbol, token.price)
+        ) {
+          logger.info('[DEBUG] Pattern matched and can open position', {
+            token,
+            pattern,
+            confidence,
+            positionSize,
+          });
+          // Emit pattern detected event
+          this.emit('patternDetected', {
+            tokenAddress: token.address,
+            tokenSymbol: token.symbol,
+            pattern,
+            confidence,
+            signalType,
+          });
+          logger.info('[DEBUG] patternDetected event emitted', {
+            token,
+            pattern,
+            confidence,
+            positionSize,
+          });
+          return patternMatch;
+        } else {
+          logger.info('[DEBUG] Pattern matched but cannot open position or size is zero', {
+            token,
+            pattern,
+            confidence,
+            positionSize,
+          });
+        }
+      } else {
+        logger.info('[DEBUG] No pattern matched for token', { token });
+      }
+      return null;
+    } catch (error) {
+      logger.error('[PatternDetector] Error in analyzeTokenForPattern', { error });
+      return null;
     }
-    return null;
-  } catch (error) {
-    logger.error('[PatternDetector] Error in analyzeTokenForPattern', { error });
-    return null;
-  }
   }
 
   private analyzePatternMatch(token: any): PatternMatch | null {
@@ -211,41 +245,44 @@ const accountBalance: AccountBalance = typeof rawBalance === 'object' && rawBala
     if (!token || !token.price || !token.priceChange24h) {
       return null;
     }
-    
+
     let bestMatch: PatternMatch | null = null;
     let highestConfidence = 0;
 
     // --- Volatility Squeeze Utility ---
-/**
- * Detects a volatility squeeze using Bollinger Bands.
- * @param prices Array of recent prices (most recent last)
- * @param currentPrice Optional current price (if not last in prices)
- * @param period Number of periods for rolling window (default 20)
- * @param squeezeThreshold Band width threshold for squeeze (default 0.06)
- * @returns Squeeze/breakout status and metrics
- */
-function detectVolatilitySqueeze(
-  prices: number[],
-  currentPrice?: number,
-  period = 20,
-  squeezeThreshold = 0.06
-): { isSqueeze: boolean, breakout: boolean, squeezeStrength: number, bandWidth: number } {
-  // Require enough data
-  if (prices.length < period) return { isSqueeze: false, breakout: false, squeezeStrength: 0, bandWidth: 0 };
-  const slice = prices.slice(-period);
-  const mean = slice.reduce((a, b) => a + b, 0) / period;
-  const std = Math.sqrt(slice.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / period);
-  const upper = mean + 2 * std;
-  const lower = mean - 2 * std;
-  const bandWidth = (upper - lower) / mean;
-  // Squeeze: bandWidth is very low (e.g. < 0.06 by default)
-  const isSqueeze = bandWidth < squeezeThreshold;
-  // Breakout: use currentPrice if provided, else last price in history
-  const breakout = (typeof currentPrice === 'number' ? currentPrice : (prices?.[prices.length - 1] ?? 0)) > upper;
-  // Squeeze strength: inverse of bandWidth (capped at 1)
-  const squeezeStrength = Math.min(1, squeezeThreshold / (bandWidth + 1e-8));
-  return { isSqueeze, breakout, squeezeStrength, bandWidth };
-}
+    /**
+     * Detects a volatility squeeze using Bollinger Bands.
+     * @param prices Array of recent prices (most recent last)
+     * @param currentPrice Optional current price (if not last in prices)
+     * @param period Number of periods for rolling window (default 20)
+     * @param squeezeThreshold Band width threshold for squeeze (default 0.06)
+     * @returns Squeeze/breakout status and metrics
+     */
+    function detectVolatilitySqueeze(
+      prices: number[],
+      currentPrice?: number,
+      period = 20,
+      squeezeThreshold = 0.06,
+    ): { isSqueeze: boolean; breakout: boolean; squeezeStrength: number; bandWidth: number } {
+      // Require enough data
+      if (prices.length < period)
+        return { isSqueeze: false, breakout: false, squeezeStrength: 0, bandWidth: 0 };
+      const slice = prices.slice(-period);
+      const mean = slice.reduce((a, b) => a + b, 0) / period;
+      const std = Math.sqrt(slice.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / period);
+      const upper = mean + 2 * std;
+      const lower = mean - 2 * std;
+      const bandWidth = (upper - lower) / mean;
+      // Squeeze: bandWidth is very low (e.g. < 0.06 by default)
+      const isSqueeze = bandWidth < squeezeThreshold;
+      // Breakout: use currentPrice if provided, else last price in history
+      const breakout =
+        (typeof currentPrice === 'number' ? currentPrice : (prices?.[prices.length - 1] ?? 0)) >
+        upper;
+      // Squeeze strength: inverse of bandWidth (capped at 1)
+      const squeezeStrength = Math.min(1, squeezeThreshold / (bandWidth + 1e-8));
+      return { isSqueeze, breakout, squeezeStrength, bandWidth };
+    }
 
     // Check each pattern
     for (const pattern of this.enabledPatterns) {
@@ -259,11 +296,20 @@ function detectVolatilitySqueeze(
         continue;
       }
       // --- Volatility Squeeze Logic ---
-      if (pattern === 'Volatility Squeeze' && Array.isArray(token.priceHistory) && token.priceHistory.length >= ((criteria as any).period || 20)) {
+      if (
+        pattern === 'Volatility Squeeze' &&
+        Array.isArray(token.priceHistory) &&
+        token.priceHistory.length >= ((criteria as any).period || 20)
+      ) {
         // Allow period and squeeze threshold to be overridden in criteria
         const period = (criteria as any).period || 20;
         const squeezeThreshold = (criteria as any).squeezeThreshold || 0.06;
-        const { isSqueeze, breakout, squeezeStrength, bandWidth } = detectVolatilitySqueeze(token.priceHistory, token.price, period, squeezeThreshold);
+        const { isSqueeze, breakout, squeezeStrength, bandWidth } = detectVolatilitySqueeze(
+          token.priceHistory,
+          token.price,
+          period,
+          squeezeThreshold,
+        );
         if (isSqueeze && breakout) {
           const confidence = Math.round(80 + squeezeStrength * 20); // 80-100% confidence
           if (confidence > highestConfidence) {
@@ -272,37 +318,50 @@ function detectVolatilitySqueeze(
               pattern,
               confidence,
               signalType: 'buy',
-              meta: { squeezeStrength, bandWidth, period, squeezeThreshold }
+              meta: { squeezeStrength, bandWidth },
             };
           }
           continue;
         }
       }
       // --- Other Patterns (default logic) ---
-      const priceChangeScore = Math.min(100, Math.max(0, ((token.priceChange24h || 0) / (criteria.priceChangeMin || 1)) * 100));
-      const volumeChangeScore = Math.min(100, Math.max(0, ((token.volumeChange24h || 0) / (criteria.volumeChangeMin || 1)) * 100));
-      const buyRatioScore = Math.min(100, Math.max(0, ((token.buyRatio || 0) / (criteria.buyRatioMin || 1)) * 100));
-      const liquidityScore = Math.min(100, Math.max(0, ((token.liquidity || 0) / (criteria.liquidityMin || 1)) * 100));
+      const priceChangeScore = Math.min(
+        100,
+        Math.max(0, ((token.priceChange24h || 0) / (criteria.priceChangeMin || 1)) * 100),
+      );
+      const volumeChangeScore = Math.min(
+        100,
+        Math.max(0, ((token.volumeChange24h || 0) / (criteria.volumeChangeMin || 1)) * 100),
+      );
+      const buyRatioScore = Math.min(
+        100,
+        Math.max(0, ((token.buyRatio || 0) / (criteria.buyRatioMin || 1)) * 100),
+      );
+      const liquidityScore = Math.min(
+        100,
+        Math.max(0, ((token.liquidity || 0) / (criteria.liquidityMin || 1)) * 100),
+      );
       // Weight the scores based on importance
       const confidence = Math.round(
-        (priceChangeScore * 0.4) + 
-        (volumeChangeScore * 0.3) + 
-        (buyRatioScore * 0.2) + 
-        (liquidityScore * 0.1)
+        priceChangeScore * 0.4 +
+          volumeChangeScore * 0.3 +
+          buyRatioScore * 0.2 +
+          liquidityScore * 0.1,
       );
       // If this pattern has higher confidence, make it the best match
-      if (confidence > highestConfidence && confidence >= 70) { // Minimum 70% confidence
+      if (confidence > highestConfidence && confidence >= 70) {
+        // Minimum 70% confidence
         highestConfidence = confidence;
         bestMatch = {
           pattern,
           confidence,
-          signalType: 'buy' // Default to buy signals
+          signalType: 'buy', // Default to buy signals
         };
       }
     }
     return bestMatch;
   }
-  
+
   /**
    * Start pattern detection
    */
@@ -310,17 +369,17 @@ function detectVolatilitySqueeze(
     // Start token discovery
     return this.tokenDiscovery.start();
   }
-  
+
   /**
    * Stop pattern detection
    */
   public stop(): void {
     // Remove all event listeners
     this.removeAllListeners();
-    
+
     // Stop token discovery
     this.tokenDiscovery.stop();
-    
+
     logger.info('Pattern Detector stopped');
   }
 }

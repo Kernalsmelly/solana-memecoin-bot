@@ -1,7 +1,7 @@
 #!/usr/bin/env ts-node
 /**
  * Configuration Validation Script
- * 
+ *
  * This script validates all required environment variables and configuration
  * before the bot is started. It helps prevent runtime errors due to missing
  * or invalid configuration.
@@ -12,7 +12,7 @@ import * as fs from 'fs';
 import { Connection, PublicKey, Keypair } from '@solana/web3.js';
 import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import bs58 from 'bs58';
-import logger from '../utils/logger';
+import logger from '../utils/logger.js';
 import path from 'path'; // Import path module
 
 // Load environment variables
@@ -36,80 +36,98 @@ const colors = {
   blue: '\x1b[34m',
   magenta: '\x1b[35m',
   cyan: '\x1b[36m',
-  white: '\x1b[37m'
+  white: '\x1b[37m',
 };
 
 async function main() {
   console.log(`${colors.cyan}=============================================${colors.reset}`);
   console.log(`${colors.cyan}      SolMemeBot Configuration Validator     ${colors.reset}`);
   console.log(`${colors.cyan}=============================================${colors.reset}\n`);
-  
+
   // 1. Check for essential environment variables
   validateRequiredEnvVars();
-  
+
   // 2. Validate Solana connection
   await validateSolanaConnection();
-  
+
   // 3. Validate wallet
   await validateWallet();
-  
+
   // 4. Validate Birdeye API (Skipped - Not currently used)
   // await validateBirdeyeAPI();
-  
+
   // 5. Validate data directory
   validateDataDirectory();
-  
+
   // 6. Validate numeric configurations
   validateNumericConfigs();
-  
+
   // Display results
   console.log(`\n${colors.cyan}=============================================${colors.reset}`);
   console.log(`${colors.cyan}               Results Summary               ${colors.reset}`);
   console.log(`${colors.cyan}=============================================${colors.reset}\n`);
-  
-  const successCount = results.filter(r => r.status === 'success').length;
-  const warningCount = results.filter(r => r.status === 'warning').length;
-  const errorCount = results.filter(r => r.status === 'error').length;
-  
-  results.forEach(result => {
-    const statusColor = 
-      result.status === 'success' ? colors.green :
-      result.status === 'warning' ? colors.yellow : 
-      colors.red;
-    
-    console.log(`${statusColor}[${result.status.toUpperCase()}]${colors.reset} ${result.name}: ${result.message}`);
+
+  const successCount = results.filter((r) => r.status === 'success').length;
+  const warningCount = results.filter((r) => r.status === 'warning').length;
+  const errorCount = results.filter((r) => r.status === 'error').length;
+
+  results.forEach((result) => {
+    const statusColor =
+      result.status === 'success'
+        ? colors.green
+        : result.status === 'warning'
+          ? colors.yellow
+          : colors.red;
+
+    console.log(
+      `${statusColor}[${result.status.toUpperCase()}]${colors.reset} ${result.name}: ${result.message}`,
+    );
   });
-  
+
   // --- Write results to a log file ---
   const logFilePath = path.join(process.cwd(), 'validation_results.log');
   let logContent = 'Configuration Validation Results:\n';
   logContent += '=====================================\n';
-  results.forEach(result => {
+  results.forEach((result) => {
     logContent += `[${result.status.toUpperCase()}] ${result.name}: ${result.message}\n`;
   });
   logContent += '=====================================\n';
   logContent += `Summary: ${results.length} checks | ${successCount} passed | ${warningCount} warnings | ${errorCount} errors\n`;
-  
+
   try {
     fs.writeFileSync(logFilePath, logContent);
-    console.log(`\n${colors.blue}ℹ Validation results also written to: ${logFilePath}${colors.reset}`);
+    console.log(
+      `\n${colors.blue}ℹ Validation results also written to: ${logFilePath}${colors.reset}`,
+    );
   } catch (writeError) {
-    console.error(`${colors.red}✘ Error writing validation results to file: ${writeError instanceof Error ? writeError.message : String(writeError)}${colors.reset}`);
+    console.error(
+      `${colors.red}✘ Error writing validation results to file: ${writeError instanceof Error ? writeError.message : String(writeError)}${colors.reset}`,
+    );
   }
   // --- End writing results to log file ---
-  
+
   console.log(`\n${colors.cyan}=============================================${colors.reset}`);
-  console.log(`Total: ${results.length} checks | ${colors.green}${successCount} passed${colors.reset} | ${colors.yellow}${warningCount} warnings${colors.reset} | ${colors.red}${errorCount} errors${colors.reset}`);
+  console.log(
+    `Total: ${results.length} checks | ${colors.green}${successCount} passed${colors.reset} | ${colors.yellow}${warningCount} warnings${colors.reset} | ${colors.red}${errorCount} errors${colors.reset}`,
+  );
   console.log(`${colors.cyan}=============================================${colors.reset}\n`);
-  
+
   // Exit with error code if any errors found
   if (errorCount > 0) {
-    console.log(`${colors.red}✘ Configuration validation failed with ${errorCount} errors.${colors.reset}`);
-    console.log(`${colors.red}✘ Please fix the issues above before starting the bot.${colors.reset}\n`);
+    console.log(
+      `${colors.red}✘ Configuration validation failed with ${errorCount} errors.${colors.reset}`,
+    );
+    console.log(
+      `${colors.red}✘ Please fix the issues above before starting the bot.${colors.reset}\n`,
+    );
     process.exit(1);
   } else if (warningCount > 0) {
-    console.log(`${colors.yellow}⚠ Configuration validated with ${warningCount} warnings.${colors.reset}`);
-    console.log(`${colors.yellow}⚠ You may want to review these before proceeding.${colors.reset}\n`);
+    console.log(
+      `${colors.yellow}⚠ Configuration validated with ${warningCount} warnings.${colors.reset}`,
+    );
+    console.log(
+      `${colors.yellow}⚠ You may want to review these before proceeding.${colors.reset}\n`,
+    );
     process.exit(0);
   } else {
     console.log(`${colors.green}✓ All configuration checks passed successfully!${colors.reset}\n`);
@@ -120,49 +138,57 @@ async function main() {
 function validateRequiredEnvVars() {
   const requiredVars = [
     { name: 'SOLANA_RPC_URL', description: 'Solana RPC endpoint' },
-    { name: 'WALLET_SECRET_BASE58', description: 'Base58 private key for the trading wallet' },
+
     // { name: 'BIRDEYE_API_KEY', description: 'API key for Birdeye' }, // Removed requirement as Birdeye is not used
   ];
-  
+
   const optionalVars = [
-    { name: 'DATA_DIRECTORY', description: 'Directory for saving state files', defaultValue: './data' },
+    {
+      name: 'DATA_DIRECTORY',
+      description: 'Directory for saving state files',
+      defaultValue: './data',
+    },
     { name: 'SAVE_INTERVAL_MINUTES', description: 'Interval for saving state', defaultValue: '5' },
     { name: 'LOG_LEVEL', description: 'Logging level', defaultValue: 'info' },
     { name: 'MIN_LIQUIDITY', description: 'Minimum liquidity for tokens', defaultValue: '5000' },
     { name: 'MAX_POSITION_SIZE', description: 'Maximum position size in USD', defaultValue: '50' },
-    { name: 'MAX_LIQUIDITY_PERCENTAGE', description: 'Maximum percentage of token liquidity to use', defaultValue: '5' },
+    {
+      name: 'MAX_LIQUIDITY_PERCENTAGE',
+      description: 'Maximum percentage of token liquidity to use',
+      defaultValue: '5',
+    },
   ];
-  
+
   // Check required variables
-  requiredVars.forEach(v => {
+  requiredVars.forEach((v) => {
     if (!process.env[v.name]) {
       results.push({
         name: v.name,
         status: 'error',
-        message: `Missing required environment variable (${v.description})`
+        message: `Missing required environment variable (${v.description})`,
       });
     } else {
       results.push({
         name: v.name,
         status: 'success',
-        message: 'Present'
+        message: 'Present',
       });
     }
   });
-  
+
   // Check optional variables
-  optionalVars.forEach(v => {
+  optionalVars.forEach((v) => {
     if (!process.env[v.name]) {
       results.push({
         name: v.name,
         status: 'warning',
-        message: `Missing optional variable, will use default: ${v.defaultValue} (${v.description})`
+        message: `Missing optional variable, will use default: ${v.defaultValue} (${v.description})`,
       });
     } else {
       results.push({
         name: v.name,
         status: 'success',
-        message: 'Present'
+        message: 'Present',
       });
     }
   });
@@ -171,68 +197,54 @@ function validateRequiredEnvVars() {
 async function validateSolanaConnection() {
   const rpcUrl = process.env.SOLANA_RPC_URL;
   if (!rpcUrl) return; // Already reported as error
-  
+
   try {
     const connection = new Connection(rpcUrl, 'confirmed');
     const version = await connection.getVersion();
     results.push({
       name: 'Solana RPC Connection',
       status: 'success',
-      message: `Connected successfully (${JSON.stringify(version)})`
+      message: `Connected successfully (${JSON.stringify(version)})`,
     });
   } catch (err) {
     results.push({
       name: 'Solana RPC Connection',
       status: 'error',
-      message: `Failed to connect: ${err instanceof Error ? err.message : String(err)}`
+      message: `Failed to connect: ${err instanceof Error ? err.message : String(err)}`,
     });
   }
 }
 
 async function validateWallet() {
-  const base58Key = process.env.WALLET_SECRET_BASE58;
-  if (!base58Key) return; // Already reported as error
-  
+  const keyArray = process.env.SOLANA_PRIVATE_KEY;
+  if (!keyArray) return;
   try {
-    // Validate private key format
-    const privateKey = bs58.decode(base58Key);
-    if (privateKey.length !== 64) {
+    const secretKey = new Uint8Array(keyArray.split(',').map(Number));
+    if (secretKey.length !== 64) {
       results.push({
         name: 'Wallet Private Key',
         status: 'error',
-        message: `Invalid private key length, expected 64 bytes but got ${privateKey.length}`
+        message: `Invalid private key length, expected 64 bytes but got ${secretKey.length}`,
       });
       return;
     }
-    
     // Try to connect to RPC and check balance
-    const rpcUrl = process.env.SOLANA_RPC_URL;
+    const rpcUrl = process.env.SOLANA_RPC_URL || process.env.QUICKNODE_RPC_URL;
     if (rpcUrl) {
       try {
         const connection = new Connection(rpcUrl, 'confirmed');
-        const secretKeyBytes = bs58.decode(privateKeyString);
-        const account = Keypair.fromSecretKey(privateKey);
-        const balance = await connection.getBalance(account.publicKey);
-        
-        if (balance === 0) {
-          results.push({
-            name: 'Wallet Balance',
-            status: 'warning',
-            message: 'Wallet has zero SOL balance'
-          });
-        } else {
-          const solBalance = balance / 1e9;
-          results.push({
-            name: 'Wallet Balance',
-            status: 'success',
-            message: `${solBalance.toFixed(4)} SOL available`
-          });
-        }
+        const wallet = Keypair.fromSecretKey(secretKey);
+        const solBalance = await connection.getBalance(wallet.publicKey);
+        results.push({
+          name: 'Wallet Balance',
+          status: 'success',
+          message: `${(solBalance / 1e9).toFixed(4)} SOL available`,
+        });
       } catch (err) {
         results.push({
           name: 'Wallet Balance Check',
           status: 'error',
-          message: `Failed to check balance: ${err instanceof Error ? err.message : String(err)}`
+          message: `Failed to check balance: ${err instanceof Error ? err.message : String(err)}`,
         });
       }
     }
@@ -240,7 +252,7 @@ async function validateWallet() {
     results.push({
       name: 'Wallet Private Key',
       status: 'error',
-      message: `Invalid private key format: ${err instanceof Error ? err.message : String(err)}`
+      message: `Invalid private key format: ${err instanceof Error ? err.message : String(err)}`,
     });
   }
 }
@@ -248,30 +260,30 @@ async function validateWallet() {
 async function validateBirdeyeAPI() {
   const apiKey = process.env.BIRDEYE_API_KEY;
   if (!apiKey) return; // Already reported as error
-  
+
   // Simple check for API key format
   if (apiKey.length < 20) {
     results.push({
       name: 'Birdeye API Key',
       status: 'warning',
-      message: 'API key seems too short, please verify'
+      message: 'API key seems too short, please verify',
     });
     return;
   }
-  
+
   results.push({
     name: 'Birdeye API Key',
     status: 'success',
-    message: 'Present and format appears valid'
+    message: 'Present and format appears valid',
   });
-  
+
   // Optional: Add a simple API test here
   // This would require importing the BirdeyeAPI class
 }
 
 function validateDataDirectory() {
   const dataDir = process.env.DATA_DIRECTORY || './data';
-  
+
   // Check if directory exists
   if (!fs.existsSync(dataDir)) {
     try {
@@ -279,13 +291,13 @@ function validateDataDirectory() {
       results.push({
         name: 'Data Directory',
         status: 'success',
-        message: `Created data directory: ${dataDir}`
+        message: `Created data directory: ${dataDir}`,
       });
     } catch (err) {
       results.push({
         name: 'Data Directory',
         status: 'error',
-        message: `Failed to create data directory: ${err instanceof Error ? err.message : String(err)}`
+        message: `Failed to create data directory: ${err instanceof Error ? err.message : String(err)}`,
       });
     }
   } else {
@@ -297,13 +309,13 @@ function validateDataDirectory() {
       results.push({
         name: 'Data Directory',
         status: 'success',
-        message: `Directory exists and is writeable: ${dataDir}`
+        message: `Directory exists and is writeable: ${dataDir}`,
       });
     } catch (err) {
       results.push({
         name: 'Data Directory',
         status: 'error',
-        message: `Directory exists but is not writeable: ${err instanceof Error ? err.message : String(err)}`
+        message: `Directory exists but is not writeable: ${err instanceof Error ? err.message : String(err)}`,
       });
     }
   }
@@ -314,53 +326,53 @@ function validateNumericConfigs() {
     { name: 'MIN_LIQUIDITY', defaultValue: 5000, min: 1000 },
     { name: 'MAX_POSITION_SIZE', defaultValue: 50, min: 1 },
     { name: 'MAX_LIQUIDITY_PERCENTAGE', defaultValue: 5, min: 0.1, max: 10 },
-    { name: 'SAVE_INTERVAL_MINUTES', defaultValue: 5, min: 1, max: 60 }
+    { name: 'SAVE_INTERVAL_MINUTES', defaultValue: 5, min: 1, max: 60 },
   ];
-  
-  numericConfigs.forEach(config => {
+
+  numericConfigs.forEach((config) => {
     const value = process.env[config.name];
     if (!value) return; // Optional, already handled
-    
+
     const numValue = parseFloat(value);
     if (isNaN(numValue)) {
       results.push({
         name: config.name,
         status: 'error',
-        message: `Invalid numeric value: "${value}"`
+        message: `Invalid numeric value: "${value}"`,
       });
       return;
     }
-    
+
     // Check minimum
     if (config.min !== undefined && numValue < config.min) {
       results.push({
         name: config.name,
         status: 'warning',
-        message: `Value ${numValue} is below recommended minimum ${config.min}`
+        message: `Value ${numValue} is below recommended minimum ${config.min}`,
       });
       return;
     }
-    
+
     // Check maximum
     if (config.max !== undefined && numValue > config.max) {
       results.push({
         name: config.name,
         status: 'warning',
-        message: `Value ${numValue} is above recommended maximum ${config.max}`
+        message: `Value ${numValue} is above recommended maximum ${config.max}`,
       });
       return;
     }
-    
+
     results.push({
       name: config.name,
       status: 'success',
-      message: `Valid value: ${numValue}`
+      message: `Valid value: ${numValue}`,
     });
   });
 }
 
 // Execute main function
-main().catch(err => {
+main().catch((err) => {
   console.error(`${colors.red}Error executing validation script:${colors.reset}`, err);
   process.exit(1);
 });

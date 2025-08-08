@@ -1,5 +1,5 @@
-import { RiskManager } from './riskManager';
-import { NotificationManager } from './notificationManager';
+import { RiskManager } from './riskManager.js';
+import { NotificationManager } from './notificationManager.js';
 /**
  * Starts a lightweight metrics server exposing /metrics for Prometheus scraping.
  * Exposes basic bot health and risk metrics.

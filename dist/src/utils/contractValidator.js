@@ -1,19 +1,13 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.ContractValidator = void 0;
-const web3_js_1 = require("@solana/web3.js");
-const spl_token_1 = require("@solana/spl-token");
-const logger_1 = __importDefault(require("./logger"));
-const notifications_1 = require("./notifications");
-const riskManager_1 = require("../live/riskManager");
+import { PublicKey } from '@solana/web3.js';
+import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
+import logger from './logger.js';
+import { sendAlert } from './notifications.js';
+import { CircuitBreakerReason } from '../live/riskManager.js';
 /**
  * Smart Contract Validator
  * Analyzes token smart contracts for security risks and red flags
  */
-class ContractValidator {
+export class ContractValidator {
     connection;
     config;
     riskManager;
@@ -28,12 +22,7 @@ class ContractValidator {
             minLiquidity: 5000, // $5,000 minimum liquidity
             minHolders: 10, // at least 10 different holders
             blockedCreators: [], // blacklisted creator addresses
-            suspiciousPatterns: [
-                'freezeAuthority',
-                'mintAuthority',
-                'transferHook',
-                'closeAccount'
-            ]
+            suspiciousPatterns: ['freezeAuthority', 'mintAuthority', 'transferHook', 'closeAccount'],
         };
         // Apply custom config if provided
         if (config) {
@@ -47,16 +36,17 @@ class ContractValidator {
         try {
             // Check cache first
             const cachedResult = this.validationCache.get(tokenAddress);
-            if (cachedResult && (Date.now() - cachedResult.timestamp) < 3600000) { // Cache valid for 1 hour
+            if (cachedResult && Date.now() - cachedResult.timestamp < 3600000) {
+                // Cache valid for 1 hour
                 return cachedResult.result;
             }
-            logger_1.default.info('Validating token contract', { tokenAddress });
-            const mint = new web3_js_1.PublicKey(tokenAddress);
+            logger.info('Validating token contract', { tokenAddress });
+            const mint = new PublicKey(tokenAddress);
             // Initialize result
             const result = {
                 isValid: true,
                 score: 100, // Start with perfect score
-                risks: []
+                risks: [],
             };
             // Fetch token metadata
             const tokenMetadata = await this.getTokenMetadata(mint);
@@ -73,17 +63,17 @@ class ContractValidator {
                 result.risks.push({
                     level: 'HIGH',
                     type: 'NEW_CONTRACT',
-                    description: `Token deployed only ${deploymentAge.toFixed(1)} hours ago (minimum: ${this.config.minDeploymentAge} hours)`
+                    description: `Token deployed only ${deploymentAge.toFixed(1)} hours ago (minimum: ${this.config.minDeploymentAge} hours)`,
                 });
                 result.score -= 30;
                 result.isValid = false;
             }
             // Check program ownership
-            if (accountInfo.owner.toString() !== spl_token_1.TOKEN_PROGRAM_ID.toString()) {
+            if (accountInfo.owner.toString() !== TOKEN_PROGRAM_ID.toString()) {
                 result.risks.push({
                     level: 'HIGH',
                     type: 'CUSTOM_PROGRAM',
-                    description: `Token not owned by standard Token Program: ${accountInfo.owner.toString()}`
+                    description: `Token not owned by standard Token Program: ${accountInfo.owner.toString()}`,
                 });
                 result.score -= 40;
                 result.isValid = false;
@@ -94,7 +84,7 @@ class ContractValidator {
                 result.risks.push({
                     level: 'HIGH',
                     type: 'MINT_AUTHORITY',
-                    description: 'Token has an active mint authority, enabling unlimited minting'
+                    description: 'Token has an active mint authority, enabling unlimited minting',
                 });
                 result.score -= 30;
                 result.isValid = false;
@@ -104,7 +94,7 @@ class ContractValidator {
                 result.risks.push({
                     level: 'MEDIUM',
                     type: 'FREEZE_AUTHORITY',
-                    description: 'Token has freeze authority, allowing creator to block transfers'
+                    description: 'Token has freeze authority, allowing creator to block transfers',
                 });
                 result.score -= 20;
             }
@@ -114,7 +104,7 @@ class ContractValidator {
                 result.risks.push({
                     level: 'MEDIUM',
                     type: 'LOW_LIQUIDITY',
-                    description: `Token has low liquidity: $${liquidity.toFixed(2)} (minimum: $${this.config.minLiquidity})`
+                    description: `Token has low liquidity: $${liquidity.toFixed(2)} (minimum: $${this.config.minLiquidity})`,
                 });
                 result.score -= 15;
             }
@@ -124,7 +114,7 @@ class ContractValidator {
                 result.risks.push({
                     level: 'MEDIUM',
                     type: 'FEW_HOLDERS',
-                    description: `Token has few unique holders: ${holderCount} (minimum: ${this.config.minHolders})`
+                    description: `Token has few unique holders: ${holderCount} (minimum: ${this.config.minHolders})`,
                 });
                 result.score -= 10;
             }
@@ -135,52 +125,54 @@ class ContractValidator {
                     result.risks.push({
                         level: 'CRITICAL',
                         type: 'BLACKLISTED_CREATOR',
-                        description: `Token creator ${creator} is blacklisted`
+                        description: `Token creator ${creator} is blacklisted`,
                     });
                     result.score -= 100;
                     result.isValid = false;
                 }
             }
             // If we have critical or multiple high risks, the contract is not valid
-            const criticalRisks = result.risks.filter(r => r.level === 'CRITICAL').length;
-            const highRisks = result.risks.filter(r => r.level === 'HIGH').length;
+            const criticalRisks = result.risks.filter((r) => r.level === 'CRITICAL').length;
+            const highRisks = result.risks.filter((r) => r.level === 'HIGH').length;
             if (criticalRisks > 0 || highRisks >= 2 || result.score < 50) {
                 result.isValid = false;
             }
             // Update risk manager if provided
             if (!result.isValid && this.riskManager) {
                 const reason = criticalRisks > 0 ? 'CRITICAL_CONTRACT_RISK' : 'HIGH_CONTRACT_RISK';
-                const message = `Contract validation failed for ${tokenAddress}: ${result.risks.map(r => r.type).join(', ')}`;
-                this.riskManager.triggerCircuitBreaker(riskManager_1.CircuitBreakerReason.CONTRACT_RISK, message);
+                const message = `Contract validation failed for ${tokenAddress}: ${result.risks.map((r) => r.type).join(', ')}`;
+                this.riskManager.triggerCircuitBreaker(CircuitBreakerReason.CONTRACT_RISK, message);
                 // Send alert
-                await (0, notifications_1.sendAlert)(`⚠️ Contract Risk Detected: ${tokenAddress}\n${message}`, 'WARNING');
+                await sendAlert(`⚠️ Contract Risk Detected: ${tokenAddress}\n${message}`, 'WARNING');
             }
             // Cache the result
             this.validationCache.set(tokenAddress, {
                 result,
-                timestamp: Date.now()
+                timestamp: Date.now(),
             });
-            logger_1.default.info('Contract validation completed', {
+            logger.info('Contract validation completed', {
                 tokenAddress,
                 isValid: result.isValid,
                 score: result.score,
-                riskCount: result.risks.length
+                riskCount: result.risks.length,
             });
             return result;
         }
         catch (error) {
-            logger_1.default.error('Error validating contract', {
+            logger.error('Error validating contract', {
                 tokenAddress,
-                error: error instanceof Error ? error.message : 'Unknown error'
+                error: error instanceof Error ? error.message : 'Unknown error',
             });
             return {
                 isValid: false,
                 score: 0,
-                risks: [{
+                risks: [
+                    {
                         level: 'CRITICAL',
                         type: 'VALIDATION_ERROR',
-                        description: error instanceof Error ? error.message : 'Unknown error during validation'
-                    }]
+                        description: error instanceof Error ? error.message : 'Unknown error during validation',
+                    },
+                ],
             };
         }
     }
@@ -194,9 +186,9 @@ class ContractValidator {
             return { updateAuthority: null };
         }
         catch (error) {
-            logger_1.default.warn('Error fetching token metadata', {
+            logger.warn('Error fetching token metadata', {
                 mint: mint.toString(),
-                error: error instanceof Error ? error.message : 'Unknown error'
+                error: error instanceof Error ? error.message : 'Unknown error',
             });
             return null;
         }
@@ -215,9 +207,9 @@ class ContractValidator {
             return firstSignature ? firstSignature.slot : 0; // Return 0 if somehow undefined
         }
         catch (error) {
-            logger_1.default.warn('Error getting token creation slot', {
+            logger.warn('Error getting token creation slot', {
                 mint: mint.toString(),
-                error: error instanceof Error ? error.message : 'Unknown error'
+                error: error instanceof Error ? error.message : 'Unknown error',
             });
             return 0;
         }
@@ -237,9 +229,9 @@ class ContractValidator {
             return ageInHours;
         }
         catch (error) {
-            logger_1.default.warn('Error calculating slot age', {
+            logger.warn('Error calculating slot age', {
                 slot,
-                error: error instanceof Error ? error.message : 'Unknown error'
+                error: error instanceof Error ? error.message : 'Unknown error',
             });
             return 0;
         }
@@ -253,13 +245,13 @@ class ContractValidator {
             // This is a simplified placeholder
             return {
                 mintAuthority: null,
-                freezeAuthority: null
+                freezeAuthority: null,
             };
         }
         catch (error) {
-            logger_1.default.warn('Error fetching mint info', {
+            logger.warn('Error fetching mint info', {
                 mint: mint.toString(),
-                error: error instanceof Error ? error.message : 'Unknown error'
+                error: error instanceof Error ? error.message : 'Unknown error',
             });
             return null;
         }
@@ -274,9 +266,9 @@ class ContractValidator {
             return Math.random() * 1000000 + 5000;
         }
         catch (error) {
-            logger_1.default.warn('Error fetching token liquidity', {
+            logger.warn('Error fetching token liquidity', {
                 mint: mint.toString(),
-                error: error instanceof Error ? error.message : 'Unknown error'
+                error: error instanceof Error ? error.message : 'Unknown error',
             });
             return 0;
         }
@@ -291,9 +283,9 @@ class ContractValidator {
             return Math.floor(Math.random() * 1000 + 20);
         }
         catch (error) {
-            logger_1.default.warn('Error fetching holder count', {
+            logger.warn('Error fetching holder count', {
                 mint: mint.toString(),
-                error: error instanceof Error ? error.message : 'Unknown error'
+                error: error instanceof Error ? error.message : 'Unknown error',
             });
             return 0;
         }
@@ -304,7 +296,7 @@ class ContractValidator {
     blacklistCreator(creatorAddress) {
         if (!this.config.blockedCreators.includes(creatorAddress)) {
             this.config.blockedCreators.push(creatorAddress);
-            logger_1.default.info('Creator added to blacklist', { creatorAddress });
+            logger.info('Creator added to blacklist', { creatorAddress });
         }
     }
     /**
@@ -312,16 +304,15 @@ class ContractValidator {
      */
     updateConfig(config) {
         this.config = { ...this.config, ...config };
-        logger_1.default.info('Contract validator configuration updated', this.config);
+        logger.info('Contract validator configuration updated', this.config);
     }
     /**
      * Clear validation cache
      */
     clearCache() {
         this.validationCache.clear();
-        logger_1.default.debug('Contract validation cache cleared');
+        logger.debug('Contract validation cache cleared');
     }
 }
-exports.ContractValidator = ContractValidator;
-exports.default = ContractValidator;
+export default ContractValidator;
 //# sourceMappingURL=contractValidator.js.map

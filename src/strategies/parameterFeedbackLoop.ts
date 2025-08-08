@@ -1,4 +1,4 @@
-import { VolatilitySqueeze } from './volatilitySqueeze';
+import { VolatilitySqueeze } from './volatilitySqueeze.js';
 
 export interface FeedbackTrade {
   priceChangeThreshold: number;
@@ -33,7 +33,7 @@ export class ParameterFeedbackLoop {
     initialParams: FeedbackParams,
     onUpdate: (params: FeedbackParams, stats: FeedbackStats) => void,
     batchSize = 5,
-    deltaPct = 0.05
+    deltaPct = 0.05,
   ) {
     this.lastParams = initialParams;
     this.onUpdate = onUpdate;
@@ -52,10 +52,10 @@ export class ParameterFeedbackLoop {
   private runSweep() {
     const { priceChangeThreshold, volumeMultiplier } = this.lastParams;
     const grid = [
-      ...[-this.deltaPct, 0, this.deltaPct].map(d => ({
+      ...[-this.deltaPct, 0, this.deltaPct].map((d) => ({
         priceChangeThreshold: priceChangeThreshold * (1 + d),
-        volumeMultiplier: volumeMultiplier * (1 + d)
-      }))
+        volumeMultiplier: volumeMultiplier * (1 + d),
+      })),
     ];
     let best: { params: FeedbackParams; stats: FeedbackStats } | null = null;
     for (const params of grid) {
@@ -76,21 +76,26 @@ export class ParameterFeedbackLoop {
 
   private simulate(params: FeedbackParams): FeedbackStats {
     // For demo, just use the batch as-is; in production, would replay logic
-    let netPnl = 0, wins = 0, losses = 0, maxDrawdown = 0, runningPnL = 0, peakPnL = 0;
+    let netPnl = 0,
+      wins = 0,
+      losses = 0,
+      maxDrawdown = 0,
+      runningPnL = 0,
+      peakPnL = 0;
     for (const t of this.tradeBuffer) {
       netPnl += t.pnl;
       if (t.win) wins++;
       else losses++;
       runningPnL += t.pnl;
       if (runningPnL > peakPnL) peakPnL = runningPnL;
-      const drawdown = peakPnL > 0 ? 100 * (runningPnL - peakPnL) / peakPnL : 0;
+      const drawdown = peakPnL > 0 ? (100 * (runningPnL - peakPnL)) / peakPnL : 0;
       if (drawdown < maxDrawdown) maxDrawdown = drawdown;
     }
     return {
       tradeCount: this.tradeBuffer.length,
       winRate: this.tradeBuffer.length ? wins / this.tradeBuffer.length : 0,
       netPnl,
-      maxDrawdown
+      maxDrawdown,
     };
   }
 }

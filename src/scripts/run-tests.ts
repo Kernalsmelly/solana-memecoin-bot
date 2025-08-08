@@ -20,15 +20,15 @@ try {
     './src/tests/riskManager.test.ts',
     './src/tests/birdeyeAPI.test.ts',
     './src/tests/tokenDiscovery.test.ts',
-    './src/tests/patternDetector.test.ts'
+    './src/tests/patternDetector.test.ts',
   ];
-  
+
   for (const testFile of testFiles) {
     console.log(`\n🧪 Testing: ${testFile}`);
     try {
-      execSync(`npx vitest run ${testFile} --reporter verbose`, { 
+      execSync(`npx vitest run ${testFile} --reporter verbose`, {
         stdio: 'inherit',
-        timeout: 30000
+        timeout: 30000,
       });
       console.log(`✅ ${testFile} - Tests passed`);
     } catch (err) {
@@ -36,7 +36,7 @@ try {
       // Continue to next test file even if this one fails
     }
   }
-  
+
   console.log('\n🔍 Test summary completed');
 } catch (error) {
   console.error('❌ Error running tests:', error);

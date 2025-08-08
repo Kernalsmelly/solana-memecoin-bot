@@ -1,28 +1,31 @@
 import { EventEmitter } from 'events';
-import logger from '../utils/logger';
+import logger from '../utils/logger.js';
 import axios from 'axios';
-import { mockPriceFeed } from '../utils/mockPriceFeed';
+import { mockPriceFeed } from '../utils/mockPriceFeed.js';
 
 interface VolatilitySqueezeOptions {
-  priceChangeThreshold: number;  // % change threshold
-  volumeMultiplier: number;      // Volume multiplier for 1h SMA
-  lookbackPeriodMs: number;      // Time window for price change
-  checkIntervalMs: number;       // How often to check
+  priceChangeThreshold: number; // % change threshold
+  volumeMultiplier: number; // Volume multiplier for 1h SMA
+  lookbackPeriodMs: number; // Time window for price change
+  checkIntervalMs: number; // How often to check
 }
 
-import { Strategy } from '../strategy/StrategyCoordinator';
+import { Strategy } from '../strategy/StrategyCoordinator.js';
 
 export class VolatilitySqueeze extends EventEmitter implements Strategy {
   public name = 'volatilitySqueeze';
   public async execute(token: string): Promise<void> {
+    console.log(`[DEBUG] Strategy VolatilitySqueeze received execute for token:`, token);
     // In a real implementation, fetch and analyze OHLCV data for the token
     // For now, just log or call check()
-    console.log(`[VolatilitySqueeze] Executing strategy for token: ${token}`);
     // Optionally: await this.check();
+    console.log(`[DEBUG] Strategy VolatilitySqueeze execute exit for token:`, token);
   }
   public setParams(params: Partial<VolatilitySqueezeOptions>) {
-    if (params.priceChangeThreshold !== undefined) this.options.priceChangeThreshold = params.priceChangeThreshold;
-    if (params.volumeMultiplier !== undefined) this.options.volumeMultiplier = params.volumeMultiplier;
+    if (params.priceChangeThreshold !== undefined)
+      this.options.priceChangeThreshold = params.priceChangeThreshold;
+    if (params.volumeMultiplier !== undefined)
+      this.options.volumeMultiplier = params.volumeMultiplier;
   }
   private options: VolatilitySqueezeOptions;
   private lastCheckTime: number;
@@ -34,7 +37,7 @@ export class VolatilitySqueeze extends EventEmitter implements Strategy {
       priceChangeThreshold: options.priceChangeThreshold ?? 20,
       volumeMultiplier: options.volumeMultiplier ?? 2,
       lookbackPeriodMs: options.lookbackPeriodMs ?? 30 * 60 * 1000,
-      checkIntervalMs: options.checkIntervalMs ?? 60 * 1000
+      checkIntervalMs: options.checkIntervalMs ?? 60 * 1000,
     };
     this.lastCheckTime = Date.now();
     this.interval = null;
@@ -53,10 +56,16 @@ export class VolatilitySqueeze extends EventEmitter implements Strategy {
 
   private async check() {
     try {
+      console.log('[DEBUG] VolatilitySqueeze.check() entry');
       // Example: simulate a list of tokens (in real usage, get from discovery pipeline)
       const tokens = [
-        { address: 'So11111111111111111111111111111111111111112', symbol: 'SOL', name: 'Solana', decimals: 9 },
-        { address: 'dummy', symbol: 'DUMMY', name: 'Dummy Token', decimals: 9 }
+        {
+          address: 'So11111111111111111111111111111111111111112',
+          symbol: 'SOL',
+          name: 'Solana',
+          decimals: 9,
+        },
+        // Removed 'dummy' token from simulation list
       ];
 
       for (const token of tokens) {
@@ -74,21 +83,32 @@ export class VolatilitySqueeze extends EventEmitter implements Strategy {
         }
         // Fallback to mock price feed
         if (!price) {
-          price = mockPriceFeed.getPrice(token.address) || (0.00001 + Math.random() * 0.01);
+          price = mockPriceFeed.getPrice(token.address) || 0.00001 + Math.random() * 0.01;
           used = 'mock';
         }
         // Simulate price/volume history for squeeze detection
         const priceHistory = Array.from({ length: 20 }, () => price * (0.95 + Math.random() * 0.1));
-        const volumeHistory = Array.from({ length: 20 }, () => Math.floor(1000 + Math.random() * 5000));
-        logger.info(`[VolatilitySqueeze] Using ${used} price source for ${token.symbol}: $${price.toFixed(6)}`);
+        const volumeHistory = Array.from({ length: 20 }, () =>
+          Math.floor(1000 + Math.random() * 5000),
+        );
+        logger.info(
+          `[VolatilitySqueeze] Using ${used} price source for ${token.symbol}: $${price.toFixed(6)}`,
+        );
         // Emit a pattern match event as example
+        console.log('[DEBUG] Strategy VolatilitySqueeze emitting PatternMatchEvent:', {
+          token: { ...token, price },
+          priceHistory,
+          volumeHistory,
+          suggestedPosition: 0,
+        });
         this.emit('patternMatch', {
           token: { ...token, price },
           priceHistory,
           volumeHistory,
-          suggestedPosition: 0
+          suggestedPosition: 0,
         });
       }
+      console.log('[DEBUG] VolatilitySqueeze.check() exit');
     } catch (err) {
       logger.error('VolatilitySqueeze check error', err);
     }

@@ -1,19 +1,22 @@
-import { RiskManager } from '../live/riskManager';
-import { TradeHistoryEntry } from '../types';
-import logger from '../utils/logger';
+import { RiskManager } from '../live/riskManager.js';
+import { TradeHistoryEntry } from '../types.js';
+import logger from '../utils/logger.js';
 
 /**
  * Handles a dry-run fill for a simulated swap. Records trade with risk manager and logs the fill.
  * @param params - Details of the simulated fill
  */
-export async function handleDryRunFill(params: {
-  action: 'buy' | 'sell';
-  tokenAddress: string;
-  tokenSymbol?: string;
-  quantity: number;
-  price: number;
-  meta?: Record<string, any>;
-}, injectedRiskManager?: { recordTrade: (pnl: number) => void }) {
+export async function handleDryRunFill(
+  params: {
+    action: 'buy' | 'sell';
+    tokenAddress: string;
+    tokenSymbol?: string;
+    quantity: number;
+    price: number;
+    meta?: Record<string, any>;
+  },
+  injectedRiskManager?: { recordTrade: (pnl: number) => void },
+) {
   const { action, tokenAddress, tokenSymbol, quantity, price, meta } = params;
   const pnl = 0; // For dry-run, P&L is 0 at open; update on close
   const trade: TradeHistoryEntry = {
@@ -24,7 +27,7 @@ export async function handleDryRunFill(params: {
     quantity,
     price,
     pnl,
-    ...meta
+    ...meta,
   };
   logger.info('[DryRunFill] Simulated fill', trade);
   const rm = injectedRiskManager;

@@ -1,8 +1,5 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.ExitManager = void 0;
-const events_1 = require("events");
-class ExitManager extends events_1.EventEmitter {
+import { EventEmitter } from 'events';
+export class ExitManager extends EventEmitter {
     orders = new Map();
     stopLossPct;
     takeProfitPct;
@@ -32,7 +29,11 @@ class ExitManager extends events_1.EventEmitter {
     }
     onPriceUpdate(update) {
         const order = this.orders.get(update.address);
-        console.log('[DEBUG ExitManager.onPriceUpdate]', { address: update.address, price: update.price, order });
+        console.log('[DEBUG ExitManager.onPriceUpdate]', {
+            address: update.address,
+            price: update.price,
+            order,
+        });
         if (!order || !order.active)
             return;
         if (update.price <= order.stopLoss) {
@@ -57,8 +58,7 @@ class ExitManager extends events_1.EventEmitter {
         }
     }
     getPendingExits() {
-        return Array.from(this.orders.values()).filter(o => o.active);
+        return Array.from(this.orders.values()).filter((o) => o.active);
     }
 }
-exports.ExitManager = ExitManager;
 //# sourceMappingURL=exitManager.js.map

@@ -1,6 +1,6 @@
 import { Connection, PublicKey, Keypair, VersionedTransaction } from '@solana/web3.js';
 import { QuoteResponse } from '@jup-ag/api';
-import { RiskManager } from '../live/riskManager';
+import { RiskManager } from '../live/riskManager.js';
 export interface JupiterQuote {
     originalQuote: QuoteResponse;
     price: string;

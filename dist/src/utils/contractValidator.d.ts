@@ -1,13 +1,14 @@
 import { Connection } from '@solana/web3.js';
-import { RiskManager } from '../live/riskManager';
+import { RiskManager } from '../live/riskManager.js';
 interface ContractValidationResult {
     isValid: boolean;
     score: number;
     risks: ContractRisk[];
     tokenMetadata?: any;
 }
+export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 interface ContractRisk {
-    level: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+    level: RiskLevel;
     type: string;
     description: string;
 }

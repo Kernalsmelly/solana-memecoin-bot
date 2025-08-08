@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 
-const LOG_PATH = path.resolve(__dirname, '../../signals.log');
+const LOG_PATH = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../signals.log');
 
 export function logSignal(signal: any) {
   const entry = {

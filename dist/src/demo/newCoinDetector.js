@@ -1,13 +1,7 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.NewCoinDetector = void 0;
-const events_1 = require("events");
-const bs58_1 = __importDefault(require("bs58"));
-const crypto_1 = __importDefault(require("crypto"));
-class NewCoinDetector extends events_1.EventEmitter {
+import { EventEmitter } from 'events';
+import bs58 from 'bs58';
+import crypto from 'crypto';
+export class NewCoinDetector extends EventEmitter {
     config;
     detectionHistory;
     patternHistory;
@@ -18,7 +12,7 @@ class NewCoinDetector extends events_1.EventEmitter {
         this.config = {
             minLiquidity: config.minLiquidity ?? 5000,
             maxAgeHours: config.maxAgeHours ?? 72,
-            scanIntervalSec: config.scanIntervalSec ?? 10
+            scanIntervalSec: config.scanIntervalSec ?? 10,
         };
         this.detectionHistory = new Map();
         this.patternHistory = new Map();
@@ -37,8 +31,8 @@ class NewCoinDetector extends events_1.EventEmitter {
     }
     // Helper to generate a valid Solana base58 public key
     randomPubkey() {
-        const bytes = crypto_1.default.randomBytes(32);
-        return bs58_1.default.encode(bytes);
+        const bytes = crypto.randomBytes(32);
+        return bs58.encode(bytes);
     }
     generateMockData() {
         const mockTokens = [
@@ -51,7 +45,7 @@ class NewCoinDetector extends events_1.EventEmitter {
                 liquidity: 25000,
                 holders: 150,
                 buys5min: 10,
-                timestamp: Date.now() - 4 * 3600 * 1000
+                timestamp: Date.now() - 4 * 3600 * 1000,
             },
             {
                 symbol: 'MOCK2',
@@ -62,8 +56,8 @@ class NewCoinDetector extends events_1.EventEmitter {
                 liquidity: 35000,
                 holders: 250,
                 buys5min: 25,
-                timestamp: Date.now() - 2 * 3600 * 1000
-            }
+                timestamp: Date.now() - 2 * 3600 * 1000,
+            },
         ];
         for (const token of mockTokens) {
             // Emit new token event
@@ -75,7 +69,7 @@ class NewCoinDetector extends events_1.EventEmitter {
                     tokenAddress: token.address,
                     confidence: 85 + Math.random() * 10,
                     metrics: token,
-                    timestamp: Date.now()
+                    timestamp: Date.now(),
                 };
                 this.emit('patternDetected', pattern);
                 // Generate trading signal
@@ -88,12 +82,11 @@ class NewCoinDetector extends events_1.EventEmitter {
                     confidence: pattern.confidence,
                     timestamp: Date.now(),
                     timeframe: '5m',
-                    signalType: 'buy'
+                    signalType: 'buy',
                 };
                 this.emit('tradingSignal', signal);
             }
         }
     }
 }
-exports.NewCoinDetector = NewCoinDetector;
 //# sourceMappingURL=newCoinDetector.js.map

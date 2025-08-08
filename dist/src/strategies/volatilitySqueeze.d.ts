@@ -5,7 +5,7 @@ interface VolatilitySqueezeOptions {
     lookbackPeriodMs: number;
     checkIntervalMs: number;
 }
-import { Strategy } from '../strategy/StrategyCoordinator';
+import { Strategy } from '../strategy/StrategyCoordinator.js';
 export declare class VolatilitySqueeze extends EventEmitter implements Strategy {
     name: string;
     execute(token: string): Promise<void>;

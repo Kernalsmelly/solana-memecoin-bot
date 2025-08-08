@@ -1,6 +1,9 @@
 import fs from 'fs';
 import path from 'path';
 
+import { fileURLToPath } from 'url';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const ANALYSIS_PATH = path.join(__dirname, '../data/analysis_report.json');
 const SWEEP_RESULTS_PATH = path.join(__dirname, '../data/parameter_sweep_results.json');
 const STOP_LOSS_PCTS = [0.01, 0.02, 0.03, 0.04, 0.05]; // 1-5%
@@ -27,16 +30,27 @@ function simulateSweep(trades: any[]) {
   let bestStats = { netPnl: -Infinity, winRate: 0, wins: 0, losses: 0 };
   for (const sl of STOP_LOSS_PCTS) {
     for (const tp of TAKE_PROFIT_PCTS) {
-      let netPnl = 0, wins = 0, losses = 0;
+      let netPnl = 0,
+        wins = 0,
+        losses = 0;
       for (const trade of trades) {
         // Simulate: If trade PnL >= tp, count as win; if <= -sl, count as loss; else ignore
         const pnl = trade.avgTradePnL ?? trade.pnl ?? 0;
-        if (pnl >= tp) { netPnl += pnl; wins++; }
-        else if (pnl <= -sl) { netPnl += pnl; losses++; }
-        else { netPnl += pnl; }
+        if (pnl >= tp) {
+          netPnl += pnl;
+          wins++;
+        } else if (pnl <= -sl) {
+          netPnl += pnl;
+          losses++;
+        } else {
+          netPnl += pnl;
+        }
       }
       const winRate = trades.length ? wins / trades.length : 0;
-      if (netPnl > bestStats.netPnl || (netPnl === bestStats.netPnl && winRate > bestStats.winRate)) {
+      if (
+        netPnl > bestStats.netPnl ||
+        (netPnl === bestStats.netPnl && winRate > bestStats.winRate)
+      ) {
         bestParams = { stopLoss: sl, takeProfit: tp };
         bestStats = { netPnl, winRate, wins, losses };
       }
@@ -52,4 +66,4 @@ function main() {
   console.log('Sweep complete:', sweep);
 }
 
-if (require.main === module) main();
+if (process.argv[1] === fileURLToPath(import.meta.url)) main();

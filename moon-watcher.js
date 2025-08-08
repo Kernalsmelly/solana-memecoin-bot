@@ -1,11 +1,11 @@
-const axios = require("axios");
+const axios = require('axios');
 
-const API_KEY = "4b135f74ae3454980edad572f676fa6d"; // Replace with your actual key if it changes
+const API_KEY = '4b135f74ae3454980edad572f676fa6d'; // Replace with your actual key if it changes
 const HEADERS = {
-  "x-api-key": API_KEY,
+  'x-api-key': API_KEY,
 };
 
-const BASE_URL = "https://public-api.birdeye.so/public";
+const BASE_URL = 'https://public-api.birdeye.so/public';
 
 async function getTopTokens(limit = 25) {
   const url = `${BASE_URL}/tokenlist?limit=${limit}&page=1`;
@@ -28,11 +28,11 @@ function calculateMoonScore(latestCandle) {
   const [last, secondLast] = latestCandle.slice(-2);
   const volumeJump = last.volume - secondLast.volume;
   const txJump = last.txCount - secondLast.txCount;
-  return Math.max(0, (volumeJump * 0.001 + txJump * 0.5)); // basic scoring model
+  return Math.max(0, volumeJump * 0.001 + txJump * 0.5); // basic scoring model
 }
 
 async function runMoonWatcher() {
-  console.log("🔭 Scanning Solana tokens...");
+  console.log('🔭 Scanning Solana tokens...');
 
   const topTokens = await getTopTokens();
   const results = [];

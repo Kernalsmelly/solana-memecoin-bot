@@ -1,12 +1,6 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.TokenMonitor = void 0;
-const events_1 = require("events");
-const logger_1 = __importDefault(require("./utils/logger"));
-class TokenMonitor extends events_1.EventEmitter {
+import { EventEmitter } from 'events';
+import logger from './utils/logger.js';
+export class TokenMonitor extends EventEmitter {
     tokens;
     patterns;
     constructor() {
@@ -18,14 +12,14 @@ class TokenMonitor extends events_1.EventEmitter {
         try {
             this.tokens.set(metrics.address, metrics);
             this.emit('newToken', metrics);
-            logger_1.default.info(`Added new token ${metrics.symbol}`, {
+            logger.info(`Added new token ${metrics.symbol}`, {
                 address: metrics.address,
                 price: metrics.priceUsd,
-                liquidity: metrics.liquidity
+                liquidity: metrics.liquidity,
             });
         }
         catch (error) {
-            logger_1.default.error('Error adding token:', error);
+            logger.error('Error adding token:', error);
             this.emit('error', error);
         }
     }
@@ -35,14 +29,22 @@ class TokenMonitor extends events_1.EventEmitter {
             if (existing) {
                 const currentPrice = metrics.priceUsd;
                 const existingPrice = existing.priceUsd;
-                const priceChange = typeof existingPrice === 'number' && existingPrice !== 0 && typeof currentPrice === 'number'
+                const priceChange = typeof existingPrice === 'number' &&
+                    existingPrice !== 0 &&
+                    typeof currentPrice === 'number'
                     ? Math.abs((currentPrice - existingPrice) / existingPrice)
-                    : (typeof currentPrice === 'number' && currentPrice !== 0 ? Infinity : 0); // Handle undefined/zero
+                    : typeof currentPrice === 'number' && currentPrice !== 0
+                        ? Infinity
+                        : 0; // Handle undefined/zero
                 const currentVolume = metrics.volume24h;
                 const existingVolume = existing.volume24h;
-                const volumeChange = typeof existingVolume === 'number' && existingVolume !== 0 && typeof currentVolume === 'number'
+                const volumeChange = typeof existingVolume === 'number' &&
+                    existingVolume !== 0 &&
+                    typeof currentVolume === 'number'
                     ? Math.abs((currentVolume - existingVolume) / existingVolume)
-                    : (typeof currentVolume === 'number' && currentVolume !== 0 ? Infinity : 0); // Handle undefined/zero
+                    : typeof currentVolume === 'number' && currentVolume !== 0
+                        ? Infinity
+                        : 0; // Handle undefined/zero
                 if (priceChange > 0.02 || volumeChange > 0.1) {
                     this.emit('tokenUpdate', metrics);
                 }
@@ -50,7 +52,7 @@ class TokenMonitor extends events_1.EventEmitter {
             this.tokens.set(metrics.address, metrics);
         }
         catch (error) {
-            logger_1.default.error('Error updating token:', error);
+            logger.error('Error updating token:', error);
             this.emit('error', error);
         }
     }
@@ -58,13 +60,13 @@ class TokenMonitor extends events_1.EventEmitter {
         try {
             this.patterns.set(pattern.tokenAddress, pattern);
             this.emit('patternDetected', pattern);
-            logger_1.default.info(`Pattern detected for ${pattern.tokenAddress}`, {
+            logger.info(`Pattern detected for ${pattern.tokenAddress}`, {
                 pattern: pattern.pattern,
-                confidence: pattern.confidence
+                confidence: pattern.confidence,
             });
         }
         catch (error) {
-            logger_1.default.error('Error adding pattern:', error);
+            logger.error('Error adding pattern:', error);
             this.emit('error', error);
         }
     }
@@ -96,5 +98,4 @@ class TokenMonitor extends events_1.EventEmitter {
         }
     }
 }
-exports.TokenMonitor = TokenMonitor;
 //# sourceMappingURL=tokenMonitor.js.map

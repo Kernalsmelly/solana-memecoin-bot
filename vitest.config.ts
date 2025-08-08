@@ -9,14 +9,14 @@ export default defineConfig({
     reporters: ['basic'],
     coverage: {
       reporter: ['text'],
-      exclude: ['**/*.test.ts', '**/mocks/**']
+      exclude: ['**/*.test.ts', '**/mocks/**'],
     },
     poolOptions: {
       threads: {
-        singleThread: true
-      }
+        singleThread: true,
+      },
     },
     maxConcurrency: 1,
-    isolate: false
-  }
+    isolate: false,
+  },
 });

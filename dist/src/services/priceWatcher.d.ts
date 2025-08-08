@@ -1,5 +1,5 @@
 import { Connection } from '@solana/web3.js';
-import { Config } from '../utils/config';
+import { Config } from '../utils/config.js';
 import { EventEmitter } from 'events';
 export interface MarketDataUpdateEvent {
     mint: string;

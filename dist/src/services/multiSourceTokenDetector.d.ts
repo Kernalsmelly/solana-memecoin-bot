@@ -4,7 +4,7 @@ export interface MultiSourceTokenEvent {
     symbol?: string;
     poolAddress?: string;
     source: 'birdeye' | 'jupiter' | 'dexscreener';
-    metrics?: import('../types').TokenMetrics;
+    metrics?: import('../types.js').TokenMetrics;
     extra?: any;
 }
 export declare class MultiSourceTokenDetector extends EventEmitter {

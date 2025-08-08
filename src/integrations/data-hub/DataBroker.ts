@@ -41,7 +41,9 @@ async function fetchGeckoTerminal(address: string): Promise<DataResult> {
     liquidityUSD: attr?.liquidity_usd ? Number(attr.liquidity_usd) : null,
     fdvUSD: attr?.fdv_usd ? Number(attr.fdv_usd) : null,
     volume24hUSD: attr?.volume_usd_24h ? Number(attr.volume_usd_24h) : null,
-    lastTradeTs: attr?.last_trade_at ? Math.floor(new Date(attr.last_trade_at).getTime() / 1000) : null,
+    lastTradeTs: attr?.last_trade_at
+      ? Math.floor(new Date(attr.last_trade_at).getTime() / 1000)
+      : null,
   };
 }
 

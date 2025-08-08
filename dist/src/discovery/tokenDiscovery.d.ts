@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { AnalyzedToken } from '../analysis/tokenAnalyzer';
+import { AnalyzedToken } from '../analysis/tokenAnalyzer.js';
 export interface TokenDiscoveryOptions {
     minLiquidity?: number;
     minVolume?: number;

@@ -1,18 +1,12 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.PortfolioOptimizer = void 0;
-const web3_js_1 = require("@solana/web3.js");
-const logger_1 = __importDefault(require("../utils/logger"));
-const tradeLogger_1 = require("../utils/tradeLogger");
+import { PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import logger from '../utils/logger.js';
+import { tradeLogger } from '../utils/tradeLogger.js';
 /**
  * Portfolio Optimizer
  * Intelligently allocates capital across different trading patterns
  * to maximize returns while controlling risk
  */
-class PortfolioOptimizer {
+export class PortfolioOptimizer {
     config;
     getMinConfidence() {
         return this.config.minConfidence;
@@ -58,9 +52,9 @@ class PortfolioOptimizer {
         this.initializePatternPerformance();
         // Listen for exit events to update performance metrics
         this.config.exitManager.on('positionExit', this.handlePositionExit.bind(this));
-        logger_1.default.info('Portfolio Optimizer initialized', {
+        logger.info('Portfolio Optimizer initialized', {
             maxPositions: this.config.maxPositions,
-            maxExposure: this.config.maxExposurePercent + '%'
+            maxExposure: this.config.maxExposurePercent + '%',
         });
     }
     /**
@@ -72,11 +66,11 @@ class PortfolioOptimizer {
             'Volatility Squeeze',
             'Smart Money Trap',
             'Algorithmic Stop Hunt',
-            'Smart Money Reversal'
+            'Smart Money Reversal',
         ];
         // Initialize with historical data (from memories)
-        patterns.forEach(pattern => {
-            let successRate = 80; // Default success rate
+        patterns.forEach((pattern) => {
+            const successRate = 80; // Default success rate
             let avgReturn = 30; // Default average return
             // Set initial values based on historical performance
             switch (pattern) {
@@ -99,7 +93,7 @@ class PortfolioOptimizer {
             this.patternPerformance[pattern] = {
                 successRate,
                 avgReturn,
-                recentTrades: 0
+                recentTrades: 0,
             };
         });
     }
@@ -112,22 +106,23 @@ class PortfolioOptimizer {
             const minUsd = this.config.minPositionValueUsd ?? 10; // Default $10
             // Fetch current SOL price
             if (!this.config.birdeyeApi) {
-                logger_1.default.error('BirdeyeAPI instance not provided. Cannot fetch SOL price for position sizing.');
+                logger.error('BirdeyeAPI instance not provided. Cannot fetch SOL price for position sizing.');
                 return 0n;
             }
             const solPriceUsd = await this.config.birdeyeApi.getSolPrice();
-            if (!solPriceUsd) { // getSolPrice returns number or throws
-                logger_1.default.error('Failed to fetch SOL price for position sizing.');
+            if (!solPriceUsd) {
+                // getSolPrice returns number or throws
+                logger.error('Failed to fetch SOL price for position sizing.');
                 return 0n;
             }
             // Calculate target SOL amount and convert to lamports
             const targetSolAmount = targetUsd / solPriceUsd;
-            const targetLamports = BigInt(Math.floor(targetSolAmount * web3_js_1.LAMPORTS_PER_SOL));
+            const targetLamports = BigInt(Math.floor(targetSolAmount * LAMPORTS_PER_SOL));
             // Check minimum position value
             const minSolAmount = minUsd / solPriceUsd;
-            const minLamports = BigInt(Math.floor(minSolAmount * web3_js_1.LAMPORTS_PER_SOL));
+            const minLamports = BigInt(Math.floor(minSolAmount * LAMPORTS_PER_SOL));
             if (targetLamports < minLamports) {
-                logger_1.default.warn(`Target position value ($${targetUsd}) is below minimum ($${minUsd}) for ${patternDetection.metrics.symbol} at current SOL price ($${solPriceUsd}). Calculated lamports: ${targetLamports}, Min lamports: ${minLamports}.`, {
+                logger.warn(`Target position value ($${targetUsd}) is below minimum ($${minUsd}) for ${patternDetection.metrics.symbol} at current SOL price ($${solPriceUsd}). Calculated lamports: ${targetLamports}, Min lamports: ${minLamports}.`, {
                     token: patternDetection.tokenAddress,
                     targetLamports: targetLamports.toString(),
                     minLamports: minLamports.toString(),
@@ -135,7 +130,7 @@ class PortfolioOptimizer {
                 return 0n; // Position too small
             }
             // TODO: Optionally consult RiskManager for overall exposure limits here
-            logger_1.default.info(`Calculated position size for ${patternDetection.metrics.symbol}: ${targetLamports} lamports ($${targetUsd.toFixed(2)} USD)`, {
+            logger.info(`Calculated position size for ${patternDetection.metrics.symbol}: ${targetLamports} lamports ($${targetUsd.toFixed(2)} USD)`, {
                 token: patternDetection.tokenAddress,
                 targetLamports: targetLamports.toString(),
                 solPrice: solPriceUsd,
@@ -143,7 +138,7 @@ class PortfolioOptimizer {
             return targetLamports;
         }
         catch (error) {
-            logger_1.default.error(`Error calculating position size for ${patternDetection.metrics.symbol}:`, error?.message || error);
+            logger.error(`Error calculating position size for ${patternDetection.metrics.symbol}:`, error?.message || error);
             return 0n;
         }
     }
@@ -155,24 +150,24 @@ class PortfolioOptimizer {
         try {
             // Check if we can add new positions
             if (!(await this.canAddPosition())) {
-                logger_1.default.debug('Cannot add position - portfolio full or max exposure reached');
+                logger.debug('Cannot add position - portfolio full or max exposure reached');
                 return null;
             }
             // Check minimum confidence threshold
             if (patternDetection.confidence < this.config.minConfidence) {
-                logger_1.default.debug('Pattern confidence below threshold', {
+                logger.debug('Pattern confidence below threshold', {
                     pattern: patternDetection.pattern,
                     confidence: patternDetection.confidence,
-                    threshold: this.config.minConfidence
+                    threshold: this.config.minConfidence,
                 });
                 return null;
             }
             // Calculate position size
             const positionSizeLamports = await this.calculatePositionSizeLamports(patternDetection);
             if (positionSizeLamports <= 0n) {
-                logger_1.default.debug('Position size calculation returned zero or negative', {
+                logger.debug('Position size calculation returned zero or negative', {
                     pattern: patternDetection.pattern,
-                    token: patternDetection.metrics.symbol
+                    token: patternDetection.metrics.symbol,
                 });
                 return null;
             }
@@ -181,33 +176,35 @@ class PortfolioOptimizer {
                 side: 'buy',
                 tokenAddress: patternDetection.tokenAddress,
                 size: positionSizeLamports, // Size is in SOL lamports for buys
-                price: patternDetection.metrics.priceUsd // Use priceUsd (Current price observed)
+                price: patternDetection.metrics.priceUsd, // Use priceUsd (Current price observed)
             };
             // Execute Buy Order
-            logger_1.default.info(`Attempting to execute buy order for ${patternDetection.metrics.symbol}`, {
+            logger.info(`Attempting to execute buy order for ${patternDetection.metrics.symbol}`, {
                 token: patternDetection.tokenAddress,
-                amountLamports: positionSizeLamports.toString()
+                amountLamports: positionSizeLamports.toString(),
             });
             const executionResult = await this.config.orderExecution.executeOrder(buyOrder);
             if (!executionResult || !executionResult.success) {
-                logger_1.default.error(`Buy order execution failed for ${patternDetection.metrics.symbol}`, {
+                logger.error(`Buy order execution failed for ${patternDetection.metrics.symbol}`, {
                     error: executionResult?.error || 'Unknown execution error',
-                    details: executionResult?.details
+                    details: executionResult?.details,
                 });
                 return null; // Stop processing if buy fails
             }
-            logger_1.default.info(`Successfully executed buy for ${patternDetection.metrics.symbol}`, {
+            logger.info(`Successfully executed buy for ${patternDetection.metrics.symbol}`, {
                 tx: executionResult.txSignature,
-                solSpent: (Number(executionResult.inputAmount || 0n) / web3_js_1.LAMPORTS_PER_SOL).toFixed(6),
-                tokenReceived: executionResult.outputAmount?.toString()
+                solSpent: (Number(executionResult.inputAmount || 0n) / LAMPORTS_PER_SOL).toFixed(6),
+                tokenReceived: executionResult.outputAmount?.toString(),
             });
             // --- Position Creation (Only after successful buy) ---
             // Fetch actual decimals (might be cached by orderExecution)
             const tokenDecimals = (await this.config.orderExecution.getTokenDecimals?.(patternDetection.tokenAddress)) ?? 0;
             // Ensure we have the executed quantity
             const executedQuantitySmallestUnit = executionResult.outputAmount;
-            if (executedQuantitySmallestUnit === undefined || executedQuantitySmallestUnit === null || executedQuantitySmallestUnit <= 0n) {
-                logger_1.default.error(`Buy order for ${patternDetection.metrics.symbol} reported success but returned invalid quantity`, { result: executionResult });
+            if (executedQuantitySmallestUnit === undefined ||
+                executedQuantitySmallestUnit === null ||
+                executedQuantitySmallestUnit <= 0n) {
+                logger.error(`Buy order for ${patternDetection.metrics.symbol} reported success but returned invalid quantity`, { result: executionResult });
                 return null; // Cannot create position without valid quantity
             }
             // Create a new ManagedPosition object
@@ -219,7 +216,7 @@ class PortfolioOptimizer {
                 // Position properties
                 tokenAddress: patternDetection.tokenAddress,
                 tokenSymbol: patternDetection.metrics.symbol,
-                tokenMint: new web3_js_1.PublicKey(patternDetection.tokenAddress), // Assuming address is mint for now
+                tokenMint: new PublicKey(patternDetection.tokenAddress), // Assuming address is mint for now
                 tokenDecimals: tokenDecimals,
                 // Calculate entry price: (SOL spent / quantity received) * SOL/USD price
                 // Need SOL price from earlier calculation if not stored
@@ -227,7 +224,11 @@ class PortfolioOptimizer {
                 // entryPrice: calculateEntryPrice(executionResult, solPriceUsd), // Placeholder for calculation
                 entryPrice: executionResult.actualExecutionPrice || patternDetection.metrics.priceUsd, // Use actual if available, fallback to priceUsd
                 entryTimestamp: executionResult.timestamp || Date.now(),
-                initialSolCostLamports: (typeof executionResult.inputAmount === 'bigint' ? executionResult.inputAmount : executionResult.inputAmount !== undefined ? BigInt(executionResult.inputAmount) : BigInt(positionSizeLamports)), // SOL spent
+                initialSolCostLamports: typeof executionResult.inputAmount === 'bigint'
+                    ? executionResult.inputAmount
+                    : executionResult.inputAmount !== undefined
+                        ? BigInt(executionResult.inputAmount)
+                        : BigInt(positionSizeLamports), // SOL spent
                 quantity: BigInt(executedQuantitySmallestUnit), // Token quantity in smallest unit (BigInt)
                 currentPrice: executionResult.actualExecutionPrice || patternDetection.metrics.priceUsd, // Initial current price, fallback to priceUsd
                 stopLoss: 0, // Placeholder - ExitManager will set this
@@ -237,14 +238,18 @@ class PortfolioOptimizer {
                 timestamp: Date.now(), // Base position timestamp
             };
             this.activePositions.set(newPosition.id, newPosition);
-            logger_1.default.info('New position added to portfolio', { id: newPosition.id, token: newPosition.tokenSymbol, pattern: newPosition.pattern });
+            logger.info('New position added to portfolio', {
+                id: newPosition.id,
+                token: newPosition.tokenSymbol,
+                pattern: newPosition.pattern,
+            });
             // Let ExitManager start monitoring this position
             await this.config.exitManager.addPosition(newPosition);
             // Return the newly created ManagedPosition
             return newPosition;
         }
         catch (error) {
-            logger_1.default.error('Error evaluating pattern:', error?.message || error);
+            logger.error('Error evaluating pattern:', error?.message || error);
             return null;
         }
     }
@@ -255,20 +260,20 @@ class PortfolioOptimizer {
         try {
             const position = this.activePositions.get(positionId);
             if (position) {
-                logger_1.default.info(`PortfolioOptimizer handling position exit: ${position.tokenSymbol} (${positionId})`, { pnl: pnlPercent, reason });
+                logger.info(`PortfolioOptimizer handling position exit: ${position.tokenSymbol} (${positionId})`, { pnl: pnlPercent, reason });
                 this.activePositions.delete(positionId);
                 // Update pattern performance based on pnlPercent
                 this.updatePatternPerformance(position.pattern, pnlPercent);
             }
         }
         catch (error) {
-            logger_1.default.error('Error handling position exit', error);
-            tradeLogger_1.tradeLogger.logScenario('OPTIMIZATION_FAILURE', {
+            logger.error('Error handling position exit', error);
+            tradeLogger.logScenario('OPTIMIZATION_FAILURE', {
                 event: 'optimizationFailure',
                 token: positionId,
                 reason: error.message,
                 details: error,
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
             });
         }
     }
@@ -277,21 +282,21 @@ class PortfolioOptimizer {
      */
     updatePatternPerformance(pattern, pnlPercent) {
         if (!this.patternPerformance[pattern]) {
-            logger_1.default.warn(`Attempted to update performance for unknown pattern: ${pattern}`);
+            logger.warn(`Attempted to update performance for unknown pattern: ${pattern}`);
             return;
         }
         const perf = this.patternPerformance[pattern];
         const currentTotalReturn = perf.avgReturn * perf.recentTrades;
-        const currentWins = perf.successRate * perf.recentTrades / 100;
+        const currentWins = (perf.successRate * perf.recentTrades) / 100;
         perf.recentTrades += 1;
         const newPnl = pnlPercent ?? 0; // Treat undefined PNL as 0% for calculations
         const newWins = currentWins + (newPnl > 0 ? 1 : 0);
         perf.successRate = (newWins / perf.recentTrades) * 100;
         perf.avgReturn = (currentTotalReturn + newPnl) / perf.recentTrades;
-        logger_1.default.debug(`Updated performance for pattern: ${pattern}`, {
+        logger.debug(`Updated performance for pattern: ${pattern}`, {
             successRate: perf.successRate.toFixed(2) + '%',
             avgReturn: perf.avgReturn.toFixed(2) + '%',
-            trades: perf.recentTrades
+            trades: perf.recentTrades,
         });
     }
     /**
@@ -300,7 +305,7 @@ class PortfolioOptimizer {
     async canAddPosition() {
         // Check position count limit
         if (this.activePositions.size >= this.config.maxPositions) {
-            logger_1.default.debug(`Cannot add position: Already at max positions (${this.config.maxPositions})`);
+            logger.debug(`Cannot add position: Already at max positions (${this.config.maxPositions})`);
             return false;
         }
         // TODO: Verify RiskManager balance units (SOL vs USD)
@@ -308,7 +313,7 @@ class PortfolioOptimizer {
         const maxSolExposureLimit = currentSolBalance * ((this.config.maxExposurePercent ?? 100) / 100);
         const currentSolExposure = await this.getCurrentExposureSol();
         if (currentSolExposure >= maxSolExposureLimit) {
-            logger_1.default.debug(`Cannot add position: Current SOL exposure (${currentSolExposure}) meets or exceeds limit (${maxSolExposureLimit})`);
+            logger.debug(`Cannot add position: Current SOL exposure (${currentSolExposure}) meets or exceeds limit (${maxSolExposureLimit})`);
             return false;
         }
         return true;
@@ -325,11 +330,11 @@ class PortfolioOptimizer {
                 totalExposureLamports += position.initialSolCostLamports;
             }
             else {
-                logger_1.default.warn(`Position ${position.id} missing initialSolCostLamports for exposure calculation.`);
+                logger.warn(`Position ${position.id} missing initialSolCostLamports for exposure calculation.`);
             }
         }
-        const totalExposureSol = Number(totalExposureLamports) / web3_js_1.LAMPORTS_PER_SOL;
-        logger_1.default.debug(`Current total SOL exposure: ${totalExposureSol} (${totalExposureLamports} lamports)`);
+        const totalExposureSol = Number(totalExposureLamports) / LAMPORTS_PER_SOL;
+        logger.debug(`Current total SOL exposure: ${totalExposureSol} (${totalExposureLamports} lamports)`);
         return totalExposureSol;
     }
     /**
@@ -352,10 +357,11 @@ class PortfolioOptimizer {
         if (config.patternAllocation) {
             // Ensure allocations sum to 100%
             const sum = Object.values(config.patternAllocation).reduce((a, b) => a + b, 0);
-            if (Math.abs(sum - 100) > 1) { // Allow for small rounding errors
-                logger_1.default.warn('Pattern allocations do not sum to 100%', {
+            if (Math.abs(sum - 100) > 1) {
+                // Allow for small rounding errors
+                logger.warn('Pattern allocations do not sum to 100%', {
                     sum,
-                    allocations: config.patternAllocation
+                    allocations: config.patternAllocation,
                 });
                 // Normalize allocations
                 for (const pattern in config.patternAllocation) {
@@ -366,12 +372,12 @@ class PortfolioOptimizer {
         }
         this.config = {
             ...this.config,
-            ...config
+            ...config,
         };
-        logger_1.default.info('Portfolio optimizer configuration updated', {
+        logger.info('Portfolio optimizer configuration updated', {
             maxPositions: this.config.maxPositions,
             targetPositionValueUsd: this.config.targetPositionValueUsd,
-            maxExposure: this.config.maxExposurePercent + '%'
+            maxExposure: this.config.maxExposurePercent + '%',
         });
     }
     /**
@@ -379,7 +385,9 @@ class PortfolioOptimizer {
      * TODO: Implement actual vetting and buying logic.
      */
     async evaluateAndBuy(tokenInfo) {
-        logger_1.default.warn('PortfolioOptimizer.evaluateAndBuy is a placeholder. Implement logic!', { tokenInfo });
+        logger.warn('PortfolioOptimizer.evaluateAndBuy is a placeholder. Implement logic!', {
+            tokenInfo,
+        });
         // Example: Always return null for now to prevent unintended buys
         return null;
     }
@@ -388,13 +396,15 @@ class PortfolioOptimizer {
      * TODO: Implement logic to update internal state/metrics.
      */
     handlePositionClosure(tokenAddress) {
-        logger_1.default.warn('PortfolioOptimizer.handlePositionClosure is a placeholder. Implement logic!', { tokenAddress });
+        logger.warn('PortfolioOptimizer.handlePositionClosure is a placeholder. Implement logic!', {
+            tokenAddress,
+        });
         if (this.activePositions.has(tokenAddress)) {
             this.activePositions.delete(tokenAddress);
-            logger_1.default.info(`Placeholder: Removed closed position ${tokenAddress} from active positions.`);
+            logger.info(`Placeholder: Removed closed position ${tokenAddress} from active positions.`);
         }
         else {
-            logger_1.default.warn(`Placeholder: Received closure for unknown/already removed position ${tokenAddress}.`);
+            logger.warn(`Placeholder: Received closure for unknown/already removed position ${tokenAddress}.`);
         }
     }
     initializePatternAllocation() {
@@ -402,20 +412,19 @@ class PortfolioOptimizer {
         // TODO: Allow loading this from config file/env vars
         const defaultAllocation = 20; // Example: 20% per pattern if 5 patterns
         return {
-            "Mega Pump and Dump": defaultAllocation,
-            "Volatility Squeeze": defaultAllocation,
-            "Smart Money Trap": defaultAllocation,
-            "Algorithmic Stop Hunt": defaultAllocation,
-            "Smart Money Reversal": defaultAllocation,
-            "Volume Divergence": defaultAllocation,
-            "Hidden Accumulation": defaultAllocation,
-            "Wyckoff Spring": defaultAllocation,
-            "Liquidity Grab": defaultAllocation,
-            "FOMO Cycle": defaultAllocation,
-            "Volatility Breakout": defaultAllocation,
-            "Mean Reversion": defaultAllocation
+            'Mega Pump and Dump': defaultAllocation,
+            'Volatility Squeeze': defaultAllocation,
+            'Smart Money Trap': defaultAllocation,
+            'Algorithmic Stop Hunt': defaultAllocation,
+            'Smart Money Reversal': defaultAllocation,
+            'Volume Divergence': defaultAllocation,
+            'Hidden Accumulation': defaultAllocation,
+            'Wyckoff Spring': defaultAllocation,
+            'Liquidity Grab': defaultAllocation,
+            'FOMO Cycle': defaultAllocation,
+            'Volatility Breakout': defaultAllocation,
+            'Mean Reversion': defaultAllocation,
         };
     }
 }
-exports.PortfolioOptimizer = PortfolioOptimizer;
 //# sourceMappingURL=portfolioOptimizer.js.map

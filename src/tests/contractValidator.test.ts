@@ -1,4 +1,5 @@
-import { describe, test, expect } from 'vitest';
+import { vi, describe, test, expect } from 'vitest';
+vi.mock('../utils/logger', () => import('../mocks/mockLogger'));
 import { ContractValidator } from '../utils/contractValidator';
 import { Connection } from '@solana/web3.js';
 

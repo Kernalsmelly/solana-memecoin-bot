@@ -8,7 +8,12 @@ describe('PatternDetector', () => {
     const now = Date.now();
     // Simulate 12h of flat, then +40% price and 1.7x volume
     for (let i = 0; i < 24; i++) {
-      detector.handleOHLCV({ address, close: 1, volume: 100, timestamp: now - (24-i)*30*60*1000 });
+      detector.handleOHLCV({
+        address,
+        close: 1,
+        volume: 100,
+        timestamp: now - (24 - i) * 30 * 60 * 1000,
+      });
     }
     // Pump event
     let matched = false;
@@ -26,7 +31,12 @@ describe('PatternDetector', () => {
     // Simulate 1h of flat, then +15% price, 0.8x SMA volume, buyRatio 2
     // Fill window: 12 entries, 5min apart, all within last hour
     for (let i = 0; i < 12; i++) {
-      detector.handleOHLCV({ address, close: 1, volume: 100, timestamp: now - (11 - i) * 5 * 60 * 1000 });
+      detector.handleOHLCV({
+        address,
+        close: 1,
+        volume: 100,
+        timestamp: now - (11 - i) * 5 * 60 * 1000,
+      });
     }
     let matched = false;
     detector.on('patternMatch', (e: any) => {

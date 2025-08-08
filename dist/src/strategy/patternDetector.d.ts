@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { PatternDetectorConfig, PatternMatch } from '../types';
+import { PatternDetectorConfig, PatternMatch } from '../types.js';
 export type { PatternMatch };
 /**
  * Pattern Detector System

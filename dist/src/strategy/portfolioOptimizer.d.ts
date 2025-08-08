@@ -1,8 +1,8 @@
-import { ExitManager, ManagedPosition } from './exitManager';
-import { RiskManager } from '../live/riskManager';
-import { PatternType, PatternDetection } from '../types';
-import { OrderExecution } from '../types';
-import { BirdeyeAPI } from '../api/birdeyeAPI';
+import { ExitManager, ManagedPosition } from './exitManager.js';
+import { RiskManager } from '../live/riskManager.js';
+import { PatternType, PatternDetection } from '../types.js';
+import { OrderExecution } from '../types.js';
+import { BirdeyeAPI } from '../api/birdeyeAPI.js';
 interface PortfolioDependencies {
     orderExecution: OrderExecution;
     riskManager: RiskManager;

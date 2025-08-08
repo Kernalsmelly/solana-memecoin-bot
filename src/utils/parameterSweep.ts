@@ -5,7 +5,8 @@ import readline from 'readline';
 // Helper to parse CSV line
 function parseTradeLine(line: string) {
   // timestamp,action,token,pairAddress,price,amount,pnl,reason,,success
-  const [timestamp, action, token, pairAddress, price, amount, pnl, reason, , success] = line.split(',');
+  const [timestamp, action, token, pairAddress, price, amount, pnl, reason, , success] =
+    line.split(',');
   return {
     timestamp,
     action,
@@ -15,9 +16,8 @@ function parseTradeLine(line: string) {
     amount: parseFloat(amount ?? '0'),
     pnl: parseFloat(pnl ?? '0'),
     reason,
-    success: success === 'true'
+    success: success === 'true',
   };
-
 }
 
 // Read all trades from CSV
@@ -29,7 +29,10 @@ async function readTrades(csvPath: string) {
   });
   let first = true;
   for await (const line of rl) {
-    if (first) { first = false; continue; } // skip header
+    if (first) {
+      first = false;
+      continue;
+    } // skip header
     if (line.trim() === '') continue;
     trades.push(parseTradeLine(line));
   }
@@ -43,7 +46,11 @@ function pairTrades(trades: any[]) {
   for (const trade of trades) {
     if (trade.action === 'BUY') {
       currentBuy = trade;
-    } else if (trade.action === 'SELL' && currentBuy && trade.pairAddress === currentBuy.pairAddress) {
+    } else if (
+      trade.action === 'SELL' &&
+      currentBuy &&
+      trade.pairAddress === currentBuy.pairAddress
+    ) {
       pairs.push({ buy: currentBuy, sell: trade });
       currentBuy = null;
     }
@@ -64,7 +71,7 @@ async function runSweep() {
 
   // Sweep STOP_LOSS_PCT from 1% to 5% and TAKE_PROFIT_PCT from 1% to 10% in 0.5% increments
   for (let stopLoss = 0.01; stopLoss <= 0.05; stopLoss += 0.005) {
-    for (let takeProfit = 0.01; takeProfit <= 0.10; takeProfit += 0.005) {
+    for (let takeProfit = 0.01; takeProfit <= 0.1; takeProfit += 0.005) {
       let netPnl = 0;
       let wins = 0;
       let losses = 0;
@@ -82,13 +89,17 @@ async function runSweep() {
         }
         const pnl = (exit - entry) * buy.amount;
         netPnl += pnl;
-        if (pnl > 0) wins++; else losses++;
+        if (pnl > 0) wins++;
+        else losses++;
       }
       const winRate = wins / (wins + losses);
       if (netPnl > bestNetPnl || (netPnl === bestNetPnl && winRate > bestWinRate)) {
         bestNetPnl = netPnl;
         bestWinRate = winRate;
-        bestParams = { stopLoss: parseFloat(stopLoss.toFixed(3)), takeProfit: parseFloat(takeProfit.toFixed(3)) };
+        bestParams = {
+          stopLoss: parseFloat(stopLoss.toFixed(3)),
+          takeProfit: parseFloat(takeProfit.toFixed(3)),
+        };
         bestStats = { netPnl, winRate, wins, losses };
       }
     }
@@ -102,8 +113,14 @@ async function runSweep() {
   // Update config
   const configPath = path.join(__dirname, 'config.ts');
   let configContent = fs.readFileSync(configPath, 'utf-8');
-  configContent = configContent.replace(/stopLossPercent: getEnvAsNumber\('STOP_LOSS_PERCENT'\)[^,]*/, `stopLossPercent: ${bestParams.stopLoss}`);
-  configContent = configContent.replace(/takeProfitPercent: getEnvAsNumber\('TAKE_PROFIT_PERCENT'\)[^,]*/, `takeProfitPercent: ${bestParams.takeProfit}`);
+  configContent = configContent.replace(
+    /stopLossPercent: getEnvAsNumber\('STOP_LOSS_PERCENT'\)[^,]*/,
+    `stopLossPercent: ${bestParams.stopLoss}`,
+  );
+  configContent = configContent.replace(
+    /takeProfitPercent: getEnvAsNumber\('TAKE_PROFIT_PERCENT'\)[^,]*/,
+    `takeProfitPercent: ${bestParams.takeProfit}`,
+  );
   fs.writeFileSync(configPath, configContent);
 }
 

@@ -9,6 +9,7 @@ interface CoordinatorOptions {
     strategies: Strategy[];
     cooldownSec?: number;
     enabledStrategies?: string[];
+    stratWeightsInterval?: number;
 }
 export declare class StrategyCoordinator extends EventEmitter {
     private strategies;
@@ -21,7 +22,21 @@ export declare class StrategyCoordinator extends EventEmitter {
     /**
      * Called on every new OHLCV event. Schedules enabled strategies in order.
      */
+    private strategyWeights;
+    private strategyTradeHistory;
+    private stratWeightsInterval;
+    private weightUpdateTimer;
     handleOHLCV(event: any): Promise<void>;
+    setStrategyWeight(name: string, weight: number): void;
+    getStrategyWeight(name: string): number;
+    recordTrade(strategy: string, pnl: number, win: boolean): void;
+    getRecentStats(strategy: string): {
+        roi: number;
+        volatility: number;
+        winRate: number;
+    };
+    updateStrategyWeights(): void;
+    getWeightedStrategyOrder(): string[];
 }
 export default StrategyCoordinator;
 //# sourceMappingURL=strategyCoordinator.d.ts.map

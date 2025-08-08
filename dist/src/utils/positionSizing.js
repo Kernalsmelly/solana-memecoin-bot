@@ -1,6 +1,3 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.calculatePositionSize = calculatePositionSize;
 /**
  * Calculates optimal position size based on risk, liquidity, and available balance.
  * @param token TokenMetrics for the trade
@@ -8,7 +5,7 @@ exports.calculatePositionSize = calculatePositionSize;
  * @param accountBalance Current account balance info
  * @returns Position size in USD
  */
-function calculatePositionSize(token, riskManager, accountBalance) {
+export function calculatePositionSize(token, riskManager, accountBalance) {
     // Get max allowed position size from risk manager config
     const maxPositionUsd = riskManager.config.maxPositionValueUsd || 50;
     const minPositionUsd = riskManager.config.minPositionValueUsd || 10;

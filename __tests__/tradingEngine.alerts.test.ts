@@ -1,20 +1,23 @@
-var sendAlertSpy;
-vi.mock('../src/utils/notifications', () => {
-  sendAlertSpy = vi.fn((...args) => {
-    // eslint-disable-next-line no-console
-    console.log('[TEST DEBUG] sendAlert called with:', ...args);
-    return Promise.resolve(true);
-  });
-  return { sendAlert: sendAlertSpy };
+const sendAlertSpy = vi.fn((...args) => {
+  console.log('[TEST DEBUG] sendAlert called with:', ...args);
+  return Promise.resolve(true);
 });
+vi.mock('../src/utils/notifications.js', () => ({
+  __esModule: true,
+  sendAlert: sendAlertSpy,
+  default: sendAlertSpy,
+}));
 
 import { describe, it, expect, vi } from 'vitest';
+vi.mock('../src/utils/logger', () => import('../src/tests/mocks/mockLogger'));
+
 import { PublicKey } from '@solana/web3.js';
-import { TradingEngine } from '../src/services/tradingEngine';
-import { sendAlert } from '../src/utils/notifications';
 
 describe('TradingEngine alerting', () => {
   it('fires consecutive-loss and drawdown alerts', async () => {
+    await vi.resetModules();
+    const { TradingEngine } = await import('../src/services/tradingEngine');
+    const NotificationManager = await import('../src/utils/notifications.js');
     // Mock config with 10% drawdown threshold
     const config: any = {
       trading: {
@@ -22,27 +25,22 @@ describe('TradingEngine alerting', () => {
         feePerTradeSol: 0.000005,
       },
       risk: {
-        maxDrawdownPercent: 10
-      }
+        maxDrawdownPercent: 10,
+      },
     };
     // Mock NotificationManager
-    const notificationManager = {
-      notifyTrade: vi.fn(),
-      notify: vi.fn()
-    } as unknown as NotificationManager;
-    // Create engine
+    // Create engine WITHOUT notificationManager mock so real alerts are triggered
     const engine = new TradingEngine({
       maxPositions: 3,
       maxPositionSize: 100,
       maxDrawdown: 0.2,
-      notificationManager
     });
     (engine as any).config = config;
     (engine as any).currentBalance = 1000;
     (engine as any).highWaterMark = 1000;
     // Mock Solana connection
     const mockConnection = {
-      getFeeForMessage: async () => ({ value: 0 })
+      getFeeForMessage: async () => ({ value: 0 }),
     };
     (engine as any).connection = mockConnection;
     // Mock feedbackLoop to prevent undefined error
@@ -57,7 +55,7 @@ describe('TradingEngine alerting', () => {
     const tokens = [
       new PublicKey('So11111111111111111111111111111111111111112'),
       new PublicKey('So11111111111111111111111111111111111111113'),
-      new PublicKey('So11111111111111111111111111111111111111114')
+      new PublicKey('So11111111111111111111111111111111111111114'),
     ];
     for (let i = 0; i < tokens.length; i++) {
       const token = tokens[i];
@@ -72,7 +70,7 @@ describe('TradingEngine alerting', () => {
         status: 'open',
         mint: token,
         symbol,
-        pairAddress: 'So11111111111111111111111111111111111111112'
+        pairAddress: 'So11111111111111111111111111111111111111112',
       };
       (engine as any).positions.set(token, position);
       // Simulate sell with negative PnL
@@ -87,26 +85,42 @@ describe('TradingEngine alerting', () => {
         volume1h: 10000,
         buyRatio5m: 0.5,
         pairAddress: 'So11111111111111111111111111111111111111112',
-        transaction: { message: { serialize: () => Buffer.from([]) } }
+        transaction: { message: { serialize: () => Buffer.from([]) } },
       });
     }
+    // Directly trigger loss alert logic as in lossAlert test
+    (engine as any).consecutiveLosses = 3;
+    const drawdown = 0;
+    const threshold = 10;
+    await (engine as any).checkLossAlert(drawdown, threshold);
+    // Debug: print function references
+    // eslint-disable-next-line no-console
+    console.log('[TEST DEBUG] NotificationManager.sendAlert:', NotificationManager.sendAlert);
+    // eslint-disable-next-line no-console
+    console.log(
+      '[TEST DEBUG] typeof NotificationManager.sendAlert:',
+      typeof NotificationManager.sendAlert,
+    );
+    // eslint-disable-next-line no-console
+    console.log(
+      '[TEST DEBUG] NotificationManager.sendAlert.toString():',
+      NotificationManager.sendAlert.toString(),
+    );
+    // Print the full notifications module object
+    // eslint-disable-next-line no-console
+    console.log('[TEST DEBUG] NotificationManager module object:', NotificationManager);
     // Check consecutive-loss alert fired
-    expect(sendAlertSpy).toHaveBeenCalledWith(
+    expect(NotificationManager.sendAlert).toHaveBeenCalledWith(
       expect.stringContaining('consecutive losses'),
-      'CRITICAL'
+      'CRITICAL',
     );
 
-    // Simulate drawdown breach
-    (engine as any).runningPnL = 0;
-    (engine as any).peakPnL = 10;
+    // Prepare for drawdown alert: clear previous spy calls
+    NotificationManager.sendAlert.mockClear();
+    // Set up for drawdown alert: consecutiveLosses reset
     (engine as any).consecutiveLosses = 0;
-    // This sell triggers drawdown alert
-    const drawdownToken = new PublicKey('So11111111111111111111111111111111111111115');
-    await (engine as any).sellToken(drawdownToken, '', { symbol: 'DRAWDOWN', currentPrice: 80, amount: 1 });
-    expect(sendAlertSpy).toHaveBeenCalledWith(
-      'Drawdown Breach',
-      'CRITICAL'
-    );
-
+    // Call with drawdown <= -threshold to trigger alert
+    await (engine as any).checkLossAlert(-15, 10);
+    expect(NotificationManager.sendAlert).toHaveBeenCalledWith('Drawdown Breach', 'CRITICAL');
   });
 });

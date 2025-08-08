@@ -1,11 +1,5 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.globalCacheManager = exports.CacheManager = exports.LRUCache = void 0;
-const logger_1 = __importDefault(require("./logger"));
-class LRUCache {
+import logger from './logger.js';
+export class LRUCache {
     cache;
     maxSize;
     ttl;
@@ -13,19 +7,15 @@ class LRUCache {
     constructor(options = {}) {
         this.cache = new Map();
         // Validate and set maxSize
-        this.maxSize = (options.maxSize !== undefined && options.maxSize > 0)
-            ? options.maxSize
-            : 1000; // Default: 1000
+        this.maxSize = options.maxSize !== undefined && options.maxSize > 0 ? options.maxSize : 1000; // Default: 1000
         // Validate and set ttl
-        this.ttl = (options.ttl !== undefined && options.ttl > 0)
-            ? options.ttl
-            : 10 * 60 * 1000; // Default: 10 minutes
+        this.ttl = options.ttl !== undefined && options.ttl > 0 ? options.ttl : 10 * 60 * 1000; // Default: 10 minutes
         this.onEvict = options.onEvict;
         if (options.maxSize !== undefined && options.maxSize <= 0) {
-            logger_1.default.warn(`LRUCache: Invalid maxSize (${options.maxSize}). Using default: ${this.maxSize}`);
+            logger.warn(`LRUCache: Invalid maxSize (${options.maxSize}). Using default: ${this.maxSize}`);
         }
         if (options.ttl !== undefined && options.ttl <= 0) {
-            logger_1.default.warn(`LRUCache: Invalid ttl (${options.ttl}). Using default: ${this.ttl}ms`);
+            logger.warn(`LRUCache: Invalid ttl (${options.ttl}). Using default: ${this.ttl}ms`);
         }
     }
     // Get an item from the cache
@@ -130,20 +120,19 @@ class LRUCache {
         return Array.from(this.cache.keys());
     }
 }
-exports.LRUCache = LRUCache;
 // CacheManager to handle multiple caches
-class CacheManager {
+export class CacheManager {
     caches = new Map();
     cleanupInterval = null;
     constructor(cleanupIntervalMs = 60000) {
         // Validate cleanup interval
-        const validInterval = (cleanupIntervalMs > 0) ? cleanupIntervalMs : 60000;
+        const validInterval = cleanupIntervalMs > 0 ? cleanupIntervalMs : 60000;
         // Set up automatic cleanup
         this.cleanupInterval = setInterval(() => {
             this.cleanupAll();
         }, validInterval);
         if (cleanupIntervalMs <= 0) {
-            logger_1.default.warn(`CacheManager: Invalid cleanupIntervalMs (${cleanupIntervalMs}). Using default: ${validInterval}ms`);
+            logger.warn(`CacheManager: Invalid cleanupIntervalMs (${cleanupIntervalMs}). Using default: ${validInterval}ms`);
         }
     }
     // Create or get a cache
@@ -171,7 +160,7 @@ class CacheManager {
     // Clean up all caches
     cleanupAll() {
         let totalRemoved = 0;
-        this.caches.forEach(cache => {
+        this.caches.forEach((cache) => {
             totalRemoved += cache.cleanup();
         });
         if (totalRemoved > 0) {
@@ -184,11 +173,10 @@ class CacheManager {
             clearInterval(this.cleanupInterval);
             this.cleanupInterval = null;
         }
-        this.caches.forEach(cache => cache.clear());
+        this.caches.forEach((cache) => cache.clear());
         this.caches.clear();
     }
 }
-exports.CacheManager = CacheManager;
 // Create a global instance of the cache manager
-exports.globalCacheManager = new CacheManager();
+export const globalCacheManager = new CacheManager();
 //# sourceMappingURL=cache.js.map

@@ -1,5 +1,5 @@
-import { startStream } from "../src/api/birdeyeAPI.startStream.ts";
-import { scoreOpportunity } from "../src/utils/opportunityScorer";
+import { startStream } from '../src/api/birdeyeAPI.startStream.js';
+import { scoreOpportunity } from '../src/utils/opportunityScorer.js';
 
 process.on('uncaughtException', (err) => {
   console.error('[smokeTest] Uncaught Exception:', err);
@@ -10,23 +10,23 @@ process.on('unhandledRejection', (reason) => {
   process.exit(1);
 });
 
-console.log("[smokeTest] Smoke test started");
-console.log("[smokeTest] About to call startStream...");
+console.log('[smokeTest] Smoke test started');
+console.log('[smokeTest] About to call startStream...');
 try {
   startStream((snapshot: any) => {
-    console.log("[smokeTest] Callback fired", snapshot);
+    console.log('[smokeTest] Callback fired', snapshot);
     const score = scoreOpportunity(snapshot).score;
     console.log(`[smokeTest] Opportunity score: ${score}`);
     if (score >= 60) {
-      console.log("🔥", snapshot);
+      console.log('🔥', snapshot);
     } else {
-      console.log("[smokeTest] Snapshot received, but score < 60", snapshot);
+      console.log('[smokeTest] Snapshot received, but score < 60', snapshot);
     }
-    console.log("[smokeTest] Smoke test finished");
+    console.log('[smokeTest] Smoke test finished');
     process.exit(0);
   });
   setTimeout(() => {}, 1000);
 } catch (err) {
-  console.error("[smokeTest] Error:", err);
+  console.error('[smokeTest] Error:', err);
   process.exit(1);
 }

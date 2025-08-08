@@ -1,13 +1,7 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.PaperTradingEngine = void 0;
-const logger_1 = __importDefault(require("../utils/logger"));
-const events_1 = require("events");
-const web3_js_1 = require("@solana/web3.js");
-class PaperTradingEngine extends events_1.EventEmitter {
+import logger from '../utils/logger.js';
+import { EventEmitter } from 'events';
+import { PublicKey } from '@solana/web3.js';
+export class PaperTradingEngine extends EventEmitter {
     positions;
     maxPositions;
     maxPositionSize;
@@ -41,14 +35,14 @@ class PaperTradingEngine extends events_1.EventEmitter {
             }
         }
         catch (error) {
-            logger_1.default.error('Error processing trading signal:', error);
+            logger.error('Error processing trading signal:', error);
             this.emit('error', error);
         }
     }
     async openPosition(signal) {
         // Check if we can open a new position
         if (this.positions.size >= this.maxPositions) {
-            logger_1.default.warn('Maximum positions reached, cannot open new position');
+            logger.warn('Maximum positions reached, cannot open new position');
             return;
         }
         // Check if position size is within limits
@@ -60,7 +54,7 @@ class PaperTradingEngine extends events_1.EventEmitter {
             id: `${signal.tokenAddress}-${Date.now()}`,
             tokenAddress: signal.tokenAddress,
             tokenSymbol: 'UNKNOWN', // TEMP FIX: Symbol not in signal
-            tokenMint: new web3_js_1.PublicKey(signal.tokenAddress), // TEMP FIX: Placeholder
+            tokenMint: new PublicKey(signal.tokenAddress), // TEMP FIX: Placeholder
             tokenDecimals: 9, // TEMP FIX: Placeholder
             quantity: signal.positionSize / signal.price, // TEMP FIX: Placeholder calculation
             entryPrice: signal.price,
@@ -70,24 +64,24 @@ class PaperTradingEngine extends events_1.EventEmitter {
             takeProfit: 0, // TEMP FIX: Placeholder
             status: 'open',
             pnl: 0,
-            timestamp: Date.now()
+            timestamp: Date.now(),
         };
         // Save position
         this.positions.set(signal.tokenAddress, position);
         // Notify
-        await this.notificationManager.notifyTrade('open', position);
+        await this.notificationManager.notifyTrade(position);
         this.emit('trade', { type: 'open', position });
     }
     async closePosition(tokenAddress) {
         const position = this.positions.get(tokenAddress);
         if (!position) {
-            logger_1.default.warn(`No position found for token: ${tokenAddress}`);
+            logger.warn(`No position found for token: ${tokenAddress}`);
             return;
         }
         // Update position status
         position.status = 'closed';
         // Calculate PnL
-        const pnl = position.size * (position.currentPrice - position.entryPrice) / position.entryPrice;
+        const pnl = (position.size * (position.currentPrice - position.entryPrice)) / position.entryPrice;
         position.pnl = pnl;
         // Update balance and metrics
         this.currentBalance += pnl;
@@ -101,13 +95,13 @@ class PaperTradingEngine extends events_1.EventEmitter {
         // Remove position
         this.positions.delete(tokenAddress);
         // Notify
-        await this.notificationManager.notifyTrade('close', position);
+        await this.notificationManager.notifyTrade(position);
         this.emit('trade', { type: 'close', position });
     }
     getRiskMetrics() {
         const drawdown = ((this.highWaterMark - this.currentBalance) / this.highWaterMark) * 100;
         const totalTrades = this.positions.size;
-        const profitableTrades = Array.from(this.positions.values()).filter(p => typeof p.pnl === 'number' && p.pnl > 0).length;
+        const profitableTrades = Array.from(this.positions.values()).filter((p) => typeof p.pnl === 'number' && p.pnl > 0).length;
         const winRate = totalTrades > 0 ? (profitableTrades / totalTrades) * 100 : 0;
         return {
             currentBalance: this.currentBalance,
@@ -117,7 +111,7 @@ class PaperTradingEngine extends events_1.EventEmitter {
             activePositions: this.positions.size,
             availablePositions: this.maxPositions - this.positions.size,
             highWaterMark: this.highWaterMark,
-            dailyLoss: this.dailyLoss
+            dailyLoss: this.dailyLoss,
         };
     }
     getPositions() {
@@ -133,7 +127,7 @@ class PaperTradingEngine extends events_1.EventEmitter {
             // Check stop loss
             if (price <= position.stopLoss) {
                 await this.closePosition(tokenAddress);
-                logger_1.default.info(`Stop loss triggered for ${position.tokenSymbol}`);
+                logger.info(`Stop loss triggered for ${position.tokenSymbol}`);
             }
         }
     }
@@ -142,5 +136,4 @@ class PaperTradingEngine extends events_1.EventEmitter {
         this.dailyLoss = 0;
     }
 }
-exports.PaperTradingEngine = PaperTradingEngine;
 //# sourceMappingURL=paperTrading.js.map

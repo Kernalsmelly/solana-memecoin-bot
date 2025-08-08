@@ -1,14 +1,8 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.fetchHeliusTokenMetadata = fetchHeliusTokenMetadata;
-const axios_1 = __importDefault(require("axios"));
-async function fetchHeliusTokenMetadata(address, heliusApiKey) {
+import axios from 'axios';
+export async function fetchHeliusTokenMetadata(address, heliusApiKey) {
     try {
         const url = `https://api.helius.xyz/v0/token-metadata?api-key=${heliusApiKey}`;
-        const res = await axios_1.default.post(url, {
+        const res = await axios.post(url, {
             mintAccounts: [address],
         });
         if (res.data && Array.isArray(res.data) && res.data.length > 0) {

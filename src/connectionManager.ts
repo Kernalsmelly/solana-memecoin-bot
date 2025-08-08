@@ -27,7 +27,7 @@ class ConnectionManager {
   public async getConnection(): Promise<Connection> {
     return this.connection;
   }
-  
+
   public getConnectionSync(): Connection {
     return this.connection;
   }

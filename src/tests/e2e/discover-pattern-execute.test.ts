@@ -1,4 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
+vi.mock('../../../src/utils/logger', () => import('../mocks/mockLogger'));
+
 import { EventEmitter } from 'events';
 import { PatternDetector } from '../../../src/strategy/patternDetector';
 import DryRunOrderExecution from '../../../src/orderExecution/index';
@@ -19,9 +21,9 @@ describe('E2E: discover → pattern → execute loop', () => {
       config: {
         maxPositionValueUsd: 100,
         minPositionValueUsd: 10,
-        maxLiquidityPercent: 0.05
+        maxLiquidityPercent: 0.05,
       },
-      canOpenPosition: () => true
+      canOpenPosition: () => true,
     };
     const tokenDiscovery = new MockTokenDiscovery();
     const detector = new PatternDetector({
@@ -29,7 +31,7 @@ describe('E2E: discover → pattern → execute loop', () => {
       riskManager: mockRiskManager as any,
       maxTokenAge: 48,
       minLiquidity: 1000,
-      maxPositionValue: 100
+      maxPositionValue: 100,
     });
     const dryRunExec = new DryRunOrderExecution(mockRiskManager);
 
@@ -43,7 +45,7 @@ describe('E2E: discover → pattern → execute loop', () => {
         outputMint: 'USDC111111111111111111111111111111111111111',
         amountIn: 1000,
         userPublicKey: 'user111',
-        meta: { signal }
+        meta: { signal },
       });
     });
 
@@ -58,7 +60,7 @@ describe('E2E: discover → pattern → execute loop', () => {
       priceChange24h: 100,
       volumeChange24h: 100,
       buyRatio: 10,
-      priceHistory: prices
+      priceHistory: prices,
     };
     tokenDiscovery.emitToken(token);
 

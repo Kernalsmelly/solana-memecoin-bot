@@ -27,7 +27,12 @@ export class ParameterFeedbackLoop extends EventEmitter {
   private tradeLogPath: string;
   private tradeCount: number = 0;
 
-  constructor(initialParams: ParamConfig, tradeLogPath: string, bufferSize = 25, sweepInterval = 5) {
+  constructor(
+    initialParams: ParamConfig,
+    tradeLogPath: string,
+    bufferSize = 25,
+    sweepInterval = 5,
+  ) {
     super();
     this.currentParams = initialParams;
     this.tradeLogPath = tradeLogPath;
@@ -82,11 +87,17 @@ export class ParameterFeedbackLoop extends EventEmitter {
     // In a real system, this would simulate or filter trades by params
     // Here, just compute stats on the buffer for demonstration
     const trades = this.tradeBuffer;
-    let wins = 0, losses = 0, pnlSum = 0, maxDrawdown = 0, runningPnL = 0, peak = 0;
+    let wins = 0,
+      losses = 0,
+      pnlSum = 0,
+      maxDrawdown = 0,
+      runningPnL = 0,
+      peak = 0;
     for (const t of trades) {
       const pnl = parseFloat(t.pnl || '0');
       pnlSum += pnl;
-      if (pnl > 0) wins++; else losses++;
+      if (pnl > 0) wins++;
+      else losses++;
       runningPnL += pnl;
       if (runningPnL > peak) peak = runningPnL;
       const drawdown = peak - runningPnL;
@@ -105,11 +116,13 @@ export class ParameterFeedbackLoop extends EventEmitter {
     try {
       const csv = readFileSync(this.tradeLogPath, 'utf8');
       const lines = csv.trim().split('\n');
+      if (!lines.length) throw new Error('No lines available');
+      if (!lines[0]) throw new Error('No lines available');
       const header = lines[0].split(',');
-      const trades = lines.slice(1).map(line => {
+      const trades = lines.slice(1).map((line) => {
         const parts = line.split(',');
         const obj: any = {};
-        header.forEach((h, i) => obj[h] = parts[i]);
+        header.forEach((h, i) => (obj[h] = parts[i]));
         return obj;
       });
       this.tradeBuffer = trades.slice(-this.bufferSize);

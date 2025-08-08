@@ -9,13 +9,18 @@ describe('Integration: Pattern & Exit Flow', () => {
     const address = '0xINTEG';
     const now = Date.now();
     let patternFired = false;
-    let exitPromise = new Promise<void>(resolve => {
+    let exitPromise = new Promise<void>((resolve) => {
       exitManager.on('exitFilled', () => resolve());
     });
     detector.on('patternMatch', (e: any) => {
       patternFired = true;
       exitManager.scheduleExit(address, e.details.close12h || e.details.close, now);
-      console.log('[TEST] Scheduled exit for', address, 'at', e.details.close12h || e.details.close);
+      console.log(
+        '[TEST] Scheduled exit for',
+        address,
+        'at',
+        e.details.close12h || e.details.close,
+      );
       // Simulate price drop after scheduling exit
       setTimeout(() => {
         console.log('[TEST] Sending price update for', address, 'price 1.26');
@@ -24,11 +29,15 @@ describe('Integration: Pattern & Exit Flow', () => {
     });
     // Simulate pump/dump pattern
     for (let i = 0; i < 24; i++) {
-      detector.handleOHLCV({ address, close: 1, volume: 100, timestamp: now - (24-i)*30*60*1000 });
+      detector.handleOHLCV({
+        address,
+        close: 1,
+        volume: 100,
+        timestamp: now - (24 - i) * 30 * 60 * 1000,
+      });
     }
     detector.handleOHLCV({ address, close: 1.41, volume: 170, timestamp: now });
     await exitPromise;
     expect(patternFired).toBe(true);
-
   });
 });

@@ -1,4 +1,4 @@
-import { MockPriceFeed } from './utils/mockPriceFeed';
+import { MockPriceFeed } from './utils/mockPriceFeed.js';
 export declare enum TradeType {
     BUY = "BUY",
     SELL = "SELL"

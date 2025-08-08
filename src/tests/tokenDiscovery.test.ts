@@ -1,3 +1,5 @@
+import { vi } from 'vitest';
+vi.mock('../../src/utils/logger.js', () => import('../mocks/mockLogger'));
 import { TokenDiscovery } from '../discovery/tokenDiscovery';
 
 describe('TokenDiscovery', () => {

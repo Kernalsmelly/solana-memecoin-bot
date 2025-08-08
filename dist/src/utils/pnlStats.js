@@ -1,7 +1,4 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.computePnLSummary = computePnLSummary;
-function computePnLSummary(fills) {
+export function computePnLSummary(fills) {
     let pnl = 0;
     let peak = 0;
     let maxDrawdown = 0;

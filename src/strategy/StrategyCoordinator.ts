@@ -33,8 +33,9 @@ export class StrategyCoordinator extends EventEmitter {
   enqueueToken(token: string) {
     // Prevent enqueue if token is active or already queued
     if (this.activeTokens.has(token) || this.queue.includes(token)) return;
-    // If on cooldown, do not enqueue
-    if (this.isOnCooldown(token)) return;
+    console.debug(
+      `[Coordinator] enqueueToken: ${token} (active: ${Array.from(this.activeTokens)}, queue: ${this.queue}, cooldowns: ${Array.from(this.cooldowns)})`,
+    );
     this.queue.push(token);
     this.tryDispatch();
   }
@@ -43,24 +44,35 @@ export class StrategyCoordinator extends EventEmitter {
    * Call when a token's trade completes (to start cooldown)
    */
   completeToken(token: string) {
+    const eligible = Date.now() + this.cooldownMs;
+    this.cooldowns.set(token, eligible);
     this.activeTokens.delete(token);
-    this.cooldowns.set(token, Date.now());
+    console.debug(
+      `[Coordinator] completeToken: ${token} (active: ${Array.from(this.activeTokens)}, queue: ${this.queue}, cooldowns: ${Array.from(this.cooldowns.keys())})`,
+    );
     setTimeout(() => {
-      this.cooldowns.delete(token);
-      this.tryDispatch();
+      // Only remove if the eligible time has passed
+      if (this.cooldowns.get(token) && Date.now() >= this.cooldowns.get(token)!) {
+        this.cooldowns.delete(token);
+        console.debug(
+          `[Coordinator] cooldown expired: ${token} (active: ${Array.from(this.activeTokens)}, queue: ${this.queue}, cooldowns: ${Array.from(this.cooldowns.keys())})`,
+        );
+        this.tryDispatch();
+      }
     }, this.cooldownMs);
-    this.tryDispatch();
+    // Do not call tryDispatch here; only after cooldown expires
   }
 
   private isOnCooldown(token: string): boolean {
     if (!this.cooldowns.has(token)) return false;
-    const since = Date.now() - this.cooldowns.get(token)!;
-    return since < this.cooldownMs;
+    const eligible = this.cooldowns.get(token)!;
+    return Date.now() < eligible;
   }
 
   private tryDispatch() {
     while (this.activeTokens.size < this.maxConcurrent && this.queue.length > 0) {
       const token = this.queue[0];
+      if (!token) break;
       if (this.isOnCooldown(token) || this.activeTokens.has(token)) {
         // If the token at the front is not ready, break (don't cycle)
         break;
@@ -68,6 +80,9 @@ export class StrategyCoordinator extends EventEmitter {
       // Token is ready for dispatch
       this.queue.shift();
       this.activeTokens.add(token);
+      console.debug(
+        `[Coordinator] dispatching: ${token} (active: ${Array.from(this.activeTokens)}, queue: ${this.queue}, cooldowns: ${Array.from(this.cooldowns)})`,
+      );
       this.emit('tokenDispatch', token);
     }
   }

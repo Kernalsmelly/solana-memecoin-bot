@@ -1,5 +1,5 @@
-import { tradeSimulator } from '../src/tradeSimulator';
-import { mockPriceFeed } from '../src/utils/mockPriceFeed';
+import { tradeSimulator } from '../src/tradeSimulator.js';
+import { mockPriceFeed } from '../src/utils/mockPriceFeed.js';
 
 async function main() {
   // Use a token present in the mock price database

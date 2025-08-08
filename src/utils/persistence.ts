@@ -40,7 +40,7 @@ export async function saveOpenPositions(positions: any[], maxRetries = 3) {
     } catch (err) {
       attempt++;
       if (attempt >= maxRetries) throw err;
-      await new Promise(res => setTimeout(res, 200 * attempt));
+      await new Promise((res) => setTimeout(res, 200 * attempt));
     }
   }
 }
@@ -54,14 +54,19 @@ export async function loadOpenPositions(): Promise<any[]> {
     return JSON.parse(content);
   } catch (err) {
     // Backup corrupted file
-    const backupFile = OPEN_POSITIONS_FILE + '.corrupt_' + new Date().toISOString().replace(/[:.]/g, '-');
+    const backupFile =
+      OPEN_POSITIONS_FILE + '.corrupt_' + new Date().toISOString().replace(/[:.]/g, '-');
     try {
       await fs.promises.rename(OPEN_POSITIONS_FILE, backupFile);
     } catch (backupErr) {
       // Ignore backup errors, just log
       console.error('[Persistence] Failed to backup corrupt openPositions.json:', backupErr);
     }
-    console.error('[Persistence] Corrupted openPositions.json detected and backed up:', backupFile, err);
+    console.error(
+      '[Persistence] Corrupted openPositions.json detected and backed up:',
+      backupFile,
+      err,
+    );
     return [];
   }
 }

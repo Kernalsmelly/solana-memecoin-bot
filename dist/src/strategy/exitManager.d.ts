@@ -1,9 +1,9 @@
 import { EventEmitter } from 'events';
-import { OrderExecution } from '../types';
-import { Position } from '../types';
-import { RiskManager } from '../live/riskManager';
-import { BirdeyeAPI } from '../api/birdeyeAPI';
-import { PatternType } from '../types';
+import { OrderExecution } from '../types.js';
+import { Position } from '../types.js';
+import { RiskManager } from '../live/riskManager.js';
+import { BirdeyeAPI } from '../api/birdeyeAPI.js';
+import { PatternType } from '../types.js';
 interface TrailingStopState {
     percent: number;
     highestPrice: number;

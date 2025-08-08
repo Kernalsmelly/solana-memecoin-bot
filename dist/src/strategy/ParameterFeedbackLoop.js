@@ -1,12 +1,6 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.ParameterFeedbackLoop = void 0;
-const events_1 = __importDefault(require("events"));
-const fs_1 = require("fs");
-class ParameterFeedbackLoop extends events_1.default {
+import EventEmitter from 'events';
+import { readFileSync } from 'fs';
+export class ParameterFeedbackLoop extends EventEmitter {
     tradeBuffer = [];
     bufferSize;
     sweepInterval;
@@ -89,13 +83,17 @@ class ParameterFeedbackLoop extends events_1.default {
     loadRecentTrades() {
         // Optionally load last N trades from CSV
         try {
-            const csv = (0, fs_1.readFileSync)(this.tradeLogPath, 'utf8');
+            const csv = readFileSync(this.tradeLogPath, 'utf8');
             const lines = csv.trim().split('\n');
+            if (!lines.length)
+                throw new Error('No lines available');
+            if (!lines[0])
+                throw new Error('No lines available');
             const header = lines[0].split(',');
-            const trades = lines.slice(1).map(line => {
+            const trades = lines.slice(1).map((line) => {
                 const parts = line.split(',');
                 const obj = {};
-                header.forEach((h, i) => obj[h] = parts[i]);
+                header.forEach((h, i) => (obj[h] = parts[i]));
                 return obj;
             });
             this.tradeBuffer = trades.slice(-this.bufferSize);
@@ -105,5 +103,4 @@ class ParameterFeedbackLoop extends events_1.default {
         }
     }
 }
-exports.ParameterFeedbackLoop = ParameterFeedbackLoop;
 //# sourceMappingURL=ParameterFeedbackLoop.js.map

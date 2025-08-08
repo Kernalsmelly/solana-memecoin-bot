@@ -5,4 +5,5 @@ declare const logger: {
     debug: (message: string, meta?: any) => void;
 };
 export default logger;
+export { logger };
 //# sourceMappingURL=logger.d.ts.map

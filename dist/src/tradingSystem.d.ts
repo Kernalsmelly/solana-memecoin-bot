@@ -1,5 +1,5 @@
 import { Connection } from '@solana/web3.js';
-import { Position } from './types';
+import { Position } from './types.js';
 export declare class TradingSystem {
     private strategyCoordinator;
     private latestPatterns;

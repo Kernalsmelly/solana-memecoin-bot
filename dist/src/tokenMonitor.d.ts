@@ -1,4 +1,4 @@
-import { TokenMetrics, PatternDetection } from './types';
+import { TokenMetrics, PatternDetection } from './types.js';
 import { EventEmitter } from 'events';
 export declare class TokenMonitor extends EventEmitter {
     private tokens;

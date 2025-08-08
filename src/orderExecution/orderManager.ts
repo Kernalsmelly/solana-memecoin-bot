@@ -1,5 +1,5 @@
 import { Connection, Transaction, VersionedTransaction } from '@solana/web3.js';
-import { Signer, AnySolanaTx } from './signer';
+import { Signer, AnySolanaTx } from './signer.js';
 import EventEmitter from 'events';
 
 export interface Order {
@@ -21,13 +21,23 @@ export class OrderManager extends EventEmitter {
   private orders: Map<string, Order> = new Map();
   private connection: Connection;
   private signer: Signer;
-  private pollInterval: number = 5000;
+  private pollInterval: number;
+
   private poller?: NodeJS.Timeout;
 
   constructor(connection: Connection, signer: Signer) {
     super();
     this.connection = connection;
     this.signer = signer;
+    // Use ORDER_STATUS_POLL_INTERVAL_MS, else POLLING_INTERVAL_SECONDS, else default 5000ms
+    try {
+      const { config } = require('../utils/config.js');
+      this.pollInterval = config.trading?.orderStatusPollIntervalMs
+        || (config.tokenMonitor?.pollingIntervalSeconds ? config.tokenMonitor.pollingIntervalSeconds * 1000 : undefined)
+        || 5000;
+    } catch (e) {
+      this.pollInterval = 5000;
+    }
   }
 
   async placeOrder(tx: Transaction | VersionedTransaction): Promise<string> {
@@ -50,25 +60,27 @@ export class OrderManager extends EventEmitter {
     const poll = async () => {
       const order = this.orders.get(signature);
       if (!order || order.status !== 'pending') return;
+      const pollTimestamp = new Date().toISOString();
       try {
         const statuses = await this.connection.getSignatureStatuses([signature]);
         const status = statuses.value[0];
         if (status && status.confirmationStatus === 'confirmed') {
           order.status = 'confirmed';
           order.filledAt = Date.now();
-          // Log [OrderConfirmedEvent]
-          // eslint-disable-next-line no-console
-          console.log(`[OrderConfirmedEvent] Signature: ${signature} Status: confirmed`);
+          console.log(`[OrderConfirmedEvent] Signature: ${signature} Status: confirmed at ${pollTimestamp}`);
           this.emit('orderFilled', order);
         } else if (status && status.err) {
           order.status = 'failed';
           order.error = JSON.stringify(status.err);
+          console.error(`[OrderFailedEvent] Signature: ${signature} Error: ${order.error} at ${pollTimestamp}`);
           this.emit('orderFailed', order);
         } else {
           // still pending
+          console.log(`[OrderPoll] Signature: ${signature} still pending at ${pollTimestamp} (next poll in ${this.pollInterval}ms)`);
           setTimeout(poll, this.pollInterval);
         }
       } catch (e) {
+        console.error(`[OrderPollError] Signature: ${signature} Error:`, e, `at ${pollTimestamp}`);
         setTimeout(poll, this.pollInterval);
       }
     };

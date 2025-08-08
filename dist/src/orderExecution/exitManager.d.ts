@@ -1,4 +1,4 @@
-import { OrderManager, Order } from './orderManager';
+import { OrderManager, Order } from './orderManager.js';
 import EventEmitter from 'events';
 export interface ExitOrder {
     parentSignature: string;

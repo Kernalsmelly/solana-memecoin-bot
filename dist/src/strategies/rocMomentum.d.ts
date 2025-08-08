@@ -1,4 +1,4 @@
-import { PricePoint } from '../utils/mockPriceFeed';
+import { PricePoint } from '../utils/mockPriceFeed.js';
 interface MomentumAnalysis {
     signal: 'BUY' | 'SELL' | 'HOLD';
     roc: number;

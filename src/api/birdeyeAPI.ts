@@ -82,7 +82,8 @@ export class BirdeyeAPI extends EventEmitter {
   private async _startRestPolling() {
     const axios = require('axios');
     const { globalRateLimiter } = require('../utils/rateLimiter');
-    const API_URL = 'https://public-api.birdeye.so/public/pool/all?sort_by=created_at&sort_type=desc&offset=0&limit=20';
+    const API_URL =
+      'https://public-api.birdeye.so/public/pool/all?sort_by=created_at&sort_type=desc&offset=0&limit=20';
     const headers = { 'X-API-KEY': this.key };
     let errorCount = 0;
     let lastErrorLog = 0;
@@ -122,11 +123,12 @@ export class BirdeyeAPI extends EventEmitter {
     poll();
   }
 
-
   /**
    * Fetch token metadata from Birdeye. Returns mock data if premium is disabled.
    */
-  async getTokenMetadata(address: string): Promise<{ address: string; name: string; symbol: string; liquidity?: number }> {
+  async getTokenMetadata(
+    address: string,
+  ): Promise<{ address: string; name: string; symbol: string; liquidity?: number }> {
     if (!this.usePremium) {
       // Deterministic mock for tests or CI
       return { address, name: 'Dummy', symbol: 'DUM', liquidity: 100000 }; // Mock $100k liquidity for CI/tests

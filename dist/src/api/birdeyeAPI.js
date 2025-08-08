@@ -1,17 +1,11 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.BirdeyeAPI = void 0;
-const events_1 = __importDefault(require("events"));
+import EventEmitter from 'events';
 const POLL_INTERVAL = 10000; // 10 seconds
 /**
  * BirdeyeAPI provides REST access to Birdeye premium endpoints for token metadata and price.
  * All usage is gated behind the USE_PREMIUM_DATA environment variable.
  * When premium data is disabled, mock data is returned for interface compatibility.
  */
-class BirdeyeAPI extends events_1.default {
+export class BirdeyeAPI extends EventEmitter {
     /**
      * Connect to Birdeye WebSocket (stub for free tier).
      * For free tier, use REST polling fallback.
@@ -183,9 +177,8 @@ class BirdeyeAPI extends events_1.default {
         this.emit('disconnected');
     }
 }
-exports.BirdeyeAPI = BirdeyeAPI;
 /**
  * Optionally, export a default instance or factory if needed by the rest of the codebase.
  */
-exports.default = BirdeyeAPI;
+export default BirdeyeAPI;
 //# sourceMappingURL=birdeyeAPI.js.map

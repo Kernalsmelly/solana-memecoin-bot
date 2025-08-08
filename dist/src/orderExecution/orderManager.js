@@ -1,20 +1,24 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.OrderManager = void 0;
-const events_1 = __importDefault(require("events"));
-class OrderManager extends events_1.default {
+import EventEmitter from 'events';
+export class OrderManager extends EventEmitter {
     orders = new Map();
     connection;
     signer;
-    pollInterval = 5000;
+    pollInterval;
     poller;
     constructor(connection, signer) {
         super();
         this.connection = connection;
         this.signer = signer;
+        // Use ORDER_STATUS_POLL_INTERVAL_MS, else POLLING_INTERVAL_SECONDS, else default 5000ms
+        try {
+            const { config } = require('../utils/config.js');
+            this.pollInterval = config.trading?.orderStatusPollIntervalMs
+                || (config.tokenMonitor?.pollingIntervalSeconds ? config.tokenMonitor.pollingIntervalSeconds * 1000 : undefined)
+                || 5000;
+        }
+        catch (e) {
+            this.pollInterval = 5000;
+        }
     }
     async placeOrder(tx) {
         const signature = await this.signer.signAndSendTransaction(tx, this.connection);
@@ -36,28 +40,30 @@ class OrderManager extends events_1.default {
             const order = this.orders.get(signature);
             if (!order || order.status !== 'pending')
                 return;
+            const pollTimestamp = new Date().toISOString();
             try {
                 const statuses = await this.connection.getSignatureStatuses([signature]);
                 const status = statuses.value[0];
                 if (status && status.confirmationStatus === 'confirmed') {
                     order.status = 'confirmed';
                     order.filledAt = Date.now();
-                    // Log [OrderConfirmedEvent]
-                    // eslint-disable-next-line no-console
-                    console.log(`[OrderConfirmedEvent] Signature: ${signature} Status: confirmed`);
+                    console.log(`[OrderConfirmedEvent] Signature: ${signature} Status: confirmed at ${pollTimestamp}`);
                     this.emit('orderFilled', order);
                 }
                 else if (status && status.err) {
                     order.status = 'failed';
                     order.error = JSON.stringify(status.err);
+                    console.error(`[OrderFailedEvent] Signature: ${signature} Error: ${order.error} at ${pollTimestamp}`);
                     this.emit('orderFailed', order);
                 }
                 else {
                     // still pending
+                    console.log(`[OrderPoll] Signature: ${signature} still pending at ${pollTimestamp} (next poll in ${this.pollInterval}ms)`);
                     setTimeout(poll, this.pollInterval);
                 }
             }
             catch (e) {
+                console.error(`[OrderPollError] Signature: ${signature} Error:`, e, `at ${pollTimestamp}`);
                 setTimeout(poll, this.pollInterval);
             }
         };
@@ -106,5 +112,4 @@ class OrderManager extends events_1.default {
         return this.orders.get(signature);
     }
 }
-exports.OrderManager = OrderManager;
 //# sourceMappingURL=orderManager.js.map

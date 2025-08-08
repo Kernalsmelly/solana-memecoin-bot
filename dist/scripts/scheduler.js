@@ -1,4 +1,3 @@
-"use strict";
 // scripts/scheduler.js
 // Runs analytics and parameter optimization on a schedule for continuous improvement
 // @ts-ignore
@@ -21,4 +20,5 @@ cron.schedule('0 * * * *', () => {
     });
 });
 console.log('[Scheduler] Analytics scheduler started.');
+export {};
 //# sourceMappingURL=scheduler.js.map

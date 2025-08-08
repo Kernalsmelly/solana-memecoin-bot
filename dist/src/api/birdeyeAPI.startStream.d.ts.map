@@ -1,1 +1,1 @@
-{"version":3,"file":"birdeyeAPI.startStream.d.ts","sourceRoot":"","sources":["../../../src/api/birdeyeAPI.startStream.ts"],"names":[],"mappings":"AAEA;;;;GAIG;AACH,wBAAgB,WAAW,CAAC,EAAE,EAAE,CAAC,IAAI,EAAE,GAAG,KAAK,IAAI,QAgBlD"}
+{"version":3,"file":"birdeyeAPI.startStream.d.ts","sourceRoot":"","sources":["../../../src/api/birdeyeAPI.startStream.ts"],"names":[],"mappings":"AAAA;;;;GAIG;AACH,wBAAgB,WAAW,CAAC,EAAE,CAAC,EAAE,CAAC,IAAI,EAAE,GAAG,KAAK,IAAI,QAOnD"}

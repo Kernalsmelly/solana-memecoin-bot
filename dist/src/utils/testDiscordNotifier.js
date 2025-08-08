@@ -1,9 +1,7 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-const discordNotifier_1 = require("./discordNotifier");
+import { sendDiscordSignal } from './discordNotifier.js';
 const WEBHOOK_URL = 'https://discord.com/api/webhooks/1374129323434573874/LpoW5FMchl80UHaGBweKHoGoaLslh6JzeW0hti8XTyDlZyoOInxxxsVynmeFwK2qCYRo';
 (async () => {
-    await (0, discordNotifier_1.sendDiscordSignal)({
+    await sendDiscordSignal({
         type: 'BUY_SIGNAL',
         token: {
             mint: 'So11111111111111111111111111111111111111112',

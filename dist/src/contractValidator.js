@@ -1,27 +1,21 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.createContractValidator = exports.ContractValidator = exports.RiskLevel = void 0;
-const web3_js_1 = require("@solana/web3.js");
-const logger_1 = __importDefault(require("./utils/logger"));
+import { PublicKey } from '@solana/web3.js';
+import logger from './utils/logger.js';
 /**
  * Risk level enum for token contracts
  * Represents the risk level of a token contract based on various factors
  */
-var RiskLevel;
+export var RiskLevel;
 (function (RiskLevel) {
     RiskLevel[RiskLevel["LOW"] = 0] = "LOW";
     RiskLevel[RiskLevel["MEDIUM"] = 1] = "MEDIUM";
     RiskLevel[RiskLevel["HIGH"] = 2] = "HIGH";
-    RiskLevel[RiskLevel["CRITICAL"] = 3] = "CRITICAL"; // Known scams or high-risk tokens
-})(RiskLevel || (exports.RiskLevel = RiskLevel = {}));
+    RiskLevel[RiskLevel["CRITICAL"] = 3] = "CRITICAL";
+})(RiskLevel || (RiskLevel = {}));
 /**
  * Contract validator class for analyzing token contracts
  * Class that validates token contracts and assigns risk levels
  */
-class ContractValidator {
+export class ContractValidator {
     connection;
     constructor(connection) {
         this.connection = connection;
@@ -34,7 +28,7 @@ class ContractValidator {
     async validateContract(tokenAddress) {
         try {
             // Validate token address
-            const tokenMint = new web3_js_1.PublicKey(tokenAddress);
+            const tokenMint = new PublicKey(tokenAddress);
             // Mock analysis for now
             // TODO: Implement actual contract validation logic
             const liquidity = Math.random() * 1000000;
@@ -76,10 +70,10 @@ class ContractValidator {
                 issues.push('Potential honeypot detected');
                 riskLevel = 'high';
             }
-            logger_1.default.info('Contract validation completed', {
+            logger.info('Contract validation completed', {
                 tokenAddress,
                 riskLevel,
-                issueCount: issues.length
+                issueCount: issues.length,
             });
             return {
                 tokenAddress,
@@ -90,11 +84,11 @@ class ContractValidator {
                 isHoneypot,
                 riskLevel,
                 issues,
-                timestamp: Date.now()
+                timestamp: Date.now(),
             };
         }
         catch (error) {
-            logger_1.default.error('Contract validation failed:', error instanceof Error ? error.message : 'Unknown error');
+            logger.error('Contract validation failed:', error instanceof Error ? error.message : 'Unknown error');
             return {
                 tokenAddress,
                 liquidity: 0,
@@ -104,7 +98,7 @@ class ContractValidator {
                 isHoneypot: true,
                 riskLevel: 'high',
                 issues: ['Failed to validate contract'],
-                timestamp: Date.now()
+                timestamp: Date.now(),
             };
         }
     }
@@ -130,7 +124,7 @@ class ContractValidator {
             return 1000000; // Mock value
         }
         catch (error) {
-            logger_1.default.error('Liquidity check failed:', error);
+            logger.error('Liquidity check failed:', error);
             return 0;
         }
     }
@@ -140,14 +134,12 @@ class ContractValidator {
             return 1000; // Mock value
         }
         catch (error) {
-            logger_1.default.error('Holders check failed:', error);
+            logger.error('Holders check failed:', error);
             return 0;
         }
     }
 }
-exports.ContractValidator = ContractValidator;
-const createContractValidator = (connection) => {
+export const createContractValidator = (connection) => {
     return new ContractValidator(connection);
 };
-exports.createContractValidator = createContractValidator;
 //# sourceMappingURL=contractValidator.js.map

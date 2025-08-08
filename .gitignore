@@ -1,1 +1,12 @@
 node_modules
+*.key
+*.keypair.json
+*.secret
+*.bak
+*.log
+# Ignore common Solana wallet/key files
+# data/*.json
+# Allow seed_tokens.json for mainnet forced trade patch
+
+# Allow test fixtures
+!__tests__/*.json

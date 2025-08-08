@@ -1,11 +1,48 @@
-import { RiskLevel } from '../contractValidator';
+export declare const RiskLevel: {
+    readonly LOW: "LOW";
+    readonly MEDIUM: "MEDIUM";
+    readonly HIGH: "HIGH";
+    readonly CRITICAL: "CRITICAL";
+};
+type RiskLevel = (typeof RiskLevel)[keyof typeof RiskLevel];
 import { Cluster } from '@solana/web3.js';
 export interface Config {
     /**
      * If true, the bot will simulate trades (no live orders sent).
      */
-    dryRun?: boolean;
     trading: {
+        /**
+         * Threshold for pump detection (custom script usage)
+         */
+        pumpThreshold?: number;
+        /**
+         * Pump window in seconds (custom script usage)
+         */
+        pumpWindowSec?: number;
+        /**
+         * Max hold time in seconds (custom script usage)
+         */
+        maxHoldSec?: number;
+        /**
+         * If true, the bot will simulate trades (no live orders sent).
+         */
+        dryRun?: boolean;
+        /**
+         * If true, force a buy on mempool event (regardless of pattern filter)
+         */
+        forcePumpOnMempool?: boolean;
+        /**
+         * If true, force a buy on whale event (regardless of pattern filter)
+         */
+        forcePumpOnWhale?: boolean;
+        /**
+         * Size in SOL for forced pump buys
+         */
+        forcedPumpSizeSol?: number;
+        /**
+         * Seconds to wait before executing forced pump
+         */
+        forcedPumpWaitSec?: number;
         initialBalance: number;
         maxPositionSize: number;
         maxRiskLevel: RiskLevel;
@@ -48,11 +85,6 @@ export interface Config {
         walletPrivateKey: string;
         usdcMint: string;
         cluster: Cluster;
-    };
-    apis: {
-        quicknodeRpcUrl?: string;
-        quicknodeWssUrl?: string;
-        coingeckoApiKey?: string;
     };
     notifications: {
         enabled: boolean;
@@ -123,4 +155,5 @@ export interface AnalyticsConfig {
 export declare const config: Config;
 export declare const analyticsConfig: AnalyticsConfig;
 export declare function validateConfig(config: Config): void;
+export {};
 //# sourceMappingURL=config.d.ts.map

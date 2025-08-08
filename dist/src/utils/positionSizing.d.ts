@@ -1,6 +1,6 @@
-import { TokenMetrics } from './fetchTokenMetrics';
-import { RiskManager } from '../live/riskManager';
-import { AccountBalance } from '../positionManager';
+import { TokenMetrics } from './fetchTokenMetrics.js';
+import { RiskManager } from '../live/riskManager.js';
+import { AccountBalance } from '../positionManager.js';
 /**
  * Calculates optimal position size based on risk, liquidity, and available balance.
  * @param token TokenMetrics for the trade

@@ -1,5 +1,4 @@
 #!/usr/bin/env ts-node
-"use strict";
 /**
  * Daily Performance Report Generator
  *
@@ -7,48 +6,11 @@
  * including metrics, charts, and trade analysis. It can be run manually
  * or scheduled to run daily.
  */
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-const fs = __importStar(require("fs"));
-const path = __importStar(require("path"));
-const dotenv = __importStar(require("dotenv"));
-const logger_1 = __importDefault(require("../utils/logger"));
-const notifications_1 = require("../utils/notifications");
+import * as fs from 'fs';
+import * as path from 'path';
+import * as dotenv from 'dotenv';
+import logger from '../utils/logger.js';
+import { sendAlert } from '../utils/notifications.js';
 // Load environment variables
 dotenv.config();
 // Constants
@@ -72,7 +34,7 @@ function loadTradingHistory() {
         return JSON.parse(historyData);
     }
     catch (err) {
-        logger_1.default.error(`Failed to load trading history: ${err instanceof Error ? err.message : String(err)}`);
+        logger.error(`Failed to load trading history: ${err instanceof Error ? err.message : String(err)}`);
         return [];
     }
 }
@@ -88,7 +50,7 @@ function loadBotState() {
         return JSON.parse(stateData);
     }
     catch (err) {
-        logger_1.default.error(`Failed to load bot state: ${err instanceof Error ? err.message : String(err)}`);
+        logger.error(`Failed to load bot state: ${err instanceof Error ? err.message : String(err)}`);
         return null;
     }
 }
@@ -116,7 +78,7 @@ function calculateDailyPerformance(allTrades, date) {
             maxDrawdown: 0,
             patternPerformance: {},
             maxConsecutiveWins: 0,
-            maxConsecutiveLosses: 0
+            maxConsecutiveLosses: 0,
         };
     }
     // Filter trades for the given date
@@ -124,7 +86,7 @@ function calculateDailyPerformance(allTrades, date) {
     startOfDay.setHours(0, 0, 0, 0);
     const endOfDay = new Date(date);
     endOfDay.setHours(23, 59, 59, 999);
-    const trades = allTrades.filter(trade => {
+    const trades = allTrades.filter((trade) => {
         const exitTime = new Date(trade.exitTime);
         return exitTime >= startOfDay && exitTime <= endOfDay;
     });
@@ -149,12 +111,12 @@ function calculateDailyPerformance(allTrades, date) {
             maxDrawdown: 0,
             patternPerformance: {},
             maxConsecutiveWins: 0,
-            maxConsecutiveLosses: 0
+            maxConsecutiveLosses: 0,
         };
     }
     // Basic metrics
-    const winningTrades = trades.filter(t => t.pnl > 0);
-    const losingTrades = trades.filter(t => t.pnl < 0);
+    const winningTrades = trades.filter((t) => t.pnl > 0);
+    const losingTrades = trades.filter((t) => t.pnl < 0);
     const totalProfit = winningTrades.reduce((sum, t) => sum + t.pnl, 0);
     const totalLoss = Math.abs(losingTrades.reduce((sum, t) => sum + t.pnl, 0));
     const netProfit = totalProfit - totalLoss;
@@ -176,38 +138,32 @@ function calculateDailyPerformance(allTrades, date) {
         ? losingTrades.reduce((sum, t) => sum + Math.abs(t.pnlPercent), 0) / losingTrades.length
         : 0;
     const profitFactor = totalLoss > 0 ? totalProfit / totalLoss : totalProfit > 0 ? 999 : 0;
-    const biggestWin = winningTrades.length > 0
-        ? Math.max(...winningTrades.map(t => t.pnl))
-        : 0;
-    const biggestLoss = losingTrades.length > 0
-        ? Math.min(...losingTrades.map(t => t.pnl))
-        : 0;
+    const biggestWin = winningTrades.length > 0 ? Math.max(...winningTrades.map((t) => t.pnl)) : 0;
+    const biggestLoss = losingTrades.length > 0 ? Math.min(...losingTrades.map((t) => t.pnl)) : 0;
     const averageHoldingTimeMinutes = trades.length > 0
         ? trades.reduce((sum, t) => sum + t.holdingTimeMinutes, 0) / trades.length
         : 0;
-    const maxDrawdown = trades.length > 0
-        ? Math.max(...trades.map(t => t.maxDrawdown || 0))
-        : 0;
+    const maxDrawdown = trades.length > 0 ? Math.max(...trades.map((t) => t.maxDrawdown || 0)) : 0;
     // Pattern performance
     const patternPerformance = {};
     // Group trades by pattern type
     const tradesByPattern = {};
-    trades.forEach(trade => {
+    trades.forEach((trade) => {
         const pattern = trade.patternType || 'Unknown';
         if (!tradesByPattern[pattern]) {
             tradesByPattern[pattern] = [];
         }
-        (tradesByPattern[pattern]).push(trade);
+        tradesByPattern[pattern].push(trade);
     });
     // Calculate pattern-specific metrics
     Object.entries(tradesByPattern).forEach(([pattern, patternTrades]) => {
-        const winningPatternTrades = patternTrades.filter(t => t.pnl > 0);
+        const winningPatternTrades = patternTrades.filter((t) => t.pnl > 0);
         const totalPatternProfit = patternTrades.reduce((sum, t) => sum + t.pnl, 0);
         patternPerformance[pattern] = {
             trades: patternTrades.length,
             winRate: patternTrades.length > 0 ? (winningPatternTrades.length / patternTrades.length) * 100 : 0,
             avgProfit: patternTrades.length > 0 ? totalPatternProfit / patternTrades.length : 0,
-            totalProfit: totalPatternProfit
+            totalProfit: totalPatternProfit,
         };
     });
     // Calculate consecutive win/loss streaks
@@ -217,7 +173,7 @@ function calculateDailyPerformance(allTrades, date) {
     let maxConsecutiveLosses = 0;
     // Sort trades by time
     const sortedTrades = [...trades].sort((a, b) => new Date(a.exitTime).getTime() - new Date(b.exitTime).getTime());
-    sortedTrades.forEach(trade => {
+    sortedTrades.forEach((trade) => {
         if (trade.pnl > 0) {
             // Winning trade
             currentWinStreak++;
@@ -250,7 +206,7 @@ function calculateDailyPerformance(allTrades, date) {
         maxDrawdown,
         patternPerformance,
         maxConsecutiveWins,
-        maxConsecutiveLosses
+        maxConsecutiveLosses,
     };
 }
 /**
@@ -262,9 +218,9 @@ function generateHtmlReport(performance) {
     if (!patternNames.length) {
         return 'No pattern performance data available';
     }
-    const patternWinRates = patternNames.map(p => performance.patternPerformance?.[p]?.winRate ?? 0);
-    const patternAvgProfits = patternNames.map(p => performance.patternPerformance?.[p]?.avgProfit ?? 0);
-    const patternTradeCounts = patternNames.map(p => performance.patternPerformance?.[p]?.trades ?? 0);
+    const patternWinRates = patternNames.map((p) => performance.patternPerformance?.[p]?.winRate ?? 0);
+    const patternAvgProfits = patternNames.map((p) => performance.patternPerformance?.[p]?.avgProfit ?? 0);
+    const patternTradeCounts = patternNames.map((p) => performance.patternPerformance?.[p]?.trades ?? 0);
     const html = `
 <!DOCTYPE html>
 <html lang="en">
@@ -407,7 +363,8 @@ function generateHtmlReport(performance) {
   
   <h3>Pattern Breakdown</h3>
   <div class="summary-box">
-    ${patternNames.map(pattern => `
+    ${patternNames
+        .map((pattern) => `
       <div class="pattern-card">
         <div class="pattern-header">${pattern}</div>
         <div class="pattern-stats">
@@ -429,7 +386,8 @@ function generateHtmlReport(performance) {
           </div>
         </div>
       </div>
-    `).join('')}
+    `)
+        .join('')}
   </div>
   
   <h3>Key Performance Metrics</h3>
@@ -500,7 +458,8 @@ function generateHtmlReport(performance) {
       <th>P&L</th>
       <th>P&L %</th>
     </tr>
-    ${performance.trades.map(trade => `
+    ${performance.trades
+        .map((trade) => `
       <tr>
         <td>${trade.tokenSymbol}</td>
         <td>${trade.patternType || 'Unknown'}</td>
@@ -511,7 +470,8 @@ function generateHtmlReport(performance) {
         <td class="${trade.pnl >= 0 ? 'profit' : 'loss'}">$${trade.pnl.toFixed(2)}</td>
         <td class="${trade.pnlPercent >= 0 ? 'profit' : 'loss'}">${trade.pnlPercent.toFixed(2)}%</td>
       </tr>
-    `).join('')}
+    `)
+        .join('')}
   </table>
   
   <div class="footer">
@@ -610,8 +570,7 @@ DAILY SUMMARY:
 TOP PATTERNS:
 `;
     // Sort patterns by profit
-    const sortedPatterns = Object.entries(performance.patternPerformance || {})
-        .sort((a, b) => b[1].totalProfit - a[1].totalProfit);
+    const sortedPatterns = Object.entries(performance.patternPerformance || {}).sort((a, b) => b[1].totalProfit - a[1].totalProfit);
     sortedPatterns.forEach(([pattern, stats]) => {
         report += `- ${pattern}: ${stats.trades} trades, ${(stats.winRate || 0).toFixed(2)}% win rate, $${(stats.totalProfit || 0).toFixed(2)} profit\n`;
     });
@@ -635,8 +594,7 @@ async function main() {
     try {
         console.log('Generating daily performance report...');
         // Get yesterday's date (or use provided date argument)
-        const targetDate = process.argv[2] ||
-            new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        const targetDate = process.argv[2] || new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
         if (!targetDate) {
             console.log('Invalid target date');
             return;
@@ -663,7 +621,7 @@ async function main() {
         fs.writeFileSync(textReportPath, textReport);
         console.log(`Text report saved to: ${textReportPath}`);
         // Send notification with summary
-        await (0, notifications_1.sendAlert)(`Daily Report (${targetDate}): ${performance.netProfitPercent.toFixed(2)}% P&L on ${performance.trades.length} trades`, 'INFO');
+        await sendAlert(`Daily Report (${targetDate}): ${performance.netProfitPercent.toFixed(2)}% P&L on ${performance.trades.length} trades`, 'INFO');
         console.log('Report generation complete!');
     }
     catch (err) {
@@ -672,7 +630,7 @@ async function main() {
 }
 // Run main function
 if (require.main === module) {
-    main().catch(err => {
+    main().catch((err) => {
         console.error('Fatal error:', err);
         process.exit(1);
     });

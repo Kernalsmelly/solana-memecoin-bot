@@ -18,6 +18,13 @@
     "declarationMap": true,
     "types": ["node"]
   },
-  "include": ["src", "scripts"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]
+  "include": [
+    "src",
+    "scripts",
+    "tests",
+    "__tests__",
+    "*.ts",
+    "testRaydiumProgramAccounts.ts"
+  ],
+  "exclude": ["node_modules", "dist"]
 }

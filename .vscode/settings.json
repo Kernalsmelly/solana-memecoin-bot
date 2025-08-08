@@ -7,21 +7,21 @@
     "fallbackPolling": "dynamicPriority"
   },
   "typescript.tsserver.experimental.enableProjectDiagnostics": false,
-  
+
   // Disable automatic type acquisition
   "typescript.disableAutomaticTypeAcquisition": true,
-  
+
   // Reduce features that consume memory
   "typescript.suggestionActions.enabled": false,
   "typescript.validate.enable": false,
   "typescript.surveys.enabled": false,
   "typescript.tsc.autoDetect": "off",
-  
+
   // JS/TS language features that consume resources
   "javascript.validate.enable": false,
   "javascript.format.enable": false,
   "javascript.suggestionActions.enabled": false,
-  
+
   // File watching
   "files.watcherExclude": {
     "**/.git/objects/**": true,
@@ -29,7 +29,7 @@
     "**/dist/**": true,
     "**/.git/subtree-cache/**": true
   },
-  
+
   // Search settings
   "search.exclude": {
     "**/node_modules": true,
@@ -37,7 +37,7 @@
     "**/dist": true,
     "**/coverage": true
   },
-  
+
   // Editor performance
   "editor.formatOnSave": false,
   "editor.formatOnPaste": false,
@@ -50,7 +50,7 @@
   "editor.suggestOnTriggerCharacters": false,
   "editor.hover.enabled": false,
   "editor.parameterHints.enabled": false,
-  
+
   // Only run linters manually
   "editor.codeActionsOnSave": null,
   "eslint.enable": false

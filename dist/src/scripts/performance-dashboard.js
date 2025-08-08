@@ -1,5 +1,4 @@
 #!/usr/bin/env ts-node
-"use strict";
 /**
  * Performance Monitoring Dashboard
  *
@@ -7,43 +6,9 @@
  * using terminal-based charts and statistics. It reads from the state file and
  * provides visual feedback on trading performance.
  */
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
-Object.defineProperty(exports, "__esModule", { value: true });
-const fs = __importStar(require("fs"));
-const path = __importStar(require("path"));
-const dotenv = __importStar(require("dotenv"));
+import * as fs from 'fs';
+import * as path from 'path';
+import * as dotenv from 'dotenv';
 // Load environment variables
 dotenv.config();
 // Constants
@@ -64,7 +29,7 @@ const colors = {
     bgRed: '\x1b[41m',
     bgGreen: '\x1b[42m',
     bgYellow: '\x1b[43m',
-    bgBlue: '\x1b[44m'
+    bgBlue: '\x1b[44m',
 };
 // Simple ASCII bar chart
 function createBarChart(data, labels, title, maxWidth = 50) {
@@ -89,11 +54,11 @@ function createLineChart(data, title, width = 50, height = 10) {
     const max = Math.max(...data);
     const range = max - min || 1;
     // Normalize and fit to height
-    const normalizedData = data.map(val => Math.floor(((val - min) / range) * (height - 1)));
+    const normalizedData = data.map((val) => Math.floor(((val - min) / range) * (height - 1)));
     let chart = `${title} (Min: ${min.toFixed(2)}, Max: ${max.toFixed(2)})\n`;
     for (let y = height - 1; y >= 0; y--) {
-        const row = normalizedData.map(val => val === y ? '●' : (val > y ? '│' : ' '));
-        const value = min + (range * (y / (height - 1)));
+        const row = normalizedData.map((val) => (val === y ? '●' : val > y ? '│' : ' '));
+        const value = min + range * (y / (height - 1));
         chart += `${value.toFixed(1).padStart(6)} │ ${row.join('')}\n`;
     }
     // X-axis
@@ -135,13 +100,15 @@ function loadPerformanceData() {
             }
         }
         // Calculate metrics
-        const winningTrades = trades.filter(t => t.pnl > 0).length;
-        const losingTrades = trades.filter(t => t.pnl < 0).length;
-        const totalProfit = trades.filter(t => t.pnl > 0).reduce((sum, t) => sum + t.pnl, 0);
-        const totalLoss = Math.abs(trades.filter(t => t.pnl < 0).reduce((sum, t) => sum + t.pnl, 0)) || 1;
+        const winningTrades = trades.filter((t) => t.pnl > 0).length;
+        const losingTrades = trades.filter((t) => t.pnl < 0).length;
+        const totalProfit = trades.filter((t) => t.pnl > 0).reduce((sum, t) => sum + t.pnl, 0);
+        const totalLoss = Math.abs(trades.filter((t) => t.pnl < 0).reduce((sum, t) => sum + t.pnl, 0)) || 1;
         const profitFactor = totalProfit / totalLoss;
         const averagePnl = trades.length > 0 ? trades.reduce((sum, t) => sum + t.pnl, 0) / trades.length : 0;
-        const averageMaxDrawdown = trades.length > 0 ? trades.reduce((sum, t) => sum + (t.maxDrawdown || 0), 0) / trades.length : 0;
+        const averageMaxDrawdown = trades.length > 0
+            ? trades.reduce((sum, t) => sum + (t.maxDrawdown || 0), 0) / trades.length
+            : 0;
         return {
             startingBalance: state.initialBalance || 0,
             currentBalance: state.currentBalance || 0,
@@ -155,7 +122,7 @@ function loadPerformanceData() {
             averagePnl,
             averageMaxDrawdown,
             systemEnabled: state.systemEnabled !== false,
-            lastUpdated: state.lastUpdated || new Date().toISOString()
+            lastUpdated: state.lastUpdated || new Date().toISOString(),
         };
     }
     catch (err) {
@@ -166,7 +133,9 @@ function loadPerformanceData() {
 // Format percentage with color
 function formatPercent(value) {
     const formatted = `${(value * 100).toFixed(2)}%`;
-    return value >= 0 ? `${colors.green}${formatted}${colors.reset}` : `${colors.red}${formatted}${colors.reset}`;
+    return value >= 0
+        ? `${colors.green}${formatted}${colors.reset}`
+        : `${colors.red}${formatted}${colors.reset}`;
 }
 // Format currency
 function formatCurrency(value) {
@@ -187,8 +156,9 @@ function renderDashboard(metrics) {
     const totalPnlPercent = metrics.startingBalance > 0 ? totalPnl / metrics.startingBalance : 0;
     const dailyPnl = metrics.currentBalance - metrics.dailyStartBalance;
     const dailyPnlPercent = metrics.dailyStartBalance > 0 ? dailyPnl / metrics.dailyStartBalance : 0;
-    const drawdown = metrics.highWaterMark > 0 ?
-        (metrics.highWaterMark - metrics.currentBalance) / metrics.highWaterMark : 0;
+    const drawdown = metrics.highWaterMark > 0
+        ? (metrics.highWaterMark - metrics.currentBalance) / metrics.highWaterMark
+        : 0;
     // Header
     console.log(`${colors.cyan}=============================================${colors.reset}`);
     console.log(`${colors.cyan}       SOLMEMEBOT PERFORMANCE DASHBOARD      ${colors.reset}`);
@@ -232,7 +202,7 @@ function renderDashboard(metrics) {
         metrics.startingBalance * 1.04,
         metrics.startingBalance * 1.08,
         metrics.startingBalance * 1.12,
-        metrics.currentBalance
+        metrics.currentBalance,
     ];
     const balanceChart = createLineChart(sampleBalanceData, 'Balance Over Time');
     console.log(balanceChart);

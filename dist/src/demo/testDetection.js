@@ -1,18 +1,37 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.TestDetector = void 0;
-const newCoinDetector_1 = require("../services/newCoinDetector");
-const config_1 = require("../utils/config");
-const web3_js_1 = require("@solana/web3.js");
-class TestDetector {
+import { NewCoinDetector } from '../services/newCoinDetector.js';
+import { config as importedConfig } from '../utils/config.js';
+import { Connection } from '@solana/web3.js';
+export class TestDetector {
     detector;
-    namePrefixes = ['Super', 'Mega', 'Ultra', 'Hyper', 'Quantum', 'Cyber', 'Meta', 'Degen', 'Based', 'Pepe'];
-    nameSuffixes = ['Token', 'Coin', 'Inu', 'Moon', 'Rocket', 'Elon', 'Finance', 'Protocol', 'AI', 'Swap'];
+    namePrefixes = [
+        'Super',
+        'Mega',
+        'Ultra',
+        'Hyper',
+        'Quantum',
+        'Cyber',
+        'Meta',
+        'Degen',
+        'Based',
+        'Pepe',
+    ];
+    nameSuffixes = [
+        'Token',
+        'Coin',
+        'Inu',
+        'Moon',
+        'Rocket',
+        'Elon',
+        'Finance',
+        'Protocol',
+        'AI',
+        'Swap',
+    ];
     constructor() {
-        const config = config_1.config;
-        const connection = new web3_js_1.Connection(config.solana.rpcEndpoint);
+        const config = importedConfig;
+        const connection = new Connection(config.solana.rpcEndpoint);
         // Initialize detector (SWAP ARGUMENTS: connection first, then config)
-        this.detector = new newCoinDetector_1.NewCoinDetector(connection, config);
+        this.detector = new NewCoinDetector(connection, config);
     }
     generateTestToken() {
         const prefix = this.namePrefixes[Math.floor(Math.random() * this.namePrefixes.length)];
@@ -27,10 +46,9 @@ class TestDetector {
             volume24h: 2500,
             holders: 100,
             buys5min: 5,
-            timestamp: Date.now()
+            timestamp: Date.now(),
         };
         return token;
     }
 }
-exports.TestDetector = TestDetector;
 //# sourceMappingURL=testDetection.js.map

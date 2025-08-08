@@ -1,5 +1,4 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
+export {};
 // const BIRDEYE_API_KEY = process.env.BIRDEYE_API_KEY;
 // const BIRDEYE_API_URL = 'https://public-api.birdeye.so/public/price';
 // export async function getTokenPrice(tokenAddress: PublicKey): Promise<number | null> {

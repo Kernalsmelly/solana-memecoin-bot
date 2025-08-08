@@ -1,5 +1,3 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
 47;
 42;
 42;
@@ -2881,4 +2879,5 @@ Object.defineProperty(exports, "__esModule", { value: true });
 41;
 59;
 10;
+export {};
 //# sourceMappingURL=setup.js.map

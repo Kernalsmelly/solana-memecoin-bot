@@ -1,20 +1,16 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-const fs_1 = __importDefault(require("fs"));
-const path_1 = __importDefault(require("path"));
-const DATA_DIR = path_1.default.resolve(process.cwd(), 'data');
-const OPPS_FILE = path_1.default.join(DATA_DIR, 'scoredOpportunities.jsonl');
-const TRADES_FILE = path_1.default.join(DATA_DIR, 'trades.jsonl');
+import fs from 'fs';
+import path from 'path';
+const DATA_DIR = path.resolve(process.cwd(), 'data');
+const OPPS_FILE = path.join(DATA_DIR, 'scoredOpportunities.jsonl');
+const TRADES_FILE = path.join(DATA_DIR, 'trades.jsonl');
 function readJsonl(file) {
-    if (!fs_1.default.existsSync(file))
+    if (!fs.existsSync(file))
         return [];
-    return fs_1.default.readFileSync(file, 'utf8')
+    return fs
+        .readFileSync(file, 'utf8')
         .split('\n')
         .filter(Boolean)
-        .map(line => {
+        .map((line) => {
         try {
             return JSON.parse(line);
         }
@@ -43,12 +39,15 @@ function main() {
         scoreMap[opp.address] = { score: opp.score, reasons: opp.reasons, source: opp.source };
     }
     // Analyze trades (only 'close' events with PnL)
-    const closedTrades = trades.filter(t => t.type === 'close' && typeof t.pnl === 'number');
+    const closedTrades = trades.filter((t) => t.type === 'close' && typeof t.pnl === 'number');
     for (const trade of closedTrades) {
         const { score, reasons, source } = scoreMap[trade.tokenAddress] || {};
         if (typeof score !== 'number')
             continue;
-        const band = scoreBands.slice().reverse().find(b => score >= b) || 50;
+        const band = scoreBands
+            .slice()
+            .reverse()
+            .find((b) => score >= b) || 50;
         const bandKey = `${band}+`;
         const stats = bandStats[bandKey];
         stats.count++;
@@ -107,18 +106,22 @@ function main() {
     for (const bandKey of Object.keys(bandStats)) {
         const s = bandStats[bandKey];
         if (s) {
-            console.log(`${bandKey}: Trades=${s.count}, Win%=${s.count ? s.wins / s.count * 100 : 0}% AvgPnL=${s.avgPnl.toFixed(2)}%`);
+            console.log(`${bandKey}: Trades=${s.count}, Win%=${s.count ? (s.wins / s.count) * 100 : 0}% AvgPnL=${s.avgPnl.toFixed(2)}%`);
         }
     }
     console.log('\n--- Source Stats ---');
     for (const source of Object.keys(sourceStats)) {
         const s = sourceStats[source];
         if (s) {
-            console.log(`${source}: Trades=${s.count}, Win%=${s.count ? s.wins / s.count * 100 : 0}% AvgPnL=${s.avgPnl.toFixed(2)}%`);
+            console.log(`${source}: Trades=${s.count}, Win%=${s.count ? (s.wins / s.count) * 100 : 0}% AvgPnL=${s.avgPnl.toFixed(2)}%`);
         }
     }
-    const topWinnerReasons = Object.entries(winnerReasons).sort((a, b) => b[1] - a[1]).slice(0, 5);
-    const topLoserReasons = Object.entries(loserReasons).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    const topWinnerReasons = Object.entries(winnerReasons)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5);
+    const topLoserReasons = Object.entries(loserReasons)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5);
     console.log('\n--- Top Winner Reasons ---');
     for (const [reason, count] of topWinnerReasons) {
         console.log(`${reason}: ${count}`);

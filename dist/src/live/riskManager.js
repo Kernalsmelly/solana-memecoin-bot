@@ -1,45 +1,6 @@
-"use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.RiskManager = exports.CircuitBreakerReason = void 0;
-const logger_1 = __importDefault(require("../utils/logger"));
-const events_1 = require("events");
-var CircuitBreakerReason;
+import logger from '../utils/logger.js';
+import { EventEmitter } from 'events';
+export var CircuitBreakerReason;
 (function (CircuitBreakerReason) {
     CircuitBreakerReason["HIGH_VOLATILITY"] = "HIGH_VOLATILITY";
     CircuitBreakerReason["PRICE_DEVIATION"] = "PRICE_DEVIATION";
@@ -50,8 +11,24 @@ var CircuitBreakerReason;
     CircuitBreakerReason["EMERGENCY_STOP"] = "EMERGENCY_STOP";
     CircuitBreakerReason["MANUAL_STOP"] = "MANUAL_STOP";
     CircuitBreakerReason["CONTRACT_RISK"] = "CONTRACT_RISK";
-})(CircuitBreakerReason || (exports.CircuitBreakerReason = CircuitBreakerReason = {}));
-class RiskManager extends events_1.EventEmitter {
+})(CircuitBreakerReason || (CircuitBreakerReason = {}));
+export class RiskManager extends EventEmitter {
+    /**
+     * Allocate capital for a strategy based on ensemble weights and per-strategy max exposure caps.
+     * @param strategy Strategy name
+     * @param weights Record of {strategy: weight}
+     * @param totalBalance Total SOL balance
+     * @param perStratMaxUsd Record of {strategy: maxUsd}
+     * @param solUsdPrice Current SOL/USD price
+     */
+    getCapitalForStrategy(strategy, weights, totalBalance, perStratMaxUsd, solUsdPrice) {
+        const totalWeight = Object.values(weights).reduce((a, b) => a + b, 0) || 1;
+        const rawAlloc = totalBalance * ((weights[strategy] || 0) / totalWeight);
+        const maxExposureSol = perStratMaxUsd[strategy]
+            ? perStratMaxUsd[strategy] / solUsdPrice
+            : Infinity;
+        return Math.min(rawAlloc, maxExposureSol);
+    }
     /**
      * Compute recommended position size (SOL) based on volatility and balance.
      * sizeSOL = min(maxExposureSol, balance * riskPct / sigma)
@@ -66,7 +43,7 @@ class RiskManager extends events_1.EventEmitter {
         const history = this.priceHistory.get(tokenSymbol) || [];
         const now = Date.now();
         const cutoff = now - windowMs;
-        const windowPrices = history.filter(h => h.timestamp >= cutoff).map(h => h.price);
+        const windowPrices = history.filter((h) => h.timestamp >= cutoff).map((h) => h.price);
         if (windowPrices.length < 2)
             return Math.min(maxExposureSol, balance * riskPct); // fallback: no volatility info
         // Compute rolling stddev (sigma)
@@ -76,7 +53,7 @@ class RiskManager extends events_1.EventEmitter {
         if (sigma === 0)
             return Math.min(maxExposureSol, balance * riskPct); // no volatility
         const size = Math.min(maxExposureSol, (balance * riskPct) / sigma);
-        logger_1.default.info(`[RiskManager] getDynamicPositionSizeSol: sizeSOL=${size.toFixed(4)} (maxExposure=${maxExposureSol}, balance=${balance}, riskPct=${riskPct}, sigma=${sigma.toFixed(6)})`);
+        logger.info(`[RiskManager] getDynamicPositionSizeSol: sizeSOL=${size.toFixed(4)} (maxExposure=${maxExposureSol}, balance=${balance}, riskPct=${riskPct}, sigma=${sigma.toFixed(6)})`);
         return size;
     }
     config;
@@ -110,8 +87,8 @@ class RiskManager extends events_1.EventEmitter {
         // Rolling 30min volatility (σ)
         const now = Date.now();
         const windowMs = 30 * 60 * 1000;
-        const history = (this.priceHistory.get(tokenSymbol) || []).filter(p => now - p.timestamp <= windowMs);
-        const prices = history.map(p => p.price);
+        const history = (this.priceHistory.get(tokenSymbol) || []).filter((p) => now - p.timestamp <= windowMs);
+        const prices = history.map((p) => p.price);
         const mean = prices.reduce((a, b) => a + b, 0) / (prices.length || 1);
         const variance = prices.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / (prices.length || 1);
         const sigma = Math.sqrt(variance);
@@ -126,7 +103,7 @@ class RiskManager extends events_1.EventEmitter {
         const sizeByBalance = balance * riskFraction * currentPrice;
         const sizeByLiquidity = liquidityUSD * maxLiquidityPercent;
         const sizeUSD = Math.max(1, Math.min(sizeByExposure, sizeByBalance, sizeByLiquidity));
-        logger_1.default.info(`[RiskManager] sizeUSD=${sizeUSD.toFixed(2)} (exposure=${sizeByExposure}, balance=${sizeByBalance}, liquidity=${sizeByLiquidity}, σ=${sigma.toFixed(4)})`);
+        logger.info(`[RiskManager] sizeUSD=${sizeUSD.toFixed(2)} (exposure=${sizeByExposure}, balance=${sizeByBalance}, liquidity=${sizeByLiquidity}, σ=${sigma.toFixed(4)})`);
         return sizeUSD;
     }
     constructor(config, initialState = null) {
@@ -145,7 +122,7 @@ class RiskManager extends events_1.EventEmitter {
             emergencyStopThreshold: config.emergencyStopThreshold || 15,
             maxPositionValueUsd: config.maxPositionValueUsd || 50,
             maxLiquidityPercent: config.maxLiquidityPercent || 0.05,
-            minPositionValueUsd: config.minPositionValueUsd || 10
+            minPositionValueUsd: config.minPositionValueUsd || 10,
         };
         // Initialize state (defaults or from initialState)
         const loadedBalance = initialState?.currentBalance;
@@ -165,22 +142,22 @@ class RiskManager extends events_1.EventEmitter {
         // Initialize circuit breakers from state if available
         this.circuitBreakers = new Map();
         this.circuitBreakerTriggeredAt = new Map(); // Cannot load trigger times from RiskMetrics state
-        Object.values(CircuitBreakerReason).forEach(reason => {
+        Object.values(CircuitBreakerReason).forEach((reason) => {
             // Load state if available, otherwise default to false
             const breakerActive = initialState?.circuitBreakers?.[reason] ?? false;
             this.circuitBreakers.set(reason, breakerActive);
             if (breakerActive) {
                 // We know it was active, but not exactly when it triggered from RiskMetrics state alone.
                 // Log it or potentially set a default trigger time if needed for logic.
-                logger_1.default.warn(`Circuit breaker ${reason} loaded as active from state.`);
+                logger.warn(`Circuit breaker ${reason} loaded as active from state.`);
                 // this.circuitBreakerTriggeredAt.set(reason, Date.now()); // Example: Set trigger time to now if loaded as active
             }
         });
-        logger_1.default.info('Risk Manager Initialized', {
+        logger.info('Risk Manager Initialized', {
             initialBalance: this.initialBalance,
             currentBalance: this.currentBalance,
             dailyStartBalance: this.dailyStartBalance,
-            loadedFromState: !!initialState
+            loadedFromState: !!initialState,
         });
         // Reset daily metrics only if NOT loading from state OR if state is from a previous day
         // Simple check: If loaded state exists, assume it's recent enough unless resetDailyMetrics detects otherwise.
@@ -191,7 +168,9 @@ class RiskManager extends events_1.EventEmitter {
         else {
             // If loading state, log the loaded daily start balance.
             // resetDailyMetrics (called by scheduleDailyReset) will correct this if it's a new day.
-            logger_1.default.info('Loaded daily start balance from state', { dailyStartBalance: this.dailyStartBalance });
+            logger.info('Loaded daily start balance from state', {
+                dailyStartBalance: this.dailyStartBalance,
+            });
         }
         // Schedule daily reset
         this.scheduleDailyReset();
@@ -207,7 +186,8 @@ class RiskManager extends events_1.EventEmitter {
      * This method is provided for compatibility with code expecting getAccountBalance().
      */
     getAccountBalance() {
-        logger_1.default.debug('[RiskManager] getAccountBalance() called, returning currentBalance: $' + this.currentBalance.toFixed(2));
+        logger.debug('[RiskManager] getAccountBalance() called, returning currentBalance: $' +
+            this.currentBalance.toFixed(2));
         return this.getCurrentBalance();
     }
     /**
@@ -218,50 +198,50 @@ class RiskManager extends events_1.EventEmitter {
     }
     canOpenPosition(size, tokenSymbol, currentPrice) {
         if (!this.systemEnabled) {
-            logger_1.default.warn('System is disabled, cannot open position');
+            logger.warn('System is disabled, cannot open position');
             return false;
         }
         if (this.emergencyStopActive) {
-            logger_1.default.warn('Emergency stop is active, cannot open position');
+            logger.warn('Emergency stop is active, cannot open position');
             return false;
         }
         for (const [reason, active] of this.circuitBreakers.entries()) {
             if (active) {
-                logger_1.default.warn(`Circuit breaker active: ${reason}, cannot open position`);
+                logger.warn(`Circuit breaker active: ${reason}, cannot open position`);
                 return false;
             }
         }
         if (size > this.config.maxPositionSize) {
-            logger_1.default.warn(`Position size ${size} exceeds max ${this.config.maxPositionSize}`);
+            logger.warn(`Position size ${size} exceeds max ${this.config.maxPositionSize}`);
             return false;
         }
         if (this.activePositions >= this.config.maxPositions) {
-            logger_1.default.warn(`Max positions reached: ${this.activePositions}`);
+            logger.warn(`Max positions reached: ${this.activePositions}`);
             return false;
         }
         const drawdown = this.getDrawdown();
         if (drawdown >= this.config.maxDrawdown) {
             this.triggerCircuitBreaker(CircuitBreakerReason.HIGH_DRAWDOWN);
-            logger_1.default.warn(`Drawdown ${drawdown.toFixed(2)}% exceeds max ${this.config.maxDrawdown}%`);
+            logger.warn(`Drawdown ${drawdown.toFixed(2)}% exceeds max ${this.config.maxDrawdown}%`);
             return false;
         }
         const dailyLoss = this.getDailyLoss();
         if (dailyLoss >= this.config.maxDailyLoss) {
             this.triggerCircuitBreaker(CircuitBreakerReason.HIGH_DAILY_LOSS);
-            logger_1.default.warn(`Daily loss ${dailyLoss.toFixed(2)}% exceeds max ${this.config.maxDailyLoss}%`);
+            logger.warn(`Daily loss ${dailyLoss.toFixed(2)}% exceeds max ${this.config.maxDailyLoss}%`);
             return false;
         }
         if (!this.checkRateLimits()) {
             this.triggerCircuitBreaker(CircuitBreakerReason.TRADE_RATE_EXCEEDED);
-            logger_1.default.warn('Rate limits exceeded');
+            logger.warn('Rate limits exceeded');
             return false;
         }
         if (!this.checkVolatility(tokenSymbol, currentPrice)) {
-            logger_1.default.warn(`Volatility check failed for ${tokenSymbol}`);
+            logger.warn(`Volatility check failed for ${tokenSymbol}`);
             return false;
         }
         if (!this.checkPerformanceMetrics()) {
-            logger_1.default.warn('Performance metrics below threshold');
+            logger.warn('Performance metrics below threshold');
             return false;
         }
         return true;
@@ -270,10 +250,12 @@ class RiskManager extends events_1.EventEmitter {
     getMetrics() {
         const effectiveHighWaterMark = Math.max(this.highWaterMark, this.currentBalance);
         // Optionally include totalFeesPaid and totalSlippagePaid if present on this.tradingEngine
-        const extraMetrics = this.tradingEngine ? {
-            totalFeesPaid: this.tradingEngine.totalFeesPaid,
-            totalSlippagePaid: this.tradingEngine.totalSlippagePaid
-        } : {};
+        const extraMetrics = this.tradingEngine
+            ? {
+                totalFeesPaid: this.tradingEngine.totalFeesPaid,
+                totalSlippagePaid: this.tradingEngine.totalSlippagePaid,
+            }
+            : {};
         return {
             currentBalance: this.currentBalance,
             highWaterMark: effectiveHighWaterMark,
@@ -291,10 +273,10 @@ class RiskManager extends events_1.EventEmitter {
             tradeCount: {
                 minute: this.getTradeCountInWindow(60 * 1000),
                 hour: this.getTradeCountInWindow(60 * 60 * 1000),
-                day: this.getTradeCountInWindow(24 * 60 * 60 * 1000)
+                day: this.getTradeCountInWindow(24 * 60 * 60 * 1000),
             },
             pnl: this.currentBalance - this.initialBalance,
-            ...extraMetrics
+            ...extraMetrics,
         };
     }
     async updateBalance(newBalance) {
@@ -327,7 +309,7 @@ class RiskManager extends events_1.EventEmitter {
     recordTrade(pnl) {
         this.trades.push({
             pnl,
-            timestamp: Date.now()
+            timestamp: Date.now(),
         });
         this.updateBalance(this.currentBalance + pnl);
         this.tradeTimes.push(Date.now());
@@ -355,7 +337,7 @@ class RiskManager extends events_1.EventEmitter {
         this.tradeExecutions.push({
             tokenSymbol,
             startTime: Date.now(),
-            success: false
+            success: false,
         });
         return id;
     }
@@ -364,36 +346,36 @@ class RiskManager extends events_1.EventEmitter {
         // Safely extract and parse the timestamp
         const timestampStr = parts.pop(); // Get the last part (removes it from parts)
         if (!timestampStr) {
-            logger_1.default.error(`Invalid trade execution ID format: ${id} - Missing timestamp part.`);
+            logger.error(`Invalid trade execution ID format: ${id} - Missing timestamp part.`);
             return;
         }
         const timestamp = parseInt(timestampStr);
         if (isNaN(timestamp)) {
-            logger_1.default.error(`Invalid trade execution ID format: ${id} - Timestamp part is not a number: ${timestampStr}`);
+            logger.error(`Invalid trade execution ID format: ${id} - Timestamp part is not a number: ${timestampStr}`);
             return;
         }
         const tokenSymbol = parts.join('-'); // Re-join remaining parts in case symbol had hyphens
         if (!tokenSymbol) {
-            logger_1.default.error(`Invalid trade execution ID format: ${id} - Missing token symbol part.`);
+            logger.error(`Invalid trade execution ID format: ${id} - Missing token symbol part.`);
             return;
         }
-        const execution = this.tradeExecutions.find(e => e.startTime === timestamp && e.tokenSymbol === tokenSymbol);
+        const execution = this.tradeExecutions.find((e) => e.startTime === timestamp && e.tokenSymbol === tokenSymbol);
         if (execution) {
             execution.endTime = Date.now();
             execution.success = success;
             execution.executionTime = execution.endTime - execution.startTime;
             execution.errorMessage = errorMessage;
             if (execution.executionTime > this.config.maxExecutionTime) {
-                logger_1.default.warn(`Trade execution time ${execution.executionTime}ms exceeds max ${this.config.maxExecutionTime}ms`);
+                logger.warn(`Trade execution time ${execution.executionTime}ms exceeds max ${this.config.maxExecutionTime}ms`);
             }
-            this.tradeExecutions = this.tradeExecutions.filter(e => e.startTime > Date.now() - 24 * 60 * 60 * 1000);
+            this.tradeExecutions = this.tradeExecutions.filter((e) => e.startTime > Date.now() - 24 * 60 * 60 * 1000);
         }
     }
     triggerCircuitBreaker(reason, message) {
         if (!this.circuitBreakers.get(reason)) {
             this.circuitBreakers.set(reason, true);
             this.circuitBreakerTriggeredAt.set(reason, Date.now());
-            logger_1.default.error(`Circuit breaker triggered: ${reason}${message ? ` - ${message}` : ''}`);
+            logger.error(`Circuit breaker triggered: ${reason}${message ? ` - ${message}` : ''}`);
             this.emit('circuitBreaker', reason); // For test compatibility
             this.emit('circuitBreaker', { reason, message, timestamp: Date.now() });
         }
@@ -401,12 +383,12 @@ class RiskManager extends events_1.EventEmitter {
     resetCircuitBreaker(reason) {
         if (this.circuitBreakers.get(reason)) {
             this.circuitBreakers.set(reason, false);
-            logger_1.default.info(`Circuit breaker reset: ${reason}`);
+            logger.info(`Circuit breaker reset: ${reason}`);
             this.emit('circuitBreakerReset', { reason, timestamp: Date.now() });
         }
     }
     resetAllCircuitBreakers() {
-        Object.values(CircuitBreakerReason).forEach(reason => {
+        Object.values(CircuitBreakerReason).forEach((reason) => {
             this.resetCircuitBreaker(reason);
         });
     }
@@ -414,8 +396,8 @@ class RiskManager extends events_1.EventEmitter {
         if (!this.emergencyStopActive) {
             this.emergencyStopActive = true;
             this.triggerCircuitBreaker(CircuitBreakerReason.EMERGENCY_STOP, reason);
-            logger_1.default.error(`[EMERGENCY_STOP] Trading halted: ${reason}`);
-            const { sendAlert } = await Promise.resolve().then(() => __importStar(require('../utils/notifications')));
+            logger.error(`[EMERGENCY_STOP] Trading halted: ${reason}`);
+            const { sendAlert } = await import('../utils/notifications.js');
             sendAlert && sendAlert(`🚨 EMERGENCY STOP: Trading halted. Reason: ${reason}`, 'CRITICAL');
             this.emit('emergencyStop', reason); // For test compatibility
             this.emit('emergencyStop', { reason, timestamp: Date.now() });
@@ -425,20 +407,20 @@ class RiskManager extends events_1.EventEmitter {
         if (this.emergencyStopActive) {
             this.emergencyStopActive = false;
             this.resetCircuitBreaker(CircuitBreakerReason.EMERGENCY_STOP);
-            logger_1.default.info('Emergency stop reset');
+            logger.info('Emergency stop reset');
             this.emit('emergencyStopReset', { timestamp: Date.now() });
         }
     }
     disableSystem() {
         this.systemEnabled = false;
         this.triggerCircuitBreaker(CircuitBreakerReason.MANUAL_STOP, 'System manually disabled');
-        logger_1.default.info('System disabled');
+        logger.info('System disabled');
         this.emit('systemDisabled', { timestamp: Date.now() });
     }
     enableSystem() {
         this.systemEnabled = true;
         this.resetCircuitBreaker(CircuitBreakerReason.MANUAL_STOP);
-        logger_1.default.info('System enabled');
+        logger.info('System enabled');
         this.emit('systemEnabled', { timestamp: Date.now() });
     }
     getDrawdown() {
@@ -451,24 +433,24 @@ class RiskManager extends events_1.EventEmitter {
     }
     getDailyLoss() {
         const dailyPnL = this.getDailyPnL();
-        return dailyPnL < 0 ? Math.abs(dailyPnL) / this.dailyStartBalance * 100 : 0;
+        return dailyPnL < 0 ? (Math.abs(dailyPnL) / this.dailyStartBalance) * 100 : 0;
     }
     getWinRate() {
         if (this.trades.length === 0)
             return 0;
-        const winningTrades = this.trades.filter(t => t.pnl > 0).length;
+        const winningTrades = this.trades.filter((t) => t.pnl > 0).length;
         return (winningTrades / this.trades.length) * 100;
     }
     getTradeSuccessRate() {
-        const executions = this.tradeExecutions.filter(e => e.endTime !== undefined);
+        const executions = this.tradeExecutions.filter((e) => e.endTime !== undefined);
         if (executions.length === 0)
             return 100;
-        const successful = executions.filter(e => e.success).length;
+        const successful = executions.filter((e) => e.success).length;
         return (successful / executions.length) * 100;
     }
     getTradeCountInWindow(windowMs) {
         const cutoff = Date.now() - windowMs;
-        return this.tradeTimes.filter(t => t >= cutoff).length;
+        return this.tradeTimes.filter((t) => t >= cutoff).length;
     }
     checkRateLimits() {
         const perMinute = this.getTradeCountInWindow(60 * 1000);
@@ -490,11 +472,11 @@ class RiskManager extends events_1.EventEmitter {
         if (!history || history.length < 2) {
             return true;
         }
-        const prices = history.map(h => h.price);
+        const prices = history.map((h) => h.price);
         const mean = prices.reduce((sum, price) => sum + price, 0) / prices.length;
         const variance = prices.reduce((sum, price) => sum + Math.pow(price - mean, 2), 0) / prices.length;
-        const volatility = Math.sqrt(variance) / mean * 100;
-        const deviation = Math.abs((currentPrice - mean) / mean * 100);
+        const volatility = (Math.sqrt(variance) / mean) * 100;
+        const deviation = Math.abs(((currentPrice - mean) / mean) * 100);
         if (volatility > this.config.maxVolatility) {
             this.triggerCircuitBreaker(CircuitBreakerReason.HIGH_VOLATILITY, `Volatility ${volatility.toFixed(2)}% exceeds threshold ${this.config.maxVolatility}%`);
             return false;
@@ -516,12 +498,12 @@ class RiskManager extends events_1.EventEmitter {
     resetDailyMetrics() {
         this.dailyStartBalance = this.currentBalance;
         const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
-        this.trades = this.trades.filter(t => t.timestamp >= oneDayAgo);
-        this.tradeTimes = this.tradeTimes.filter(t => t >= oneDayAgo);
-        this.tradeExecutions = this.tradeExecutions.filter(e => e.startTime >= oneDayAgo);
-        logger_1.default.info('Daily metrics reset', {
+        this.trades = this.trades.filter((t) => t.timestamp >= oneDayAgo);
+        this.tradeTimes = this.tradeTimes.filter((t) => t >= oneDayAgo);
+        this.tradeExecutions = this.tradeExecutions.filter((e) => e.startTime >= oneDayAgo);
+        logger.info('Daily metrics reset', {
             balance: this.currentBalance,
-            trades: this.trades.length
+            trades: this.trades.length,
         });
     }
     scheduleDailyReset() {
@@ -543,9 +525,8 @@ class RiskManager extends events_1.EventEmitter {
         return this.config.maxLiquidityPercent ?? 0;
     }
     getMinPositionValueUsd() {
-        logger_1.default.warn('getMinPositionValueUsd not implemented, returning default $10');
+        logger.warn('getMinPositionValueUsd not implemented, returning default $10');
         return this.config.minPositionValueUsd ?? 10; // Default $10
     }
 }
-exports.RiskManager = RiskManager;
 //# sourceMappingURL=riskManager.js.map

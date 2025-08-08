@@ -1,14 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+vi.mock('../../src/utils/logger', () => import('../mocks/mockLogger'));
+
 import { TokenDiscovery } from '../discovery/tokenDiscovery';
 import { PatternDetector } from '../strategies/patternDetector';
 import { PriceFeedManager } from '../utils/priceFeedManager';
 import { LRUCache } from '../utils/cache';
 
 // Mock data and helpers
-type MockToken = { address: string; symbol: string; name: string; };
+type MockToken = { address: string; symbol: string; name: string };
 const mockTokens: MockToken[] = [
   { address: 'Token1', symbol: 'TK1', name: 'Token One' },
-  { address: 'Token2', symbol: 'TK2', name: 'Token Two' }
+  { address: 'Token2', symbol: 'TK2', name: 'Token Two' },
 ];
 
 function mockOHLCV(address: string, base: number, t: number) {
@@ -19,7 +21,7 @@ function mockOHLCV(address: string, base: number, t: number) {
     low: base * 0.95,
     close: base * (1 + 0.2 * (t % 2)), // alternate squeeze
     volume: 1000 + 100 * t,
-    timestamp: Date.now() + t * 60000
+    timestamp: Date.now() + t * 60000,
   };
 }
 
@@ -61,7 +63,7 @@ describe('Hybrid Pipeline', () => {
     const pfm = new PriceFeedManager({
       rateLimiter: { canMakeRequest: async () => true } as any,
       dexScreenerApiUrl: 'http://bad.url',
-      coingeckoApiUrl: 'http://bad.url'
+      coingeckoApiUrl: 'http://bad.url',
     });
     const result = await pfm.fetchFallback('Token1');
     expect(result).toBeNull();

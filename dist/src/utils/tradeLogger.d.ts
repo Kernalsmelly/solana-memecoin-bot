@@ -9,6 +9,11 @@ export interface TradeLogEntry {
     reason: string;
     txid?: string;
     success: boolean;
+    strategyName?: string;
+    feePaidLamports?: number;
+    feePaidSol?: number;
+    slippageBps?: number;
+    netPnL?: number;
 }
 export declare class TradeLogger {
     logSummary(summary: Record<string, any>): void;

@@ -1,0 +1,1 @@
+{"version":3,"file":"fastTradeExecutor.d.ts","sourceRoot":"","sources":["../../../src/strategy/fastTradeExecutor.ts"],"names":[],"mappings":"AACA,OAAO,EAAE,eAAe,EAAE,MAAM,sBAAsB,CAAC;AACvD,OAAO,EAAE,UAAU,EAAE,MAAM,2BAA2B,CAAC;AACvD,OAAO,EAAE,OAAO,EAAE,MAAM,iBAAiB,CAAC;AAG1C;;;;;GAKG;AACH,wBAAgB,sBAAsB,CACpC,eAAe,EAAE,eAAe,EAChC,UAAU,EAAE,UAAU,EACtB,OAAO,EAAE,OAAO,EAAE,QAkBnB"}

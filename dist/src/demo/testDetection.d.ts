@@ -1,4 +1,4 @@
-import { TokenMetrics } from '../types';
+import { TokenMetrics } from '../types.js';
 export declare class TestDetector {
     private detector;
     private namePrefixes;
